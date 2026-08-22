@@ -77,7 +77,7 @@ async function workspaceCodeModeHarness(): Promise<Context> {
   await harness.plugin(ToolFs)
   await harness.plugin(WorkspaceContext, { maxBytes: 65536 })
   await harness.plugin(AgentLoop, { agents: [] })
-  await harness.plugin(LlmDeepSeek, { models: [{ id: 'deepseek-v4-flash' }] })
+  await harness.plugin(LlmDeepSeek, { models: [{ id: FLASH }] })
   await harness.plugin(WorkerThreadCodeRuntime, {})
   return harness
 }
@@ -349,11 +349,13 @@ function waitForIdle(harness: Context, agent: Agent): Promise<void> {
   })
 }
 
+const FLASH = process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
+
 describe.skipIf(!process.env.DEEPSEEK_API_KEY)('Code Mode: real model writes a program over real tools', () => {
   it('collapses the wire tool list to [run_code], bridges sub-calls, and returns curated output', async () => {
     workdir = await mkdtemp(join(tmpdir(), 'toh-code-mode-e2e-'))
     ctx = await codeModeHarness(workdir)
-    const agent = ctx.agentLoop.create(SessionId('e2e-code-mode'), { provider: 'deepseek-official', model: 'deepseek-v4-flash' })
+    const agent = ctx.agentLoop.create(SessionId('e2e-code-mode'), { provider: 'deepseek-official', model: FLASH })
 
     agent.followup(createUserMessage({
       content: [{
@@ -405,7 +407,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('Code Mode: real model writes a p
     const handle = await ctx.agents.create({
       sessionId: SessionId('e2e-code-mode-workspace-session'),
       meta: { cwd: workdir },
-      agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+      agentOptions: { provider: 'deepseek-official', model: FLASH },
     })
 
     handle.agent.followup(createUserMessage({

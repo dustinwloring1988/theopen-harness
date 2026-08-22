@@ -30,6 +30,8 @@ const repoTsconfig = fileURLToPath(new URL('../../../../tsconfig.json', import.m
 
 // A minimal opt-in leaf that loads this app + the two backends and the optional
 // session-query consumer/policies, inlined so the package test owns its fixture.
+const FLASH = process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
+
 const CORDIS_YML = `
 - id: llm-deepseek
   name: '@buckeyestudio/toh-llm-deepseek'
@@ -41,7 +43,7 @@ const CORDIS_YML = `
   name: '@buckeyestudio/toh-acp-demo'
   config:
     provider: deepseek-official
-    model: deepseek-v4-flash
+    model: ${FLASH}
     persona: 'You are a test agent.'
     workspaceContext: false
 - id: tool-session-query

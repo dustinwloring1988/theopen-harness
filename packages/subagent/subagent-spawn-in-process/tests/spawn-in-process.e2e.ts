@@ -19,11 +19,13 @@ afterEach(async () => {
   workdir = undefined
 })
 
+const FLASH = process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
+
 describe.skipIf(!process.env.DEEPSEEK_API_KEY)('spawn backend with-key smoke', () => {
   it('a parent delegates to a child that writes a file on disk', async () => {
     workdir = await mkdtemp(join(tmpdir(), 'toh-subagent-spawn-e2e-'))
     ctx = await spawnHarness(workdir)
-    const parent = ctx.agentLoop.create(SessionId('e2e-parent'), { provider: 'deepseek-official', model: 'deepseek-v4-flash' })
+    const parent = ctx.agentLoop.create(SessionId('e2e-parent'), { provider: 'deepseek-official', model: FLASH })
 
     parent.followup(createUserMessage({
       content: [{ type: 'text', text:

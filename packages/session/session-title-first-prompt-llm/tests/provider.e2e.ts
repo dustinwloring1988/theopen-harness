@@ -13,6 +13,8 @@ afterEach(async () => {
   await Promise.all(contexts.splice(0).map(ctx => ctx.fiber.dispose()))
 })
 
+const FLASH = process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
+
 describe.skipIf(!process.env.DEEPSEEK_API_KEY)('first-prompt title provider with real DeepSeek API', () => {
   it('replaces the fallback with a short model title', async () => {
     const ctx = new Context()
@@ -32,7 +34,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('first-prompt title provider with
       maxOutputTokens: 64,
       timeoutMs: 60_000,
       provider: 'deepseek-official',
-      model: 'deepseek-v4-flash',
+      model: FLASH,
     })
     const session = ctx.sessions.create(SessionId('real-title-provider'))
     session.append('turn/start', {
@@ -50,7 +52,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('first-prompt title provider with
       source: {
         kind: 'provider',
         provider: 'session-title-first-prompt-llm',
-        model: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+        model: { provider: 'deepseek-official', model: FLASH },
       },
     })
     expect(title?.title.length).toBeGreaterThan(0)

@@ -30,6 +30,8 @@ afterEach(async () => {
   root = undefined
 })
 
+const FLASH = process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
+
 describe.skipIf(!process.env.DEEPSEEK_API_KEY)('resume: continue a persisted session across processes', () => {
   it('recalls a fact stored in a prior, separately-disposed session', async () => {
     root = await mkdtemp(join(tmpdir(), 'toh-resume-e2e-'))
@@ -40,7 +42,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('resume: continue a persisted ses
     ctx = await codingHarness(process.cwd(), { persona: SYSTEM_PROMPT, persistenceRoot: root })
     const first = (await ctx.agents.create({
       sessionId: SESSION_ID,
-      agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+      agentOptions: { provider: 'deepseek-official', model: FLASH },
     })).agent
     first.followup(createUserMessage({ content: [{ type: 'text', text: `Remember this code for later: ${SECRET}. Just acknowledge it.` }], source: { kind: 'user' } }))
     await waitForIdle(ctx, first)
@@ -53,7 +55,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('resume: continue a persisted ses
     ctx = await codingHarness(process.cwd(), { persona: SYSTEM_PROMPT, persistenceRoot: root })
     const resumed = (await ctx.agents.resume({
       resumeSessionId: SESSION_ID,
-      agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+      agentOptions: { provider: 'deepseek-official', model: FLASH },
     })).agent
     expect(resumed.session.id).toBe(SESSION_ID)
     // The prior user turn is in the rehydrated log before the model is asked.

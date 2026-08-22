@@ -22,13 +22,15 @@ afterEach(async () => {
 const SYSTEM = 'You are a coding assistant. Use the write tool to create files, the read tool to inspect '
   + 'them, and the edit tool for literal replacements. Read a file before editing it. Keep replies terse.'
 
+const FLASH = process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
+
 describe.skipIf(!process.env.DEEPSEEK_API_KEY)('fs tools with-key smoke', () => {
   it('creates, reads, then edits a file — verified on disk', async () => {
     workdir = await mkdtemp(join(tmpdir(), 'toh-fs-e2e-'))
     ctx = await fsHarness(workdir, SYSTEM)
     // agentLoop.create prepares a session with no cwd, so the provider default
     // (config.cwd = workdir) is the workspace.
-    const agent = ctx.agentLoop.create(SessionId('fs-e2e'), { provider: 'deepseek-official', model: 'deepseek-v4-flash' })
+    const agent = ctx.agentLoop.create(SessionId('fs-e2e'), { provider: 'deepseek-official', model: FLASH })
 
     agent.followup(createUserMessage({
       content: [{ type: 'text', text:
@@ -61,7 +63,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('fs tools with-key smoke', () => 
       const handle = await ctx.agents.create({
         sessionId: SessionId(`fs-e2e-cwd-${Date.now()}`),
         meta: { cwd: sessionDir },
-        agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+        agentOptions: { provider: 'deepseek-official', model: FLASH },
       })
       handle.agent.followup(createUserMessage({
         content: [{ type: 'text', text:
