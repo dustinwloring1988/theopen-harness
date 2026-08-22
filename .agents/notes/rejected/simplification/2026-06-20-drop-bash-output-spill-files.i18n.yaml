@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/rejected/simplification/2026-06-20-drop-bash-output-spill-files.md
-2026-06-20-drop-bash-output-spill-files.md: 55bd0dff02f5a09ceb5e557bbe6ddcf36f7791fe
-2026-06-20-drop-bash-output-spill-files.zh.md: e06d4426fc894dc816e4561e429d20daa7f77423
+2026-06-20-drop-bash-output-spill-files.md: f23b1e952d97bbee5848cebfa2ff0594ff6b0ab3
+2026-06-20-drop-bash-output-spill-files.zh.md: bb6c39895009f1f48d47c42b2145c8c3594e1233

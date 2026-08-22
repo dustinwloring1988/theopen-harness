@@ -1,11 +1,11 @@
 ---
-name: dsh-doc-standards
-description: 'Use when writing, moving, reviewing, or auditing documentation in the deepseek-harness repo — choosing hierarchy and detail, separating tutorials from references, checking tutorial progression, trimming doc slop, responding to a verify-doc-budgets failure, or requests like "improve the docs", "audit the docs", "where should this be documented", or "this doc is too long".'
+name: toh-doc-standards
+description: 'Use when writing, moving, reviewing, or auditing documentation in the theopen-harness repo — choosing hierarchy and detail, separating tutorials from references, checking tutorial progression, trimming doc slop, responding to a verify-doc-budgets failure, or requests like "improve the docs", "audit the docs", "where should this be documented", or "this doc is too long".'
 ---
 
-# Applying the DeepSeek Harness Documentation Standard
+# Applying the TheOpen Harness Documentation Standard
 
-The documentation rules live in [docs/AGENTS.md](../../../docs/AGENTS.md). This workflow covers placement, corpus audits, budgets, and validation across Markdown, JSDoc, and code comments. It is guidance, not a script; use [dsh-prose-standard](../dsh-prose-standard/SKILL.md) for required coverage and editorial judgment, and never treat length alone as a defect.
+The documentation rules live in [docs/AGENTS.md](../../../docs/AGENTS.md). This workflow covers placement, corpus audits, budgets, and validation across Markdown, JSDoc, and code comments. It is guidance, not a script; use [toh-prose-standard](../toh-prose-standard/SKILL.md) for required coverage and editorial judgment, and never treat length alone as a defect.
 
 ## Sources of truth (read, don't re-summarize)
 
@@ -37,11 +37,11 @@ Then check constraints that make placement expensive or wrong:
 After the structural pass, hunt the standard's slop checklist with the cheapest probes first. Verify and fetch the PR's live base, then run `pnpm --silent run change-scope --base <verified-base-ref>` to identify committed and dirty paths before applying semantic judgment. After a retarget or base merge, rerun the report and audit prose introduced by the new base.
 
 1. Measure: `pnpm run verify-doc-budgets --list`, then `git ls-files '*.md' ':(exclude)vendor/**' | xargs wc -w | sort -rn | head -30` to spot unbudgeted outliers.
-2. Hunt reasoning-transcript leakage — narrated history, dead design-session citations, review choreography, control-flow narration, test walkthroughs — with [dsh-trim-cot-leakage](../dsh-trim-cot-leakage/SKILL.md), which defines the taxonomy, recall batteries, and rules for what to keep or delete. Preserve only a non-obvious contract or durable rationale; the same rationale repeated beside sibling methods keeps one home.
+2. Hunt reasoning-transcript leakage — narrated history, dead design-session citations, review choreography, control-flow narration, test walkthroughs — with [toh-trim-cot-leakage](../toh-trim-cot-leakage/SKILL.md), which defines the taxonomy, recall batteries, and rules for what to keep or delete. Preserve only a non-obvious contract or durable rationale; the same rationale repeated beside sibling methods keeps one home.
 3. Hunt duplication by grepping distinctive phrases. Keep one home and replace other copies with links.
 4. Replace hand-written catalogs, test/status inventories, and JSDoc restatements with the authoritative tree, script, or generated reference.
 5. In `implemented/` Agent Notes, remove migration plans, acceptance-task checklists, and future-tense spec language. Keep concise verification contracts that identify the behaviors and tiers pinning the shipped decision, plus named coverage gaps.
-6. If removing prose changes a promised behavior rather than its explanation, use a proposed Agent Note first (follow [dsh-find-simplifications](../dsh-find-simplifications/SKILL.md)).
+6. If removing prose changes a promised behavior rather than its explanation, use a proposed Agent Note first (follow [toh-find-simplifications](../toh-find-simplifications/SKILL.md)).
 
 Exclude `.agents/notes/archived/` from corpus audits and edits. Active prose may repair, redirect, or delete an inbound link, but never follow an archive-wide cleanup into the frozen target.
 

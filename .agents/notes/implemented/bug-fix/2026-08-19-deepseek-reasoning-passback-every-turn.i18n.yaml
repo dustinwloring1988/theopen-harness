@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-19-deepseek-reasoning-passback-every-turn.md
-2026-08-19-deepseek-reasoning-passback-every-turn.md: 0fb9ff3cc0991bb2455bc0ef2ec6916b76e20be0
-2026-08-19-deepseek-reasoning-passback-every-turn.zh.md: d01c0c415ca4ce731cc8d9520729fe5b97119a9e
+2026-08-19-deepseek-reasoning-passback-every-turn.md: e8c53e65463595cee5c2e085ecc9a3985cf2f5d9
+2026-08-19-deepseek-reasoning-passback-every-turn.zh.md: 4dd5378e95613c03e648cc1bdc667b5e2542fe69

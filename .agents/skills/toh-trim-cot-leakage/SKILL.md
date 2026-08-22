@@ -1,11 +1,11 @@
 ---
-name: dsh-trim-cot-leakage
+name: toh-trim-cot-leakage
 description: Use when auditing or fixing prose that reads like a leaked reasoning transcript — dead design-session citations such as (decision N), audit item codes, or §N of uncommitted drafts; change narration such as "used to", "no longer", "this cut"; stack or review vantage ("a later PR in this stack", "rejected in review"); reviewer-addressed justifications; control-flow narration; or hedged planning residue in comments, JSDoc, docs, or Agent Notes.
 ---
 
 # Trimming Chain-of-Thought Leakage
 
-Chain-of-thought leakage is prose whose vantage is the authoring session rather than the repository: it cites artifacts only that session could see, narrates the change instead of the state, or argues with a reviewer who has left. The fix is never deletion alone when a passage carries factual clauses — restate each so it stands at HEAD, then delete the transcript around it; a passage carrying none (an audit code, control-flow narration) is deleted outright. **REQUIRED BACKGROUND:** [dsh-prose-standard](../dsh-prose-standard/SKILL.md) owns the complete-proposition rule this skill applies; the [committed-artifact-citations note](../../notes/implemented/process/2026-08-09-committed-artifact-citations.md) owns the citation rule's rationale. It is guidance, not a script.
+Chain-of-thought leakage is prose whose vantage is the authoring session rather than the repository: it cites artifacts only that session could see, narrates the change instead of the state, or argues with a reviewer who has left. The fix is never deletion alone when a passage carries factual clauses — restate each so it stands at HEAD, then delete the transcript around it; a passage carrying none (an audit code, control-flow narration) is deleted outright. **REQUIRED BACKGROUND:** [toh-prose-standard](../toh-prose-standard/SKILL.md) owns the complete-proposition rule this skill applies; the [committed-artifact-citations note](../../notes/implemented/process/2026-08-09-committed-artifact-citations.md) owns the citation rule's rationale. It is guidance, not a script.
 
 ## The one test
 
@@ -38,8 +38,8 @@ Unaided citation passes fail in both directions by deleting durable references a
 
 ## Workflow
 
-1. Scope and exclusions per [dsh-prose-standard](../dsh-prose-standard/SKILL.md): require an explicit scope; never touch `vendor/`, `.agents/notes/archived/`, or recorded fixtures and snapshots — recorded model output and sealed history keep their original voice.
+1. Scope and exclusions per [toh-prose-standard](../toh-prose-standard/SKILL.md): require an explicit scope; never touch `vendor/`, `.agents/notes/archived/`, or recorded fixtures and snapshots — recorded model output and sealed history keep their original voice.
 2. Audit read-only first: run the [recall batteries](references/recall-batteries.md) (with `--hidden` so `.agents/` is searched), then judge every hit semantically. The batteries are probes, not the definition — each review round of the original purge found cases the batteries missed, so also read the densest prose in scope (module JSDoc, READMEs, Agent Notes) without a pattern in hand.
-3. Fix owner-first per surface: generated catalogs → fix the source JSDoc or generator template, then regenerate; type-equivalence fences → fix the source JSDoc, then re-paste both bilingual pages (`verify-type-equiv` pins them); bilingual pairs → update the counterpart and re-record per [dsh-translate-docs](../dsh-translate-docs/SKILL.md); model-visible strings → wording is behavior, so flag for a snapshot-backed change instead of silently rewording.
+3. Fix owner-first per surface: generated catalogs → fix the source JSDoc or generator template, then regenerate; type-equivalence fences → fix the source JSDoc, then re-paste both bilingual pages (`verify-type-equiv` pins them); bilingual pairs → update the counterpart and re-record per [toh-translate-docs](../toh-translate-docs/SKILL.md); model-visible strings → wording is behavior, so flag for a snapshot-backed change instead of silently rewording.
 4. Before deleting anything, enumerate the passage's propositions (prose-standard) and check the [overcorrection traps](references/examples.md#overcorrection-traps): trims that flip an obligation into an endorsement, promote a hypothetical to a shipped feature, delete a true fact, or drop provenance.
 5. Verify: re-run the batteries expecting only sanctioned keeps, this skill's own directory, and the owning note's quoted evidence; confirm every remaining citation resolves at HEAD; run the gates for touched surfaces (`doc-sync` for docs, `verify-type-equiv`, `verify-translation-pairing`).

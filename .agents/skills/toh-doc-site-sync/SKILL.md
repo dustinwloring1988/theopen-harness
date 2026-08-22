@@ -1,9 +1,9 @@
 ---
-name: dsh-doc-site-sync
-description: Use when publishing, updating, moving, or removing DeepSeek Harness documentation website pages; editing website/docs.ts mappings or navigation; diagnosing a page missing from the VitePress site; fixing projected documentation links; or running the docs:dev, docs:check, and doc-sync workflow after website-content changes.
+name: toh-doc-site-sync
+description: Use when publishing, updating, moving, or removing TheOpen Harness documentation website pages; editing website/docs.ts mappings or navigation; diagnosing a page missing from the VitePress site; fixing projected documentation links; or running the docs:dev, docs:check, and doc-sync workflow after website-content changes.
 ---
 
-# Synchronizing the DeepSeek Harness Documentation Site
+# Synchronizing the TheOpen Harness Documentation Site
 
 Keep repository Markdown as the only editable content source. Treat the website as a tested projection: [website/docs.ts](../../../website/docs.ts) selects public pages, [scripts/project-doc-site.ts](../../../scripts/project-doc-site.ts) rewrites them into the disposable `website/.generated/` tree, and VitePress builds that tree. The build additionally emits a raw-Markdown twin of every route (page URL minus any trailing slash, plus `.md`; index routes also get a parent-level alias) and a root `llms.txt` index; both derive from the same manifest and projector, so publishing, moving, or removing a page updates them automatically and `docs:build` fails when one is missing.
 
@@ -11,7 +11,7 @@ Repository translations follow the sibling pairing contract: English `foo.md`, C
 
 ## Read the owning contracts
 
-- Read [docs/AGENTS.md](../../../docs/AGENTS.md) and use [dsh-doc-standards](../dsh-doc-standards/SKILL.md) when deciding where content belongs or changing product documentation prose.
+- Read [docs/AGENTS.md](../../../docs/AGENTS.md) and use [toh-doc-standards](../toh-doc-standards/SKILL.md) when deciding where content belongs or changing product documentation prose.
 - For an edited bilingual source, follow the lightweight routine path in [docs/AGENTS.md](../../../docs/AGENTS.md#writing-rules) and the [pairing contract](../../../docs/i18n/README.md); never invoke the extended translation skill automatically.
 - Read the current `DocsPage` type and entries in [website/docs.ts](../../../website/docs.ts) before changing the manifest; do not rely on a remembered field set.
 - Read [website/.vitepress/config.ts](../../../website/.vitepress/config.ts) before adding a new section, sidebar collection, locale, or top-level navigation item.
@@ -79,7 +79,7 @@ pnpm run lint
 git diff --check
 ```
 
-Use [dsh-pre-push-checks](../dsh-pre-push-checks/SKILL.md) before pushing. Report the canonical files changed, manifest entries added or removed, public routes affected, and the exact checks run.
+Use [toh-pre-push-checks](../toh-pre-push-checks/SKILL.md) before pushing. Report the canonical files changed, manifest entries added or removed, public routes affected, and the exact checks run.
 
 ## Keep deployment separate
 

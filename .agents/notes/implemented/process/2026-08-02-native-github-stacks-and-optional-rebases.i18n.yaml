@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-08-02-native-github-stacks-and-optional-rebases.md
-2026-08-02-native-github-stacks-and-optional-rebases.md: a349ed18a27ab006384310e4318f057dbf8873b1
-2026-08-02-native-github-stacks-and-optional-rebases.zh.md: 2817a08e37bad484f218f338c01306d095334dda
+2026-08-02-native-github-stacks-and-optional-rebases.md: b7310921ee62700c0051f460e9812831c19cbca5
+2026-08-02-native-github-stacks-and-optional-rebases.zh.md: 796624fdffff8dbe31fb697681ed37bad83a0aa1

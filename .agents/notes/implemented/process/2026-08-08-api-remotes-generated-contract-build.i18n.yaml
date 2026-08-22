@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/process/2026-08-08-api-remotes-generated-contract-build.md
-2026-08-08-api-remotes-generated-contract-build.md: 2f5da20c947e60a3c76514631d1c64c38e07b4cd
-2026-08-08-api-remotes-generated-contract-build.zh.md: 92d840765a4297d76dfdbab851869c90ac8e6609
+2026-08-08-api-remotes-generated-contract-build.md: b79ac8e445ddb535dfc1b08369b3d2229ce7586e
+2026-08-08-api-remotes-generated-contract-build.zh.md: db6a3fcd8d588c293186bce1c22e8d9355331849

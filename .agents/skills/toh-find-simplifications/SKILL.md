@@ -1,9 +1,9 @@
 ---
-name: dsh-find-simplifications
-description: 'Use when working in the deepseek-harness repo to find non-obvious simplification candidates, write proposed Agent Notes or inline TODO/FIXME/XXX notes, audit or coalesce superseded Agent Notes, or fold worthwhile simplification ideas from another PR; especially for dead, duplicated, speculative, over-built, added-then-removed, or hand-rolled-where-a-dependency-exists surfaces.'
+name: toh-find-simplifications
+description: 'Use when working in the theopen-harness repo to find non-obvious simplification candidates, write proposed Agent Notes or inline TODO/FIXME/XXX notes, audit or coalesce superseded Agent Notes, or fold worthwhile simplification ideas from another PR; especially for dead, duplicated, speculative, over-built, added-then-removed, or hand-rolled-where-a-dependency-exists surfaces.'
 ---
 
-# Finding DeepSeek Harness Simplifications
+# Finding TheOpen Harness Simplifications
 
 This skill helps turn a broad "find things to simplify" request into evidence-backed Agent Notes that remove or collapse existing harness surface area. It is guidance, not a checklist: follow the code, keep judgment active, and prefer a few well-proven candidates over a pile of thin guesses.
 
@@ -82,7 +82,7 @@ Reject or downgrade a candidate when:
 
 Audit the Agent Note tree when the user asks to reduce or coalesce it, or when the simplification being implemented makes an owning note obsolete. Do not expand every code-simplification survey into a repository-wide note audit.
 
-Use [`dsh-archive-agent-notes`](../dsh-archive-agent-notes/SKILL.md) for retention judgment and archive mechanics. Low-future-value implemented notes move as frozen triplets to `archived/{kind}`; proposed notes are never archived; rejected notes that no longer prevent a tempting mistake are deleted. Do not edit an archived note while simplifying current prose or code.
+Use [`toh-archive-agent-notes`](../toh-archive-agent-notes/SKILL.md) for retention judgment and archive mechanics. Low-future-value implemented notes move as frozen triplets to `archived/{kind}`; proposed notes are never archived; rejected notes that no longer prevent a tempting mistake are deleted. Do not edit an archived note while simplifying current prose or code.
 
 Follow the deletion rule in the [Agent Note rules](../../notes/README.md#when-to-write-one); do not duplicate or weaken it here. For each candidate chain:
 
