@@ -36,6 +36,14 @@ pnpm toh web
 
 `pnpm run build` prepares the repository artifacts. `pnpm toh web` uses those built artifacts without rebuilding.
 
+### Desktop app
+
+```sh
+pnpm toh desktop
+```
+
+The desktop command opens one Electron window around the same Web UI: the window spawns and owns the web backend on a loopback port, so closing it stops the harness — no separate server or browser tab. A second launch focuses the existing window instead of starting another backend. The app needs the built checkout (`pnpm run build`) plus `node` on PATH.
+
 ## Community and support
 
 - Feel free to submit feedback or bug reports through [GitHub Discussions](https://github.com/dustinwloring1988/theopen-harness/discussions).

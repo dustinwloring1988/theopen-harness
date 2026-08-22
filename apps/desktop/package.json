@@ -1,0 +1,42 @@
+{
+  "name": "@buckeyestudio/toh-desktop",
+  "description": "Desktop container app: one Electron window around the toh web surface; the main process spawns the built toh web backend on a loopback port and loads its URL line",
+  "version": "0.1.1-rc.2",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dustinwloring1988/theopen-harness.git",
+    "directory": "apps/desktop"
+  },
+  "type": "module",
+  "main": "lib/main.js",
+  "exports": {
+    ".": {
+      "types": "./lib/types/main.d.ts",
+      "default": "./lib/main.js"
+    },
+    "./backend": {
+      "types": "./lib/types/backend.d.ts",
+      "default": "./lib/backend.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/main.js",
+    "lib/backend.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "MIT",
+  "scripts": {
+    "build": "tsdown",
+    "start": "electron ."
+  },
+  "dependencies": {
+    "@buckeyestudio/toh": "workspace:^"
+  },
+  "devDependencies": {
+    "electron": "^43.4.1"
+  }
+}

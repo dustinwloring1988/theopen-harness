@@ -57,6 +57,15 @@ describe('parseDshArgs', () => {
       .toEqual({ mode: 'plugin', profile: 'tui', args: ['add', '--save-dev', 'x'] })
   })
 
+  it('routes the desktop launcher and rejects parent options and extra flags', () => {
+    expect(parse(['desktop'])).toEqual({ mode: 'desktop' })
+    // Parent options before the subcommand and any option after it have no
+    // meaning: the container app owns the whole web surface.
+    expect(exitCode(['--profile', 'web', 'desktop'])).toBe(1)
+    expect(exitCode(['--patch', 'x.yml', 'desktop'])).toBe(1)
+    expect(exitCode(['desktop', '--patch', 'x.yml'])).toBe(1)
+  })
+
   it('routes profile and web config dumps', () => {
     expect(parse(['--profile', 'web', '--dump-config']))
       .toEqual({ mode: 'dump-config', profile: 'web', defaultOnly: false, patches: [] })
