@@ -9,8 +9,8 @@
  * through {@link SettingsDescribeMirror.acceptView}.
  */
 
-import type { IApiClient, SettingsNamespaceView } from '@deepseek-ai/dsh-api-remotes/client'
-import { createSnapshotStore, type SnapshotStore } from '@deepseek-ai/dsh-client-runtime/client'
+import type { IApiClient, SettingsNamespaceView } from '@buckeyestudio/toh-api-remotes/client'
+import { createSnapshotStore, type SnapshotStore } from '@buckeyestudio/toh-client-runtime/client'
 
 type SettingsFace = Pick<IApiClient, 'settings'>
 

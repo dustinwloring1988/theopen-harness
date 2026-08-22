@@ -1,13 +1,13 @@
 {
-  "name": "@deepseek-ai/dsh-sdk-jsonrpc-server",
-  "description": "Stdio JSON-RPC server plugin for out-of-process DeepSeek Harness SDK clients",
+  "name": "@buckeyestudio/toh-sdk-jsonrpc-server",
+  "description": "Stdio JSON-RPC server plugin for out-of-process TheOpen Harness SDK clients",
   "version": "0.1.1-rc.2",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/dustinwloring1988/theopen-harness.git",
     "directory": "packages/sdk/server"
   },
   "type": "module",
@@ -31,32 +31,33 @@
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
+  "author": "buckeyestudio",
   "dependencies": {
-    "@deepseek-ai/schemastery": "workspace:^"
+    "@buckeyestudio/schemastery": "workspace:^"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-agent": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-llm": "workspace:^",
-    "@deepseek-ai/dsh-llm-deepseek": "workspace:^",
-    "@deepseek-ai/dsh-scope": "workspace:^",
-    "@deepseek-ai/dsh-sdk-protocol": "workspace:^",
-    "@deepseek-ai/dsh-session": "workspace:^",
-    "@deepseek-ai/dsh-subagent": "workspace:^",
-    "@deepseek-ai/cordis": "workspace:^"
+    "@buckeyestudio/toh-agent": "workspace:^",
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-llm": "workspace:^",
+    "@buckeyestudio/toh-llm-deepseek": "workspace:^",
+    "@buckeyestudio/toh-scope": "workspace:^",
+    "@buckeyestudio/toh-sdk-protocol": "workspace:^",
+    "@buckeyestudio/toh-session": "workspace:^",
+    "@buckeyestudio/toh-subagent": "workspace:^",
+    "@buckeyestudio/cordis": "workspace:^"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis-plugin-loader": "workspace:^",
-    "@deepseek-ai/dsh-agent": "workspace:^",
-    "@deepseek-ai/dsh-agent-spine-demo": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-llm": "workspace:^",
-    "@deepseek-ai/dsh-llm-deepseek": "workspace:^",
-    "@deepseek-ai/dsh-scope": "workspace:^",
-    "@deepseek-ai/dsh-sdk-protocol": "workspace:^",
-    "@deepseek-ai/dsh-session": "workspace:^",
-    "@deepseek-ai/dsh-session-persistence-jsonl": "workspace:^",
-    "@deepseek-ai/dsh-subagent": "workspace:^",
-    "@deepseek-ai/cordis": "workspace:^"
+    "@buckeyestudio/cordis-plugin-loader": "workspace:^",
+    "@buckeyestudio/toh-agent": "workspace:^",
+    "@buckeyestudio/toh-agent-spine-demo": "workspace:^",
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-llm": "workspace:^",
+    "@buckeyestudio/toh-llm-deepseek": "workspace:^",
+    "@buckeyestudio/toh-scope": "workspace:^",
+    "@buckeyestudio/toh-sdk-protocol": "workspace:^",
+    "@buckeyestudio/toh-session": "workspace:^",
+    "@buckeyestudio/toh-session-persistence-jsonl": "workspace:^",
+    "@buckeyestudio/toh-subagent": "workspace:^",
+    "@buckeyestudio/cordis": "workspace:^"
   }
 }

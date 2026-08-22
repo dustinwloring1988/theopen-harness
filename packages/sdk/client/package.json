@@ -1,13 +1,13 @@
 {
-  "name": "@deepseek-ai/dsh-sdk-client",
-  "description": "TypeScript client SDK for driving a DeepSeek Harness runtime subprocess over stdio JSON-RPC: the DeepSeekHarness high-level turns API and the lower-level HarnessClient",
+  "name": "@buckeyestudio/toh-sdk-client",
+  "description": "TypeScript client SDK for driving a TheOpen Harness runtime subprocess over stdio JSON-RPC: the DeepSeekHarness high-level turns API and the lower-level HarnessClient",
   "version": "0.1.1-rc.2",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/dustinwloring1988/theopen-harness.git",
     "directory": "packages/sdk/client"
   },
   "type": "module",
@@ -30,18 +30,19 @@
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
+  "author": "buckeyestudio",
   "peerDependencies": {
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-llm": "workspace:^",
-    "@deepseek-ai/dsh-sdk-protocol": "workspace:^",
-    "@deepseek-ai/dsh-session": "workspace:^",
-    "@deepseek-ai/cordis": "workspace:^"
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-llm": "workspace:^",
+    "@buckeyestudio/toh-sdk-protocol": "workspace:^",
+    "@buckeyestudio/toh-session": "workspace:^",
+    "@buckeyestudio/cordis": "workspace:^"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-llm": "workspace:^",
-    "@deepseek-ai/dsh-sdk-protocol": "workspace:^",
-    "@deepseek-ai/dsh-session": "workspace:^",
-    "@deepseek-ai/cordis": "workspace:^"
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-llm": "workspace:^",
+    "@buckeyestudio/toh-sdk-protocol": "workspace:^",
+    "@buckeyestudio/toh-session": "workspace:^",
+    "@buckeyestudio/cordis": "workspace:^"
   }
 }

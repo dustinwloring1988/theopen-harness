@@ -1,12 +1,12 @@
 /**
- * TypeScript client SDK for the DeepSeek Harness runtime: spawn the
- * `dsh-jsonrpc-agent` runtime as a subprocess and drive agent turns over
+ * TypeScript client SDK for the TheOpen Harness runtime: spawn the
+ * `toh-jsonrpc-agent` runtime as a subprocess and drive agent turns over
  * stdio JSON-RPC. `DeepSeekHarness` is the high-level run API;
  * `HarnessClient` is the lower-level protocol client. A pure library — it
  * registers nothing on a Cordis context; the runtime process it spawns is a
  * complete harness configured by its own `cordis.yml`.
  *
- * @module @deepseek-ai/dsh-sdk-client
+ * @module @buckeyestudio/toh-sdk-client
  */
 
 export { DeepSeekHarness, HarnessSession } from './api.ts'
@@ -18,7 +18,7 @@ export {
   TransportClosedError,
 } from './client.ts'
 export type { NotificationSubscription } from './client.ts'
-export { JsonRpcResponseError } from '@deepseek-ai/dsh-sdk-protocol'
+export { JsonRpcResponseError } from '@buckeyestudio/toh-sdk-protocol'
 export type {
   ContentBlock,
   DeepSeekHarnessOptions,

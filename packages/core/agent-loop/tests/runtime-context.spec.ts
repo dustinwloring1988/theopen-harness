@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import SessionStore, { SessionId } from '@deepseek-ai/dsh-session'
+import { Context } from '@buckeyestudio/cordis'
+import { createUserMessage } from '@buckeyestudio/toh-llm'
+import SessionStore, { SessionId } from '@buckeyestudio/toh-session'
 import { RuntimeContextProjection } from '../src/runtime-context.ts'
 
-const SOURCE = '@deepseek-ai/dsh-system-prompt'
+const SOURCE = '@buckeyestudio/toh-system-prompt'
 
 function contextMessage(text: string) {
   return createUserMessage({

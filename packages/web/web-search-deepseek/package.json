@@ -1,13 +1,13 @@
 {
-  "name": "@deepseek-ai/dsh-web-search-deepseek",
-  "description": "DeepSeek-backed search provider (native web_search via the Anthropic-compatible API) for the DeepSeek Harness web capability seam (ctx.web)",
+  "name": "@buckeyestudio/toh-web-search-deepseek",
+  "description": "DeepSeek-backed search provider (native web_search via the Anthropic-compatible API) for the TheOpen Harness web capability seam (ctx.web)",
   "version": "0.1.1-rc.2",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/dustinwloring1988/theopen-harness.git",
     "directory": "packages/web/web-search-deepseek"
   },
   "type": "module",
@@ -31,28 +31,29 @@
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
+  "author": "buckeyestudio",
   "peerDependencies": {
-    "@deepseek-ai/dsh-agent": "workspace:^",
-    "@deepseek-ai/dsh-credentials": "workspace:^",
-    "@deepseek-ai/dsh-launch-environment": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-session": "workspace:^",
-    "@deepseek-ai/dsh-web": "workspace:^",
-    "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-settings": "workspace:^"
+    "@buckeyestudio/toh-agent": "workspace:^",
+    "@buckeyestudio/toh-credentials": "workspace:^",
+    "@buckeyestudio/toh-launch-environment": "workspace:^",
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-session": "workspace:^",
+    "@buckeyestudio/toh-web": "workspace:^",
+    "@buckeyestudio/cordis": "workspace:^",
+    "@buckeyestudio/toh-settings": "workspace:^"
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "workspace:^"
+    "@buckeyestudio/schemastery": "workspace:^"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-agent": "workspace:^",
-    "@deepseek-ai/dsh-credentials": "workspace:^",
-    "@deepseek-ai/dsh-credentials-local": "workspace:^",
-    "@deepseek-ai/dsh-launch-environment": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-session": "workspace:^",
-    "@deepseek-ai/dsh-web": "workspace:^",
-    "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-settings": "workspace:^"
+    "@buckeyestudio/toh-agent": "workspace:^",
+    "@buckeyestudio/toh-credentials": "workspace:^",
+    "@buckeyestudio/toh-credentials-local": "workspace:^",
+    "@buckeyestudio/toh-launch-environment": "workspace:^",
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-session": "workspace:^",
+    "@buckeyestudio/toh-web": "workspace:^",
+    "@buckeyestudio/cordis": "workspace:^",
+    "@buckeyestudio/toh-settings": "workspace:^"
   }
 }

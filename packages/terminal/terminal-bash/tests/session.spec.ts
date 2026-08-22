@@ -1,18 +1,18 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { PassThrough } from 'node:stream'
-import { LocalPtySession } from '@deepseek-ai/dsh-terminal-bash/src/session.ts'
-import type { ResolvedConfig } from '@deepseek-ai/dsh-terminal-bash/src/config.ts'
-import type { TerminalSendOperation, TerminalSessionStatus, TerminalSignal } from '@deepseek-ai/dsh-terminal'
+import { LocalPtySession } from '@buckeyestudio/toh-terminal-bash/src/session.ts'
+import type { ResolvedConfig } from '@buckeyestudio/toh-terminal-bash/src/config.ts'
+import type { TerminalSendOperation, TerminalSessionStatus, TerminalSignal } from '@buckeyestudio/toh-terminal'
 import type {
   SubprocessOutcome,
   SubprocessTerminalHandle,
   SubprocessTerminalSignal,
-} from '@deepseek-ai/dsh-subprocess'
-import { TerminalError } from '@deepseek-ai/dsh-terminal'
+} from '@buckeyestudio/toh-subprocess'
+import { TerminalError } from '@buckeyestudio/toh-terminal'
 import type {
   ProcessIdentity,
   ProcessInspector,
-} from '@deepseek-ai/dsh-subprocess-local/src/process-inspector.ts'
+} from '@buckeyestudio/toh-subprocess-local/src/process-inspector.ts'
 
 class FakeInspector implements ProcessInspector {
   pgid: number | undefined = 456
@@ -202,7 +202,7 @@ describe('LocalPtySession readiness and output', () => {
     const inspector = new FakeInspector()
     const session = makeSession(terminal, inspector, config())
     await initialize(session, terminal)
-    expect(session.motd).toBe('dsh> ')
+    expect(session.motd).toBe('toh> ')
 
     inspector.waiting = true
     const operation = session.startSend({ text: 'python3', submit: true })
@@ -806,10 +806,10 @@ describe('LocalPtySession readiness and output', () => {
     await vi.advanceTimersByTimeAsync(20)
     expect(settled).toBe(false)
 
-    terminal.emitData('dsh> ')
+    terminal.emitData('toh> ')
     await vi.advanceTimersByTimeAsync(10)
     await initializing
-    expect(session.motd).toBe('dsh> ')
+    expect(session.motd).toBe('toh> ')
   })
 
   it('does not attribute a delayed prior prompt to the current send', async () => {

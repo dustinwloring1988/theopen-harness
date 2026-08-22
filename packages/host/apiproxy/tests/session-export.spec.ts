@@ -7,14 +7,14 @@
 
 import { randomBytes } from 'node:crypto'
 import { describe, expect, it, vi } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
+import { Context } from '@buckeyestudio/cordis'
 import { unzipSync, strFromU8 } from 'fflate'
-import type { ImageAttachmentRef } from '@deepseek-ai/dsh-attachment'
-import UserQuestionService from '@deepseek-ai/dsh-user-questions'
-import type { SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
-import type { SessionLineageNode } from '@deepseek-ai/dsh-session-query'
-import type { SessionRawArtifact } from '@deepseek-ai/dsh-session-persistence'
-import ApiProxyService, { createApiProxy, toFetchHandler } from '@deepseek-ai/dsh-host-apiproxy'
+import type { ImageAttachmentRef } from '@buckeyestudio/toh-attachment'
+import UserQuestionService from '@buckeyestudio/toh-user-questions'
+import type { SessionHeader, SessionId } from '@buckeyestudio/toh-session'
+import type { SessionLineageNode } from '@buckeyestudio/toh-session-query'
+import type { SessionRawArtifact } from '@buckeyestudio/toh-session-persistence'
+import ApiProxyService, { createApiProxy, toFetchHandler } from '@buckeyestudio/toh-host-apiproxy'
 
 const sid = (id: string): SessionId => id as SessionId
 
@@ -161,7 +161,7 @@ describe('session.export download endpoint', () => {
     )
     expect(response.status).toBe(200)
     expect(response.headers.get('content-type')).toBe('application/zip')
-    expect(response.headers.get('content-disposition')).toContain('dsh-session-session-root.zip')
+    expect(response.headers.get('content-disposition')).toContain('toh-session-session-root.zip')
     const files = unzipSync(await responseBytes(response))
     expect(Object.keys(files)).toEqual(['session.jsonl'])
     expect(strFromU8(files['session.jsonl'] as Uint8Array)).toBe(artifact('session-root').content)
@@ -176,7 +176,7 @@ describe('session.export download endpoint', () => {
 
     expect(response.status).toBe(200)
     expect(response.headers.get('content-type')).toBe('application/zip')
-    expect(response.headers.get('content-disposition')).toContain('dsh-session-session-root.zip')
+    expect(response.headers.get('content-disposition')).toContain('toh-session-session-root.zip')
     expect(response.body).toBeNull()
     expect(readRaw).toHaveBeenCalledOnce()
   })

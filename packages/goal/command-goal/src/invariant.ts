@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-command-goal`.
- * @module @deepseek-ai/dsh-command-goal/invariant
+ * Package-owned invariant companion for `@buckeyestudio/toh-command-goal`.
+ * @module @buckeyestudio/toh-command-goal/invariant
  */
 
 /* jscpd:ignore-start */
-import type { Context } from '@deepseek-ai/cordis'
-import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
+import type { Context } from '@buckeyestudio/cordis'
+import type { InvariantInstaller } from '@buckeyestudio/toh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-command-goal'
+const PACKAGE_NAME = '@buckeyestudio/toh-command-goal'
 
 /** Cordis companion plugin name. */
 export const name = 'command-goal-invariant'

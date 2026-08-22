@@ -1572,12 +1572,12 @@
     },
     {
       "doc": "docs/subsystems/subprocess.md",
-      "symbol": "DshEnvironmentKey",
+      "symbol": "TohEnvironmentKey",
       "source": "packages/subprocess/subprocess/src/types.ts"
     },
     {
       "doc": "docs/subsystems/subprocess.md",
-      "symbol": "DshEnvironment",
+      "symbol": "TohEnvironment",
       "source": "packages/subprocess/subprocess/src/types.ts"
     },
     {

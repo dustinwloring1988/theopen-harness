@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-launch-environment`.
- * @module @deepseek-ai/dsh-launch-environment/invariant
+ * Package-owned invariant companion for `@buckeyestudio/toh-launch-environment`.
+ * @module @buckeyestudio/toh-launch-environment/invariant
  */
 
 /* jscpd:ignore-start */
-import type { Context } from '@deepseek-ai/cordis'
-import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
+import type { Context } from '@buckeyestudio/cordis'
+import type { InvariantInstaller } from '@buckeyestudio/toh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-launch-environment'
+const PACKAGE_NAME = '@buckeyestudio/toh-launch-environment'
 
 /** Cordis companion plugin name. */
 export const name = 'launch-environment-invariant'

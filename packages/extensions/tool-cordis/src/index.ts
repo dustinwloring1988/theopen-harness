@@ -1,20 +1,20 @@
 /**
  * Model-facing Cordis runtime/package inspection, define, run, stop, and remove tools.
- * @module @deepseek-ai/dsh-tool-cordis
+ * @module @buckeyestudio/toh-tool-cordis
  */
 
-import type { Context } from '@deepseek-ai/cordis'
-import type { Agent, PreStepDecision } from '@deepseek-ai/dsh-agent'
+import type { Context } from '@buckeyestudio/cordis'
+import type { Agent, PreStepDecision } from '@buckeyestudio/toh-agent'
 import {
   CordisDynamicPackageId, CordisDynamicPluginId,
-} from '@deepseek-ai/dsh-cordis-host-runner'
-import type { DynamicCordisReference } from '@deepseek-ai/dsh-cordis-host-runner'
-import { createUserMessage } from '@deepseek-ai/dsh-llm'
-import type { JsonValue } from '@deepseek-ai/dsh-session'
-import type { UserMessage } from '@deepseek-ai/dsh-session'
-import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { ToolExecution } from '@deepseek-ai/dsh-tools'
-import type {} from '@deepseek-ai/dsh-system-prompt'
+} from '@buckeyestudio/toh-cordis-host-runner'
+import type { DynamicCordisReference } from '@buckeyestudio/toh-cordis-host-runner'
+import { createUserMessage } from '@buckeyestudio/toh-llm'
+import type { JsonValue } from '@buckeyestudio/toh-session'
+import type { UserMessage } from '@buckeyestudio/toh-session'
+import { defineTool } from '@buckeyestudio/toh-tools'
+import type { ToolExecution } from '@buckeyestudio/toh-tools'
+import type {} from '@buckeyestudio/toh-system-prompt'
 import { missingServices, providedServices } from './inspect.ts'
 import {
   presentDefineCall, presentInspectListCall, presentInspectQueryCall, presentInspectSelfCall, presentRunCall,
@@ -523,7 +523,7 @@ function renderUnavailableReference(id: string): string {
   return [
     '<cordis_dynamic_plugin_context>',
     `The user explicitly referenced @${id}, but this Plugin is unavailable in the current Session.`,
-    'It may have been removed, belong to another Session, or have been lost when the DSH process restarted.',
+    'It may have been removed, belong to another Session, or have been lost when the TOH process restarted.',
     'Do not claim that it was updated or silently create a replacement Plugin. Tell the user that the reference is currently unavailable.',
     '</cordis_dynamic_plugin_context>',
   ].join('\n')

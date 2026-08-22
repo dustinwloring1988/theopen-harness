@@ -1,7 +1,7 @@
-/** DeepSeek Files API upload reuse, invalidation, and quota recovery. @module dsh-llm-deepseek/file-store */
+/** DeepSeek Files API upload reuse, invalidation, and quota recovery. @module toh-llm-deepseek/file-store */
 
-import type { RequestImageAttachment } from '@deepseek-ai/dsh-attachment'
-import { LlmError } from '@deepseek-ai/dsh-llm'
+import type { RequestImageAttachment } from '@buckeyestudio/toh-attachment'
+import { LlmError } from '@buckeyestudio/toh-llm'
 import { DeepSeekFilesClient, isFilesQuotaError } from './files-api.ts'
 import type { DeepSeekFileId } from './file-id.ts'
 import { deepSeekFileScope, DeepSeekUploadIndex } from './upload-index.ts'
@@ -9,7 +9,7 @@ import type { DeepSeekUploadRecord } from './upload-index.ts'
 
 /** DeepSeek chat accepts at most 32 MiB per image even when it is referenced by file id. */
 export const MAX_CHAT_IMAGE_BYTES = 32 * 1024 * 1024
-const OWNED_FILE_PREFIX = 'dsh-'
+const OWNED_FILE_PREFIX = 'toh-'
 
 /** Resolved file-store policy from the plugin configuration. */
 export interface DeepSeekFilePolicy {

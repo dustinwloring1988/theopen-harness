@@ -3,7 +3,6 @@
 import { readFileSync, writeFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { DefaultTheme, PageData, SiteConfig } from 'vitepress'
-import type { ViteDevServer } from 'vite'
 import { withMermaid } from 'vitepress-plugin-mermaid'
 import { landingLink, localeCollections, orderedPages, routeLink, sectionSpec, type DocsLocale, type DocsPage, type DocsSidebar } from '../docs.ts'
 import { docsSourceFiles, emitRawMarkdownPages, llmsTxt, projectDocs, rawMarkdownRoute } from '../../scripts/project-doc-site.ts'
@@ -102,7 +101,33 @@ function moduleNav(locale: DocsLocale): DefaultTheme.NavItem[] {
   ]
 }
 
-function watchCanonicalDocs(server: ViteDevServer): void {
+/**
+ * The dev-server surface the projector plugins use, stated structurally so the
+ * helpers accept whichever vite major vitepress bundles while our direct
+ * dependency resolves another.
+ */
+interface ProjectorDevServer {
+  watcher: {
+    add(sources: readonly string[]): unknown
+    on(event: 'change', listener: (changed: string) => void): unknown
+  }
+  middlewares: {
+    use(handler: (req: ProjectorRequest, res: ProjectorResponse, next: () => void) => void): unknown
+  }
+}
+
+interface ProjectorRequest {
+  url?: string | undefined
+  method?: string | undefined
+  headers: Record<string, string | string[] | undefined>
+}
+
+interface ProjectorResponse {
+  setHeader(name: string, value: string): unknown
+  end(content?: string): unknown
+}
+
+function watchCanonicalDocs(server: ProjectorDevServer): void {
   const sources = docsSourceFiles()
   server.watcher.add(sources)
   server.watcher.on('change', (changed) => {
@@ -116,7 +141,7 @@ function watchCanonicalDocs(server: ViteDevServer): void {
  * matching what `buildEnd` emits into the static build. Pages project from
  * their canonical sources per request, so an edit shows without a rebuild.
  */
-function serveRawMarkdown(server: ViteDevServer): void {
+function serveRawMarkdown(server: ProjectorDevServer): void {
   server.middlewares.use((req, res, next) => {
     if (req.url === undefined || (req.method !== 'GET' && req.method !== 'HEAD')) {
       next()
@@ -187,14 +212,14 @@ const sharedTheme: Pick<DefaultTheme.Config, 'search' | 'socialLinks' | 'editLin
     },
   },
   socialLinks: [
-    { icon: 'github', link: 'https://github.com/deepseek-ai/deepseek-harness' },
+    { icon: 'github', link: 'https://github.com/dustinwloring1988/theopen-harness' },
   ],
   editLink: {
     pattern: ({ frontmatter }: PageData) => {
       const data: unknown = frontmatter
       const editSource: unknown = typeof data === 'object' && data !== null ? Reflect.get(data, 'editSource') : undefined
       if (typeof editSource !== 'string') throw new Error('Projected documentation page has no editSource frontmatter.')
-      return `https://github.com/deepseek-ai/deepseek-harness/edit/master/${editSource}`
+      return `https://github.com/dustinwloring1988/theopen-harness/edit/master/${editSource}`
     },
     text: '在 GitHub 上编辑此页',
   },
@@ -205,7 +230,7 @@ const base = process.env.DOCS_BASE ?? '/'
 
 /** Site identity shared by the VitePress configuration and the llms.txt index. */
 const siteIdentity = {
-  title: 'DeepSeek Harness',
+  title: 'TheOpen Harness',
   description: '用于构建 Agent Harness 的插件化 SDK',
 }
 
@@ -215,7 +240,7 @@ const siteIdentity = {
  */
 const wordmark = readFileSync(resolve(import.meta.dirname, '../public/wordmark.svg'), 'utf8')
   .trim()
-  .replace('<svg ', '<svg class="dsh-wordmark" ')
+  .replace('<svg ', '<svg class="toh-wordmark" ')
 
 /**
  * Styles the default theme does not provide, carried inline because the site
@@ -229,9 +254,9 @@ const wordmark = readFileSync(resolve(import.meta.dirname, '../public/wordmark.s
  * stay behind a query only Firefox answers.
  */
 const siteStyle = `
-.dsh-lockup { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
-.dsh-wordmark { display: block; height: 22px; width: auto; color: var(--vp-c-text-1); }
-.dsh-tag {
+.toh-lockup { display: inline-flex; align-items: center; gap: 8px; min-width: 0; }
+.toh-wordmark { display: block; height: 22px; width: auto; color: var(--vp-c-text-1); }
+.toh-tag {
   display: inline-flex;
   align-items: center;
   border: 1px solid var(--vp-c-brand-soft);
@@ -289,7 +314,7 @@ const scrollbarScript = `
  * @returns Markup placed beside the navigation-bar home link.
  */
 function siteTitle(previewTag: string): string {
-  return `<span class="dsh-lockup">${wordmark}<span class="dsh-tag">${previewTag}</span></span>`
+  return `<span class="toh-lockup">${wordmark}<span class="toh-tag">${previewTag}</span></span>`
 }
 
 export default withMermaid({
@@ -357,7 +382,7 @@ export default withMermaid({
             const data: unknown = frontmatter
             const editSource: unknown = typeof data === 'object' && data !== null ? Reflect.get(data, 'editSource') : undefined
             if (typeof editSource !== 'string') throw new Error('Projected documentation page has no editSource frontmatter.')
-            return `https://github.com/deepseek-ai/deepseek-harness/edit/master/${editSource}`
+            return `https://github.com/dustinwloring1988/theopen-harness/edit/master/${editSource}`
           },
           text: 'Edit this page on GitHub',
         },
@@ -372,7 +397,7 @@ export default withMermaid({
     publicDir: resolve(import.meta.dirname, '../public'),
     plugins: [
       {
-        name: 'deepseek-harness-doc-projector',
+        name: 'theopen-harness-doc-projector',
         configureServer(server) {
           watchCanonicalDocs(server)
           serveRawMarkdown(server)

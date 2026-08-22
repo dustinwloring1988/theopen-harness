@@ -15,19 +15,19 @@ interface CssModulePlugin {
 }
 
 /** A representative dynamic bundle using the shared client baseline. */
-const REQUESTING_PACKAGE = '@deepseek-ai/dsh-client-ui-conversation'
+const REQUESTING_PACKAGE = '@buckeyestudio/toh-client-ui-conversation'
 
 function clientConfigs(id = REQUESTING_PACKAGE) {
   return clientBundle(id, ['lib/types/index.js', 'lib/types/invariant.js'])(
-    { env: { DSH_BUILD_FACE: 'client' } },
+    { env: { TOH_BUILD_FACE: 'client' } },
   ).filter(config => config.platform === 'browser')
 }
 
 describe('client bundle build faces', () => {
   it('watches source in development and consumes emitted JavaScript in the Client build', () => {
-    const bundle = clientBundle('@deepseek-ai/dsh-client-test', ['lib/types/index.js'])
+    const bundle = clientBundle('@buckeyestudio/toh-client-test', ['lib/types/index.js'])
     const development = bundle({ env: {} }).find(config => config.platform === 'browser')
-    const artifact = bundle({ env: { DSH_BUILD_FACE: 'client' } })
+    const artifact = bundle({ env: { TOH_BUILD_FACE: 'client' } })
       .find(config => config.platform === 'browser')
 
     expect(development?.entry).toEqual({ client: 'src/client/index.ts' })
@@ -44,7 +44,7 @@ function purityResolveId(id = REQUESTING_PACKAGE): ResolveId {
   // package-invariants text check can see the invariant entry per package.
   const configs = clientConfigs(id)
   const plugins = (configs[0] as { plugins: { name: string; resolveId?: unknown }[] }).plugins
-  const gate = plugins.find(p => p.name === 'dsh-client-bundle-purity')
+  const gate = plugins.find(p => p.name === 'toh-client-bundle-purity')
   if (gate?.resolveId === undefined) throw new Error('purity plugin missing from client config')
   return gate.resolveId as ResolveId
 }
@@ -52,7 +52,7 @@ function purityResolveId(id = REQUESTING_PACKAGE): ResolveId {
 function cssModulePlugin(): CssModulePlugin {
   const configs = clientConfigs()
   const plugins = (configs[0] as { plugins: CssModulePlugin[] }).plugins
-  const plugin = plugins.find(candidate => candidate.name === 'dsh-css-modules-inline')
+  const plugin = plugins.find(candidate => candidate.name === 'toh-css-modules-inline')
   if (plugin?.resolveId === undefined || plugin.load === undefined) {
     throw new Error('CSS Modules plugin missing from client config')
   }
@@ -63,79 +63,79 @@ describe('client bundle purity gate', () => {
   const resolveId = purityResolveId()
 
   it('leaves default externals and non-scoped specifiers alone', () => {
-    expect(resolveId('@deepseek-ai/dsh-client-ui-slots')).toBeNull()
-    expect(resolveId('@deepseek-ai/dsh-client-ui-primitives')).toBeNull()
-    expect(resolveId('@deepseek-ai/dsh-client-runtime/client')).toBeNull()
+    expect(resolveId('@buckeyestudio/toh-client-ui-slots')).toBeNull()
+    expect(resolveId('@buckeyestudio/toh-client-ui-primitives')).toBeNull()
+    expect(resolveId('@buckeyestudio/toh-client-runtime/client')).toBeNull()
     expect(resolveId('react')).toBeNull()
     expect(resolveId('zod')).toBeNull()
   })
 
   it('rejects the retired web-react platform package', () => {
-    expect(() => resolveId('@deepseek-ai/dsh-client-web-react')).toThrow(/purity/)
-    expect(() => resolveId('@deepseek-ai/dsh-client-web-react/store')).toThrow(/purity/)
+    expect(() => resolveId('@buckeyestudio/toh-client-web-react')).toThrow(/purity/)
+    expect(() => resolveId('@buckeyestudio/toh-client-web-react/store')).toThrow(/purity/)
   })
 
   it('lets inline-safe wire layers inline', () => {
-    expect(resolveId('@deepseek-ai/dsh-host-apiproxy/api')).toBeNull()
-    expect(resolveId('@deepseek-ai/dsh-session/surface')).toBeNull()
-    expect(resolveId('@deepseek-ai/dsh-brand')).toBeNull()
+    expect(resolveId('@buckeyestudio/toh-host-apiproxy/api')).toBeNull()
+    expect(resolveId('@buckeyestudio/toh-session/surface')).toBeNull()
+    expect(resolveId('@buckeyestudio/toh-brand')).toBeNull()
   })
 
   it('lets exact generated Remote contributions inline without admitting their package implementation', () => {
-    expect(resolveId('@deepseek-ai/dsh-goal/remote')).toBeNull()
-    expect(() => resolveId('@deepseek-ai/dsh-goal')).toThrow(/purity/)
-    expect(() => resolveId('@deepseek-ai/dsh-goal/client')).toThrow(/purity/)
-    expect(() => resolveId('@deepseek-ai/dsh-goal/remote/nested')).toThrow(/purity/)
+    expect(resolveId('@buckeyestudio/toh-goal/remote')).toBeNull()
+    expect(() => resolveId('@buckeyestudio/toh-goal')).toThrow(/purity/)
+    expect(() => resolveId('@buckeyestudio/toh-goal/client')).toThrow(/purity/)
+    expect(() => resolveId('@buckeyestudio/toh-goal/remote/nested')).toThrow(/purity/)
   })
 
-  it('throws on any other @deepseek-ai leak', () => {
-    expect(() => resolveId('@deepseek-ai/dsh-agent')).toThrow(/purity/)
-    expect(() => resolveId('@deepseek-ai/dsh-client-web')).toThrow(/purity/)
+  it('throws on any other @buckeyestudio leak', () => {
+    expect(() => resolveId('@buckeyestudio/toh-agent')).toThrow(/purity/)
+    expect(() => resolveId('@buckeyestudio/toh-client-web')).toThrow(/purity/)
   })
 
   it('throws on cross-plugin value imports — bare plugin names and /client subpaths alike', () => {
-    expect(() => resolveId('@deepseek-ai/dsh-client-connection')).toThrow(/purity/)
-    expect(() => resolveId('@deepseek-ai/dsh-client-runtime')).toThrow(/purity/)
-    expect(() => resolveId('@deepseek-ai/dsh-client-ui-layout/client')).toThrow(/purity/)
+    expect(() => resolveId('@buckeyestudio/toh-client-connection')).toThrow(/purity/)
+    expect(() => resolveId('@buckeyestudio/toh-client-runtime')).toThrow(/purity/)
+    expect(() => resolveId('@buckeyestudio/toh-client-ui-layout/client')).toThrow(/purity/)
   })
 
   it('admits the parser-preloaded runtime for every dynamic bundle', () => {
-    expect(resolveId('@deepseek-ai/dsh-client-runtime/client')).toBeNull()
-    const withoutRequest = purityResolveId('@deepseek-ai/dsh-client-ui-goal')
-    expect(withoutRequest('@deepseek-ai/dsh-client-runtime/client')).toBeNull()
+    expect(resolveId('@buckeyestudio/toh-client-runtime/client')).toBeNull()
+    const withoutRequest = purityResolveId('@buckeyestudio/toh-client-ui-goal')
+    expect(withoutRequest('@buckeyestudio/toh-client-runtime/client')).toBeNull()
   })
 
   it('externalizes the baseline independently of each package manifest', () => {
     const requesting = clientConfigs()[0]?.deps as { neverBundle: (specifier: string) => boolean }
-    const plain = clientConfigs('@deepseek-ai/dsh-client-connection')[0]?.deps as {
+    const plain = clientConfigs('@buckeyestudio/toh-client-connection')[0]?.deps as {
       neverBundle: (specifier: string) => boolean
     }
 
     expect(requesting.neverBundle('react')).toBe(true)
     expect(requesting.neverBundle('zod')).toBe(false)
     expect(plain.neverBundle('react')).toBe(true)
-    expect(plain.neverBundle('@deepseek-ai/dsh-client-runtime/client')).toBe(true)
+    expect(plain.neverBundle('@buckeyestudio/toh-client-runtime/client')).toBe(true)
   })
 })
 
 describe('client bundle module requests', () => {
   it('requests what the declaration lists', () => {
-    const requests = requestedExternals('@deepseek-ai/dsh-client-fixture', {
-      external: ['react', 'react/jsx-runtime', '@deepseek-ai/dsh-client-ui-slots'],
+    const requests = requestedExternals('@buckeyestudio/toh-client-fixture', {
+      external: ['react', 'react/jsx-runtime', '@buckeyestudio/toh-client-ui-slots'],
     })
 
     expect([...requests].sort()).toEqual([
-      '@deepseek-ai/dsh-client-ui-slots', 'react', 'react/jsx-runtime',
+      '@buckeyestudio/toh-client-ui-slots', 'react', 'react/jsx-runtime',
     ])
   })
 
   it('requests nothing when the declaration is absent', () => {
-    expect(requestedExternals('@deepseek-ai/dsh-client-fixture', {}).size).toBe(0)
+    expect(requestedExternals('@buckeyestudio/toh-client-fixture', {}).size).toBe(0)
   })
 
   it('rejects a malformed declaration instead of reading past it', () => {
-    expect(() => requestedExternals('@deepseek-ai/dsh-client-fixture', { external: 'react' }))
-      .toThrow(/dsh\.client\.external must be a string array/)
+    expect(() => requestedExternals('@buckeyestudio/toh-client-fixture', { external: 'react' }))
+      .toThrow(/toh\.client\.external must be a string array/)
   })
 })
 
@@ -146,7 +146,7 @@ describe('client bundle debug artifacts', () => {
   })
 
   it('maps first-party sources to their repository package paths', () => {
-    const configs = clientConfigs('@deepseek-ai/dsh-client-ui-goal')
+    const configs = clientConfigs('@buckeyestudio/toh-client-ui-goal')
     const outputOptions = configs[0]?.outputOptions
     if (typeof outputOptions !== 'object' || outputOptions === null) throw new Error('client output options missing')
     const transform = outputOptions.sourcemapPathTransform
@@ -154,12 +154,12 @@ describe('client bundle debug artifacts', () => {
 
     const source = transform('../src/client/GoalBar.tsx', clientSourceMapPath('client/ui-goal'))
     expect(source).toBe('../../../packages/client/ui-goal/src/client/GoalBar.tsx')
-    const resolved = new URL(source, 'https://dsh.test/plugins/@deepseek-ai/dsh-client-ui-goal/client.js.map')
+    const resolved = new URL(source, 'https://toh.test/plugins/@buckeyestudio/toh-client-ui-goal/client.js.map')
     expect(resolved.pathname).toBe('/packages/client/ui-goal/src/client/GoalBar.tsx')
   })
 
   it('maps dual-face host sources to the host package group', () => {
-    const configs = clientConfigs('@deepseek-ai/dsh-host-directory-picker-native')
+    const configs = clientConfigs('@buckeyestudio/toh-host-directory-picker-native')
     const outputOptions = configs[0]?.outputOptions
     if (typeof outputOptions !== 'object' || outputOptions === null) throw new Error('client output options missing')
     const transform = outputOptions.sourcemapPathTransform
@@ -170,7 +170,7 @@ describe('client bundle debug artifacts', () => {
   })
 
   it('maps inlined workspace sources to packages and leaves dependencies outside it unchanged', () => {
-    const configs = clientConfigs('@deepseek-ai/dsh-client-connection')
+    const configs = clientConfigs('@buckeyestudio/toh-client-connection')
     const outputOptions = configs[0]?.outputOptions
     if (typeof outputOptions !== 'object' || outputOptions === null) throw new Error('client output options missing')
     const transform = outputOptions.sourcemapPathTransform
@@ -179,7 +179,7 @@ describe('client bundle debug artifacts', () => {
     const sourceMapPath = clientSourceMapPath('client/connection')
     const workspaceSource = transform('../../../host/apiproxy/src/api/rpc.ts', sourceMapPath)
     expect(workspaceSource).toBe('../../../packages/host/apiproxy/src/api/rpc.ts')
-    const resolved = new URL(workspaceSource, 'https://dsh.test/plugins/@deepseek-ai/dsh-client-connection/client.js.map')
+    const resolved = new URL(workspaceSource, 'https://toh.test/plugins/@buckeyestudio/toh-client-connection/client.js.map')
     expect(resolved.pathname).toBe('/packages/host/apiproxy/src/api/rpc.ts')
 
     const dependencySource = '../../../../node_modules/.pnpm/zod@4.4.3/node_modules/zod/index.js'

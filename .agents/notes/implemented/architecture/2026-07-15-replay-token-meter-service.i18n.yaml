@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-07-15-replay-token-meter-service.md
-2026-07-15-replay-token-meter-service.md: 10261189fca621b305b3ec6347b54471d81c8ba3
-2026-07-15-replay-token-meter-service.zh.md: 370d3cf932d37702c5298bc79e9dc8f5a37835b9
+2026-07-15-replay-token-meter-service.md: 3e6f4de0db32a9653c6d0fde573a235d8730ace1
+2026-07-15-replay-token-meter-service.zh.md: 414d2f5dcdbe66a682ae1b441c686f3843121d8b

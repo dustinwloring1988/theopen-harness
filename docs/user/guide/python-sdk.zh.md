@@ -17,11 +17,11 @@
 克隆仓库以使用其中的可运行示例，创建虚拟环境，并安装 SDK 及其同版本内置运行时：
 
 ```sh
-git clone https://github.com/deepseek-ai/deepseek-harness.git
-cd deepseek-harness
+git clone https://github.com/dustinwloring1988/theopen-harness.git
+cd theopen-harness
 python -m venv .venv
 . .venv/bin/activate
-python -m pip install deepseek-harness-sdk
+python -m pip install theopen-harness-sdk
 ```
 
 安装后的运行时不需要系统提供 Node.js。需要从源码构建运行时或 wheel 包的仓库贡献者应使用 [Python 贡献者工作流](../../../python/development.zh.md)。
@@ -33,8 +33,8 @@ python -m pip install deepseek-harness-sdk
 ```sh
 export DEEPSEEK_API_KEY=sk-your-key-here
 # export DEEPSEEK_BASE_URL=http://127.0.0.1:8000/v1
-# export DSH_MODEL=deepseek-v4-flash
-# export DSH_SYSTEM_PROMPT='You are a helpful software engineer assistant.'
+# export TOH_MODEL=deepseek-v4-flash
+# export TOH_SYSTEM_PROMPT='You are a helpful software engineer assistant.'
 ```
 
 针对隔离的 workspace 和会话目录运行一个任务：
@@ -56,7 +56,7 @@ python examples/jsonrpc-agent/minimal.py \
 ```python
 from pathlib import Path
 
-from deepseek_harness import DeepSeekHarness
+from theopen_harness import DeepSeekHarness
 
 config = Path("examples/jsonrpc-agent/minimal.cordis.yml").resolve()
 workspace = Path("/absolute/path/to/workspace").resolve()
@@ -84,14 +84,14 @@ print(result.final_response)
 
 | 属性 | 值 |
 |---|---|
-| 系统提示词 | `DSH_SYSTEM_PROMPT`；未设置时使用 `You are a helpful software engineer assistant.` |
-| `minimal.py` 使用的模型 | `--model`，其次为 `DSH_MODEL`，最后为 `deepseek-v4-flash` |
+| 系统提示词 | `TOH_SYSTEM_PROMPT`；未设置时使用 `You are a helpful software engineer assistant.` |
+| `minimal.py` 使用的模型 | `--model`，其次为 `TOH_MODEL`，最后为 `deepseek-v4-flash` |
 | 面向模型的工具 | 仅持久 `bash` 与 `str_replace_editor` |
 | Bash 超时 | 300 秒 |
 | 编辑器输出上限 | 16,000 个字符 |
 | 上下文压缩 | 已关闭 |
 | 文件系统 | 裸本地后端；编辑器使用绝对路径，可以访问运行时进程可见的任何路径 |
-| 会话持久化 | `DSH_SESSION_ROOT` 下未压缩的 JSONL |
+| 会话持久化 | `TOH_SESSION_ROOT` 下未压缩的 JSONL |
 
 该组合省略了 harness 身份、workspace 提示词文本、skill（技能）、一次性 Bash、任务工具、上下文压缩和其他所有面向模型的插件。沙箱策略事实记录为运行时用户上下文，而不会追加到系统提示词中。
 

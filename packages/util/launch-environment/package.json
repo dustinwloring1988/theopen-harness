@@ -1,13 +1,13 @@
 {
-  "name": "@deepseek-ai/dsh-launch-environment",
-  "description": "Immutable DeepSeek Harness launch environment that records which layer supplied each value",
+  "name": "@buckeyestudio/toh-launch-environment",
+  "description": "Immutable TheOpen Harness launch environment that records which layer supplied each value",
   "version": "0.1.1-rc.2",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/dustinwloring1988/theopen-harness.git",
     "directory": "packages/util/launch-environment"
   },
   "type": "module",
@@ -31,12 +31,13 @@
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
+  "author": "buckeyestudio",
   "peerDependencies": {
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/cordis": "workspace:^"
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/cordis": "workspace:^"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/cordis": "workspace:^"
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/cordis": "workspace:^"
   }
 }

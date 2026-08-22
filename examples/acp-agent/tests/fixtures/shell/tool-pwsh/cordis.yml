@@ -1,27 +1,27 @@
 # Minimal tool-pwsh composition: real app boot path, real pwsh executor, real
 # foreground + background tool calls; driven by the package's loader.spec.ts.
 - id: system-prompt
-  name: '@deepseek-ai/dsh-system-prompt'
+  name: '@buckeyestudio/toh-system-prompt'
 
 - id: tools
-  name: '@deepseek-ai/dsh-tools'
+  name: '@buckeyestudio/toh-tools'
 
 - id: subprocess
-  name: '@deepseek-ai/dsh-subprocess-local'
+  name: '@buckeyestudio/toh-subprocess-local'
 
 - id: bash
-  name: '@deepseek-ai/dsh-pwsh-local'
+  name: '@buckeyestudio/toh-pwsh-local'
   config:
     graceMs: 200
 
 - id: shell-env
-  name: '@deepseek-ai/dsh-shell-env'
+  name: '@buckeyestudio/toh-shell-env'
 
 - id: tasks
-  name: '@deepseek-ai/dsh-jobs-local'
+  name: '@buckeyestudio/toh-jobs-local'
 
 - id: tool-jobs
-  name: '@deepseek-ai/dsh-tool-jobs'
+  name: '@buckeyestudio/toh-tool-jobs'
 
 - id: tool-pwsh
-  name: '@deepseek-ai/dsh-tool-pwsh'
+  name: '@buckeyestudio/toh-tool-pwsh'

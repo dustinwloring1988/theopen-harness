@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-typert-protocol
+# @buckeyestudio/toh-typert-protocol
 
 English | [中文](README.zh.md)
 

@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-client-hmr
+# @buckeyestudio/toh-client-hmr
 
 English | [中文](README.zh.md)
 

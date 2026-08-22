@@ -1,13 +1,13 @@
 {
-  "name": "@deepseek-ai/dsh-web-frontend",
-  "description": "Web application entry: vite build over the @deepseek-ai/dsh-client-web shell library; dist/ served by apps/cli's dsh web",
+  "name": "@buckeyestudio/toh-web-frontend",
+  "description": "Web application entry: vite build over the @buckeyestudio/toh-client-web shell library; dist/ served by apps/cli's toh web",
   "version": "0.1.1-rc.2",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/dustinwloring1988/theopen-harness.git",
     "directory": "apps/web"
   },
   "type": "module",
@@ -25,15 +25,16 @@
     "watch": "vite build --watch --no-emptyOutDir"
   },
   "license": "MIT",
+  "author": "buckeyestudio",
   "devDependencies": {
-    "@deepseek-ai/cordis-plugin-group": "workspace:^",
-    "@deepseek-ai/dsh-client-modules": "workspace:^",
-    "@deepseek-ai/dsh-client-ui-primitives": "workspace:^",
-    "@deepseek-ai/dsh-client-ui-slots": "workspace:^",
-    "@deepseek-ai/dsh-client-web": "workspace:^",
-    "@deepseek-ai/dsh-cmdline": "workspace:^",
-    "@deepseek-ai/dsh-pwsh-local": "workspace:^",
-    "@types/node": "^26.1.1",
+    "@buckeyestudio/cordis-plugin-group": "workspace:^",
+    "@buckeyestudio/toh-client-modules": "workspace:^",
+    "@buckeyestudio/toh-client-ui-primitives": "workspace:^",
+    "@buckeyestudio/toh-client-ui-slots": "workspace:^",
+    "@buckeyestudio/toh-client-web": "workspace:^",
+    "@buckeyestudio/toh-cmdline": "workspace:^",
+    "@buckeyestudio/toh-pwsh-local": "workspace:^",
+    "@types/node": "^22.0.0",
     "@types/react": "~18.3.1",
     "@types/react-dom": "~18.3.0",
     "@vitejs/plugin-react": "^4.0.0",

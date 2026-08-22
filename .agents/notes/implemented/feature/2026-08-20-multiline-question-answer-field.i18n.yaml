@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-20-multiline-question-answer-field.md
-2026-08-20-multiline-question-answer-field.md: 5e411d6728205ce1b72ef8355bbf2493f28873eb
-2026-08-20-multiline-question-answer-field.zh.md: a19178227e813c78b99529fc3e3186e5cfb98e2a
+2026-08-20-multiline-question-answer-field.md: 7d0babaf298c93cf965142f4fc19adde948cb1ec
+2026-08-20-multiline-question-answer-field.zh.md: 173b357ed5ff7061aae9c4ee044dd74e0aa2ecc8

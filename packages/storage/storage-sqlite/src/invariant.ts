@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-storage-sqlite`.
- * @module @deepseek-ai/dsh-storage-sqlite/invariant
+ * Package-owned invariant companion for `@buckeyestudio/toh-storage-sqlite`.
+ * @module @buckeyestudio/toh-storage-sqlite/invariant
  */
 
 /* jscpd:ignore-start */
-import type { Context } from '@deepseek-ai/cordis'
-import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
+import type { Context } from '@buckeyestudio/cordis'
+import type { InvariantInstaller } from '@buckeyestudio/toh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-storage-sqlite'
+const PACKAGE_NAME = '@buckeyestudio/toh-storage-sqlite'
 
 /** Cordis companion plugin name. */
 export const name = 'storage-sqlite-invariant'

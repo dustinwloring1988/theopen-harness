@@ -3,22 +3,22 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
-import Loader from '@deepseek-ai/cordis-plugin-loader'
-import Include from '@deepseek-ai/cordis-plugin-include'
-import { CallId } from '@deepseek-ai/dsh-llm'
-import { Session, SessionId } from '@deepseek-ai/dsh-session'
-import AgentRegistry, { Inbox } from '@deepseek-ai/dsh-agent'
-import type { Agent } from '@deepseek-ai/dsh-agent'
-import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime from '@deepseek-ai/dsh-tools'
-import TerminalSessionService from '@deepseek-ai/dsh-terminal'
-import SandboxProvider from '@deepseek-ai/dsh-sandbox'
-import type { ConfinedArgv, SandboxPolicy } from '@deepseek-ai/dsh-sandbox'
-import SandboxPolicyService from '@deepseek-ai/dsh-sandbox-policy'
-import LocalSubprocessRuntime from '@deepseek-ai/dsh-subprocess-local'
-import * as TerminalLocal from '@deepseek-ai/dsh-terminal-bash'
-import * as ToolPty from '@deepseek-ai/dsh-tool-terminal'
+import { Context } from '@buckeyestudio/cordis'
+import Loader from '@buckeyestudio/cordis-plugin-loader'
+import Include from '@buckeyestudio/cordis-plugin-include'
+import { CallId } from '@buckeyestudio/toh-llm'
+import { Session, SessionId } from '@buckeyestudio/toh-session'
+import AgentRegistry, { Inbox } from '@buckeyestudio/toh-agent'
+import type { Agent } from '@buckeyestudio/toh-agent'
+import SystemPrompt from '@buckeyestudio/toh-system-prompt'
+import ToolRuntime from '@buckeyestudio/toh-tools'
+import TerminalSessionService from '@buckeyestudio/toh-terminal'
+import SandboxProvider from '@buckeyestudio/toh-sandbox'
+import type { ConfinedArgv, SandboxPolicy } from '@buckeyestudio/toh-sandbox'
+import SandboxPolicyService from '@buckeyestudio/toh-sandbox-policy'
+import LocalSubprocessRuntime from '@buckeyestudio/toh-subprocess-local'
+import * as TerminalLocal from '@buckeyestudio/toh-terminal-bash'
+import * as ToolPty from '@buckeyestudio/toh-tool-terminal'
 
 let root: string | undefined
 let context: Context | undefined
@@ -61,20 +61,20 @@ const suite = process.platform === 'linux' || process.platform === 'darwin' ? de
 
 suite('terminal real Loader composition through cordis.yml', () => {
   it('boots cordis.yml and preserves shell state across real tool calls', async () => {
-    root = await mkdtemp(join(tmpdir(), 'dsh-pty-loader-'))
+    root = await mkdtemp(join(tmpdir(), 'toh-pty-loader-'))
     const configPath = join(root, 'cordis.yml')
     await writeFile(configPath, [
-      "- name: '@deepseek-ai/dsh-agent'",
-      "- name: '@deepseek-ai/dsh-system-prompt'",
-      "- name: '@deepseek-ai/dsh-tools'",
-      "- name: '@deepseek-ai/dsh-terminal'",
-      "- name: '@deepseek-ai/dsh-test-sandbox'",
-      "- name: '@deepseek-ai/dsh-sandbox-policy'",
+      "- name: '@buckeyestudio/toh-agent'",
+      "- name: '@buckeyestudio/toh-system-prompt'",
+      "- name: '@buckeyestudio/toh-tools'",
+      "- name: '@buckeyestudio/toh-terminal'",
+      "- name: '@buckeyestudio/toh-test-sandbox'",
+      "- name: '@buckeyestudio/toh-sandbox-policy'",
       '  config:',
       '    mode: danger-full-access',
       `    workspaceRoot: ${JSON.stringify(root)}`,
-      "- name: '@deepseek-ai/dsh-subprocess-local'",
-      "- name: '@deepseek-ai/dsh-terminal-bash'",
+      "- name: '@buckeyestudio/toh-subprocess-local'",
+      "- name: '@buckeyestudio/toh-terminal-bash'",
       '  config:',
       '    pollIntervalMs: 10',
       '    exactProbeAfterMs: 20',
@@ -82,7 +82,7 @@ suite('terminal real Loader composition through cordis.yml', () => {
       '    handoffGraceMs: 250',
       '    timeoutMs: 2000',
       '    disposeGraceMs: 500',
-      "- name: '@deepseek-ai/dsh-tool-terminal'",
+      "- name: '@buckeyestudio/toh-tool-terminal'",
       '',
     ].join('\n'))
 
@@ -91,15 +91,15 @@ suite('terminal real Loader composition through cordis.yml', () => {
     await context.plugin(Loader)
     context.loader.builtins.include = Include
     const modules = new Map<string, unknown>([
-      ['@deepseek-ai/dsh-agent', AgentRegistry],
-      ['@deepseek-ai/dsh-system-prompt', SystemPrompt],
-      ['@deepseek-ai/dsh-tools', ToolRuntime],
-      ['@deepseek-ai/dsh-terminal', TerminalSessionService],
-      ['@deepseek-ai/dsh-test-sandbox', PassthroughSandbox],
-      ['@deepseek-ai/dsh-sandbox-policy', SandboxPolicyService],
-      ['@deepseek-ai/dsh-subprocess-local', LocalSubprocessRuntime],
-      ['@deepseek-ai/dsh-terminal-bash', TerminalLocal],
-      ['@deepseek-ai/dsh-tool-terminal', ToolPty],
+      ['@buckeyestudio/toh-agent', AgentRegistry],
+      ['@buckeyestudio/toh-system-prompt', SystemPrompt],
+      ['@buckeyestudio/toh-tools', ToolRuntime],
+      ['@buckeyestudio/toh-terminal', TerminalSessionService],
+      ['@buckeyestudio/toh-test-sandbox', PassthroughSandbox],
+      ['@buckeyestudio/toh-sandbox-policy', SandboxPolicyService],
+      ['@buckeyestudio/toh-subprocess-local', LocalSubprocessRuntime],
+      ['@buckeyestudio/toh-terminal-bash', TerminalLocal],
+      ['@buckeyestudio/toh-tool-terminal', ToolPty],
     ])
     context.loader.internal = {
       version: 'v2',

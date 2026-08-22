@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-host-plugin-inventory
+# @buckeyestudio/toh-host-plugin-inventory
 
 [English](README.md) | 中文
 

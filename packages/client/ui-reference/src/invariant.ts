@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-client-ui-reference`.
- * @module @deepseek-ai/dsh-client-ui-reference/invariant
+ * Package-owned invariant companion for `@buckeyestudio/toh-client-ui-reference`.
+ * @module @buckeyestudio/toh-client-ui-reference/invariant
  */
 
 /* jscpd:ignore-start */
-import type { Context } from '@deepseek-ai/cordis'
-import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
+import type { Context } from '@buckeyestudio/cordis'
+import type { InvariantInstaller } from '@buckeyestudio/toh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-client-ui-reference'
+const PACKAGE_NAME = '@buckeyestudio/toh-client-ui-reference'
 
 /** Cordis companion plugin name. */
 export const name = 'client-ui-reference-invariant'

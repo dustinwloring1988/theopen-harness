@@ -1,13 +1,13 @@
 {
-  "name": "@deepseek-ai/dsh-tool-todo",
-  "description": "Model-facing todo_write tool over the DeepSeek Harness event-sourced session log",
+  "name": "@buckeyestudio/toh-tool-todo",
+  "description": "Model-facing todo_write tool over the TheOpen Harness event-sourced session log",
   "version": "0.1.1-rc.2",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/dustinwloring1988/theopen-harness.git",
     "directory": "packages/todo/tool-todo"
   },
   "type": "module",
@@ -36,32 +36,33 @@
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
+  "author": "buckeyestudio",
   "dependencies": {
-    "@deepseek-ai/schemastery": "workspace:^",
+    "@buckeyestudio/schemastery": "workspace:^",
     "zod": "^4.4.3"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-agent": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-session": "workspace:^",
-    "@deepseek-ai/dsh-session-projection": "workspace:^",
-    "@deepseek-ai/dsh-tools": "workspace:^",
-    "@deepseek-ai/cordis": "workspace:^"
+    "@buckeyestudio/toh-agent": "workspace:^",
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-session": "workspace:^",
+    "@buckeyestudio/toh-session-projection": "workspace:^",
+    "@buckeyestudio/toh-tools": "workspace:^",
+    "@buckeyestudio/cordis": "workspace:^"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis-plugin-include": "workspace:^",
-    "@deepseek-ai/cordis-plugin-loader": "workspace:^",
-    "@deepseek-ai/dsh-agent": "workspace:^",
-    "@deepseek-ai/dsh-agent-loop": "workspace:^",
-    "@deepseek-ai/dsh-agent-loop-testkit": "workspace:^",
-    "@deepseek-ai/dsh-host-apiproxy": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-llm": "workspace:^",
-    "@deepseek-ai/dsh-session": "workspace:^",
-    "@deepseek-ai/dsh-session-projection": "workspace:^",
-    "@deepseek-ai/dsh-system-prompt": "workspace:^",
-    "@deepseek-ai/dsh-tools": "workspace:^",
-    "@deepseek-ai/dsh-user-questions": "workspace:^",
-    "@deepseek-ai/cordis": "workspace:^"
+    "@buckeyestudio/cordis-plugin-include": "workspace:^",
+    "@buckeyestudio/cordis-plugin-loader": "workspace:^",
+    "@buckeyestudio/toh-agent": "workspace:^",
+    "@buckeyestudio/toh-agent-loop": "workspace:^",
+    "@buckeyestudio/toh-agent-loop-testkit": "workspace:^",
+    "@buckeyestudio/toh-host-apiproxy": "workspace:^",
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-llm": "workspace:^",
+    "@buckeyestudio/toh-session": "workspace:^",
+    "@buckeyestudio/toh-session-projection": "workspace:^",
+    "@buckeyestudio/toh-system-prompt": "workspace:^",
+    "@buckeyestudio/toh-tools": "workspace:^",
+    "@buckeyestudio/toh-user-questions": "workspace:^",
+    "@buckeyestudio/cordis": "workspace:^"
   }
 }

@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-file-reference-local`.
- * @module @deepseek-ai/dsh-file-reference-local/invariant
+ * Package-owned invariant companion for `@buckeyestudio/toh-file-reference-local`.
+ * @module @buckeyestudio/toh-file-reference-local/invariant
  */
 
 /* jscpd:ignore-start */
-import type { Context } from '@deepseek-ai/cordis'
-import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
+import type { Context } from '@buckeyestudio/cordis'
+import type { InvariantInstaller } from '@buckeyestudio/toh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-file-reference-local'
+const PACKAGE_NAME = '@buckeyestudio/toh-file-reference-local'
 
 /** Cordis companion plugin name. */
 export const name = 'file-reference-local-invariant'

@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-storage`.
- * @module @deepseek-ai/dsh-storage/invariant
+ * Package-owned invariant companion for `@buckeyestudio/toh-storage`.
+ * @module @buckeyestudio/toh-storage/invariant
  */
 
 /* jscpd:ignore-start */
-import type { Context } from '@deepseek-ai/cordis'
-import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
+import type { Context } from '@buckeyestudio/cordis'
+import type { InvariantInstaller } from '@buckeyestudio/toh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-storage'
+const PACKAGE_NAME = '@buckeyestudio/toh-storage'
 
 /** Cordis companion plugin name. */
 export const name = 'storage-invariant'

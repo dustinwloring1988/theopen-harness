@@ -1,5 +1,5 @@
 {
-  "name": "@deepseek-ai/dsh-tool-session-query",
+  "name": "@buckeyestudio/toh-tool-session-query",
   "description": "Workspace-authorized model-facing session history search, trace, and event read tools",
   "version": "0.1.1-rc.2",
   "publishConfig": {
@@ -7,7 +7,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/dustinwloring1988/theopen-harness.git",
     "directory": "packages/session-query/tool-session-query"
   },
   "type": "module",
@@ -31,33 +31,34 @@
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
+  "author": "buckeyestudio",
   "peerDependencies": {
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-llm": "workspace:^",
-    "@deepseek-ai/dsh-session": "workspace:^",
-    "@deepseek-ai/dsh-session-query": "workspace:^",
-    "@deepseek-ai/dsh-system-prompt": "workspace:^",
-    "@deepseek-ai/dsh-timeout": "workspace:^",
-    "@deepseek-ai/dsh-tools": "workspace:^",
-    "@deepseek-ai/cordis": "workspace:^"
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-llm": "workspace:^",
+    "@buckeyestudio/toh-session": "workspace:^",
+    "@buckeyestudio/toh-session-query": "workspace:^",
+    "@buckeyestudio/toh-system-prompt": "workspace:^",
+    "@buckeyestudio/toh-timeout": "workspace:^",
+    "@buckeyestudio/toh-tools": "workspace:^",
+    "@buckeyestudio/cordis": "workspace:^"
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "workspace:^"
+    "@buckeyestudio/schemastery": "workspace:^"
   },
   "devDependencies": {
-    "@deepseek-ai/dsh-agent": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-llm": "workspace:^",
-    "@deepseek-ai/dsh-session": "workspace:^",
-    "@deepseek-ai/dsh-session-persistence": "workspace:^",
-    "@deepseek-ai/dsh-session-persistence-jsonl": "workspace:^",
-    "@deepseek-ai/dsh-session-query": "workspace:^",
-    "@deepseek-ai/dsh-session-query-sqlite": "workspace:^",
-    "@deepseek-ai/dsh-session-title": "workspace:^",
-    "@deepseek-ai/dsh-system-prompt": "workspace:^",
-    "@deepseek-ai/dsh-timeout": "workspace:^",
-    "@deepseek-ai/dsh-tool-call-timeout-policy": "workspace:^",
-    "@deepseek-ai/dsh-tools": "workspace:^",
-    "@deepseek-ai/cordis": "workspace:^"
+    "@buckeyestudio/toh-agent": "workspace:^",
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-llm": "workspace:^",
+    "@buckeyestudio/toh-session": "workspace:^",
+    "@buckeyestudio/toh-session-persistence": "workspace:^",
+    "@buckeyestudio/toh-session-persistence-jsonl": "workspace:^",
+    "@buckeyestudio/toh-session-query": "workspace:^",
+    "@buckeyestudio/toh-session-query-sqlite": "workspace:^",
+    "@buckeyestudio/toh-session-title": "workspace:^",
+    "@buckeyestudio/toh-system-prompt": "workspace:^",
+    "@buckeyestudio/toh-timeout": "workspace:^",
+    "@buckeyestudio/toh-tool-call-timeout-policy": "workspace:^",
+    "@buckeyestudio/toh-tools": "workspace:^",
+    "@buckeyestudio/cordis": "workspace:^"
   }
 }

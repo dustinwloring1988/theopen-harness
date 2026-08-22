@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
-import SystemPrompt, { PromptAssembly, TOOL_ORDER_REST } from '@deepseek-ai/dsh-system-prompt'
-import type { ToolSchema } from '@deepseek-ai/dsh-llm'
+import { Context } from '@buckeyestudio/cordis'
+import SystemPrompt, { PromptAssembly, TOOL_ORDER_REST } from '@buckeyestudio/toh-system-prompt'
+import type { ToolSchema } from '@buckeyestudio/toh-llm'
 
 function tool(name: string, description = name): ToolSchema {
   return { name, description, parameters: { type: 'object', properties: {} } }

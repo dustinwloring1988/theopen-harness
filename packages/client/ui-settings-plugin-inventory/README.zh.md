@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-client-ui-settings-plugin-inventory
+# @buckeyestudio/toh-client-ui-settings-plugin-inventory
 
 [English](README.md) | 中文
 

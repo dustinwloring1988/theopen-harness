@@ -1,9 +1,9 @@
 {
-  "organization": "deepseek-harness",
-  "repository": "deepseek-harness",
+  "organization": "dustinwloring1988",
+  "repository": "theopen-harness",
   "projectNumber": 1,
-  "projectTitle": "DSH Issue Management",
-  "lifecycleActor": "dsh-issue-management",
+  "projectTitle": "TOH Issue Management",
+  "lifecycleActor": "toh-issue-management",
   "priorityField": "Priority",
   "allowUnassignedOwner": true,
   "statuses": [

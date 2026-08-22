@@ -2,30 +2,30 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
-import { Context } from '@deepseek-ai/cordis'
-import Loader from '@deepseek-ai/cordis-plugin-loader'
-import { CallId } from '@deepseek-ai/dsh-llm'
-import SystemPrompt from '@deepseek-ai/dsh-system-prompt'
-import ToolRuntime, { TOOL_ABORTED_BEFORE_DISPATCH } from '@deepseek-ai/dsh-tools'
-import { assembleContextFor, type Agent } from '@deepseek-ai/dsh-agent'
-import AgentRegistry from '@deepseek-ai/dsh-agent'
-import AgentLoop from '@deepseek-ai/dsh-agent-loop'
-import { mountAgentLoopTestDependencies } from '@deepseek-ai/dsh-agent-loop-testkit'
-import JsonlSessionPersistence from '@deepseek-ai/dsh-session-persistence-jsonl'
-import SubagentRuntime from '@deepseek-ai/dsh-subagent'
-import type { SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
-import LocalJobRegistry from '@deepseek-ai/dsh-jobs-local'
-import * as SubagentSpawn from '@deepseek-ai/dsh-subagent-spawn-in-process'
-import * as ToolTasks from '@deepseek-ai/dsh-tool-jobs'
+import { Context } from '@buckeyestudio/cordis'
+import Loader from '@buckeyestudio/cordis-plugin-loader'
+import { CallId } from '@buckeyestudio/toh-llm'
+import SystemPrompt from '@buckeyestudio/toh-system-prompt'
+import ToolRuntime, { TOOL_ABORTED_BEFORE_DISPATCH } from '@buckeyestudio/toh-tools'
+import { assembleContextFor, type Agent } from '@buckeyestudio/toh-agent'
+import AgentRegistry from '@buckeyestudio/toh-agent'
+import AgentLoop from '@buckeyestudio/toh-agent-loop'
+import { mountAgentLoopTestDependencies } from '@buckeyestudio/toh-agent-loop-testkit'
+import JsonlSessionPersistence from '@buckeyestudio/toh-session-persistence-jsonl'
+import SubagentRuntime from '@buckeyestudio/toh-subagent'
+import type { SubagentStartRequest } from '@buckeyestudio/toh-subagent'
+import LocalJobRegistry from '@buckeyestudio/toh-jobs-local'
+import * as SubagentSpawn from '@buckeyestudio/toh-subagent-spawn-in-process'
+import * as ToolTasks from '@buckeyestudio/toh-tool-jobs'
 import { MockAdapter, textResponse } from '../../../core/agent-loop/tests/mock-adapter.ts'
 import * as mock from './scripted-provider.ts'
 import * as tool from '../src/index.ts'
-import { SessionId } from '@deepseek-ai/dsh-session'
+import { SessionId } from '@buckeyestudio/toh-session'
 
 const testToolSignal = new AbortController().signal
 
 /**
- * Drives the REAL plugin body: mounts `dsh-tool-subagent` on a real
+ * Drives the REAL plugin body: mounts `toh-tool-subagent` on a real
  * `ToolRuntime` + `SubagentRuntime`, with a package-local scripted child
  * boundary, and invokes the registered `subagent` tool through
  * `ctx.tools.execute`. Everything downstream of the child boundary is the
@@ -67,7 +67,7 @@ function text(result: { content: { type: string; text?: string }[] }): string {
   return result.content.filter(b => b.type === 'text').map(b => b.text).join('')
 }
 
-describe('dsh-tool-subagent', () => {
+describe('toh-tool-subagent', () => {
   it('rejects continuable background policy when the provider cannot prepare continuable children', async () => {
     let failure: unknown
     try {
@@ -773,7 +773,7 @@ describe('dsh-tool-subagent', () => {
   })
 })
 
-describe('dsh-tool-subagent background mode', () => {
+describe('toh-tool-subagent background mode', () => {
   /** A live parent with a dedicated scope fiber for structural task cleanup. */
   function ownerAgent(ctx: Context, sessionId: string, inject: (...args: unknown[]) => void = () => {}): Agent {
     const scopeFiber = ctx.plugin(() => {})
@@ -902,7 +902,7 @@ describe('dsh-tool-subagent background mode', () => {
     const ctx = await setup({ provider: 'mock' })
     const result = await callSubagent(ctx, { description: 'd', prompt: 'p', run_in_background: true })
     expect(result.isError).toBe(true)
-    expect(text(result)).toContain('background jobs unavailable: load @deepseek-ai/dsh-jobs')
+    expect(text(result)).toContain('background jobs unavailable: load @buckeyestudio/toh-jobs')
   })
 
   it('skips background startup when the tool signal is already aborted', async () => {
@@ -1074,7 +1074,7 @@ describe('dsh-tool-subagent background mode', () => {
 
 })
 
-describe('dsh-tool-subagent continuable background mode', () => {
+describe('toh-tool-subagent continuable background mode', () => {
   const roots: string[] = []
   afterEach(() => {
     for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true })
@@ -1084,7 +1084,7 @@ describe('dsh-tool-subagent continuable background mode', () => {
   async function continuableSetup() {
     const ctx = new Context()
     await mountAgentLoopTestDependencies(ctx)
-    const root = mkdtempSync(path.join(tmpdir(), 'dsh-tool-subagent-continuable-'))
+    const root = mkdtempSync(path.join(tmpdir(), 'toh-tool-subagent-continuable-'))
     roots.push(root)
     await ctx.plugin(JsonlSessionPersistence, { root })
     await ctx.plugin(AgentLoop, { agents: [] })

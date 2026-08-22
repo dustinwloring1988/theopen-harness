@@ -4,12 +4,12 @@
  * guards from that state, and the provider performs the atomic freshness/no-clobber check. Without
  * this plugin, tools retain the bare provider's unconditional mutation behavior. See the package
  * README for composition rules.
- * @module @deepseek-ai/dsh-fs-observation-policy
+ * @module @buckeyestudio/toh-fs-observation-policy
  */
 
-import type { Context } from '@deepseek-ai/cordis'
-import { FsError } from '@deepseek-ai/dsh-fs'
-import type { FsObservation, FsTarget, FsVersion, FsWriteIntent } from '@deepseek-ai/dsh-fs'
+import type { Context } from '@buckeyestudio/cordis'
+import { FsError } from '@buckeyestudio/toh-fs'
+import type { FsObservation, FsTarget, FsVersion, FsWriteIntent } from '@buckeyestudio/toh-fs'
 import type { FsObservationActor } from './types.ts'
 
 export type { FsObservationActor } from './types.ts'

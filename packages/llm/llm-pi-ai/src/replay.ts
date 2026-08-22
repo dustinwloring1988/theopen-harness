@@ -5,11 +5,11 @@
  * module stores only the provider-native metadata needed to reconstruct a
  * pi-ai assistant message on a later request.
  *
- * @module dsh-llm-pi-ai/replay
+ * @module toh-llm-pi-ai/replay
  */
 
-import { LlmError } from '@deepseek-ai/dsh-llm'
-import type { Message, ModelMessageSource, ReplayEnvelope } from '@deepseek-ai/dsh-llm'
+import { LlmError } from '@buckeyestudio/toh-llm'
+import type { Message, ModelMessageSource, ReplayEnvelope } from '@buckeyestudio/toh-llm'
 import type { Api, AssistantMessage, Usage as PiUsage } from '@earendil-works/pi-ai'
 
 /** Per-block half of the pi-ai replay envelope, one entry per content block. */
@@ -166,9 +166,9 @@ function foreignAssistant(message: Message): AssistantMessage {
     content,
     // Deliberately never equals a catalog API: absent replay state is foreign
     // even if source names the same provider/model as this request.
-    api: 'dsh-foreign',
-    provider: source?.provider ?? 'dsh-foreign',
-    model: source?.model ?? 'dsh-foreign',
+    api: 'toh-foreign',
+    provider: source?.provider ?? 'toh-foreign',
+    model: source?.model ?? 'toh-foreign',
     usage: emptyPiUsage(),
     stopReason: content.some(piece => piece.type === 'toolCall') ? 'toolUse' : 'stop',
     timestamp: 0,

@@ -1,14 +1,14 @@
-import type { Context } from '@deepseek-ai/cordis'
+import type { Context } from '@buckeyestudio/cordis'
 import type {
   ConversationMatch, ConversationNodeContext, ConversationNodeDefinition,
   RunningToolCall, ToolCallBlock, ToolResultNode,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import { isAppendSurfaceEvent } from '@deepseek-ai/dsh-client-runtime/client'
-import type {} from '@deepseek-ai/dsh-tools/types'
+} from '@buckeyestudio/toh-client-runtime/client'
+import { isAppendSurfaceEvent } from '@buckeyestudio/toh-client-runtime/client'
+import type {} from '@buckeyestudio/toh-tools/types'
 import type { ToolChatData } from '../contract/chat-nodes.ts'
 import { CHAT_SYNTHETIC_SEQ_OFFSETS, chatNode } from './common.ts'
 
-declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
+declare module '@buckeyestudio/toh-client-ui-conversation/client' {
   interface ChatNodeDataMap {
     /** Root Tool lifecycle with recursively nested subcalls. */
     'tool-call': ToolChatData

@@ -1,0 +1,4 @@
+interface:
+  display_name: "TOH Pre-Push Checks"
+  short_description: "Run the relevant TheOpen Harness checks before push"
+  default_prompt: "Use $toh-pre-push-checks before pushing this TheOpen Harness branch."

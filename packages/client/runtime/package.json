@@ -1,5 +1,5 @@
 {
-  "name": "@deepseek-ai/dsh-client-runtime",
+  "name": "@buckeyestudio/toh-client-runtime",
   "description": "Client core services: SlotRegistry, SessionRuntime (scope tree + object layer)",
   "version": "0.1.1-rc.2",
   "publishConfig": {
@@ -7,7 +7,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/dustinwloring1988/theopen-harness.git",
     "directory": "packages/client/runtime"
   },
   "type": "module",
@@ -29,61 +29,62 @@
     "./src/*": "./src/*",
     "./package.json": "./package.json"
   },
-  "dsh": {
+  "toh": {
     "client": {
       "inject": [
-        "@deepseek-ai/dsh-client-connection",
-        "@deepseek-ai/dsh-typert-registry",
-        "@deepseek-ai/dsh-api-remotes"
+        "@buckeyestudio/toh-client-connection",
+        "@buckeyestudio/toh-typert-registry",
+        "@buckeyestudio/toh-api-remotes"
       ],
       "platform": "web",
       "immediately": true
     }
   },
   "license": "MIT",
+  "author": "buckeyestudio",
   "dependencies": {
     "immer": "^10.1.1",
     "zustand": "~4.4.7"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-api-remotes": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-typert-protocol": "workspace:^",
-    "@deepseek-ai/dsh-typert-registry": "workspace:^",
-    "@deepseek-ai/dsh-agent": "workspace:^",
-    "@deepseek-ai/dsh-attachment": "workspace:^",
-    "@deepseek-ai/dsh-client-connection": "workspace:^",
-    "@deepseek-ai/dsh-commands": "workspace:^",
-    "@deepseek-ai/dsh-host-apiproxy": "workspace:^",
-    "@deepseek-ai/dsh-llm": "workspace:^",
-    "@deepseek-ai/dsh-llm-retry": "workspace:^",
-    "@deepseek-ai/dsh-session": "workspace:^",
-    "@deepseek-ai/dsh-session-projection": "workspace:^",
-    "@deepseek-ai/dsh-session-title": "workspace:^",
-    "@deepseek-ai/dsh-tools": "workspace:^"
+    "@buckeyestudio/cordis": "workspace:^",
+    "@buckeyestudio/toh-api-remotes": "workspace:^",
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-typert-protocol": "workspace:^",
+    "@buckeyestudio/toh-typert-registry": "workspace:^",
+    "@buckeyestudio/toh-agent": "workspace:^",
+    "@buckeyestudio/toh-attachment": "workspace:^",
+    "@buckeyestudio/toh-client-connection": "workspace:^",
+    "@buckeyestudio/toh-commands": "workspace:^",
+    "@buckeyestudio/toh-host-apiproxy": "workspace:^",
+    "@buckeyestudio/toh-llm": "workspace:^",
+    "@buckeyestudio/toh-llm-retry": "workspace:^",
+    "@buckeyestudio/toh-session": "workspace:^",
+    "@buckeyestudio/toh-session-projection": "workspace:^",
+    "@buckeyestudio/toh-session-title": "workspace:^",
+    "@buckeyestudio/toh-tools": "workspace:^"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "workspace:^",
-    "@deepseek-ai/dsh-api-remotes": "workspace:^",
-    "@deepseek-ai/dsh-invariants": "workspace:^",
-    "@deepseek-ai/dsh-timeout": "workspace:^",
-    "@deepseek-ai/dsh-typert-protocol": "workspace:^",
-    "@deepseek-ai/dsh-typert-registry": "workspace:^",
+    "@buckeyestudio/cordis": "workspace:^",
+    "@buckeyestudio/toh-api-remotes": "workspace:^",
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-timeout": "workspace:^",
+    "@buckeyestudio/toh-typert-protocol": "workspace:^",
+    "@buckeyestudio/toh-typert-registry": "workspace:^",
     "@types/react": "~18.3.1",
-    "@deepseek-ai/dsh-client-ui-slots": "workspace:^",
+    "@buckeyestudio/toh-client-ui-slots": "workspace:^",
     "react": "^18.2.0",
-    "@deepseek-ai/dsh-agent": "workspace:^",
-    "@deepseek-ai/dsh-attachment": "workspace:^",
-    "@deepseek-ai/dsh-client-connection": "workspace:^",
-    "@deepseek-ai/dsh-commands": "workspace:^",
-    "@deepseek-ai/dsh-host-apiproxy": "workspace:^",
-    "@deepseek-ai/dsh-llm": "workspace:^",
-    "@deepseek-ai/dsh-llm-retry": "workspace:^",
-    "@deepseek-ai/dsh-session": "workspace:^",
-    "@deepseek-ai/dsh-session-projection": "workspace:^",
-    "@deepseek-ai/dsh-session-title": "workspace:^",
-    "@deepseek-ai/dsh-tools": "workspace:^"
+    "@buckeyestudio/toh-agent": "workspace:^",
+    "@buckeyestudio/toh-attachment": "workspace:^",
+    "@buckeyestudio/toh-client-connection": "workspace:^",
+    "@buckeyestudio/toh-commands": "workspace:^",
+    "@buckeyestudio/toh-host-apiproxy": "workspace:^",
+    "@buckeyestudio/toh-llm": "workspace:^",
+    "@buckeyestudio/toh-llm-retry": "workspace:^",
+    "@buckeyestudio/toh-session": "workspace:^",
+    "@buckeyestudio/toh-session-projection": "workspace:^",
+    "@buckeyestudio/toh-session-title": "workspace:^",
+    "@buckeyestudio/toh-tools": "workspace:^"
   },
   "files": [
     "lib/index.js",

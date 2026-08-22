@@ -7,7 +7,7 @@ import argparse
 import os
 from pathlib import Path
 
-from deepseek_harness import DeepSeekHarness
+from theopen_harness import DeepSeekHarness
 
 
 CONFIG = Path(__file__).with_name("minimal.cordis.yml")
@@ -18,10 +18,10 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("prompt", help="Task for the minimal agent")
     parser.add_argument("--workspace", type=Path, default=Path.cwd())
-    parser.add_argument("--session-root", type=Path, default=Path(".dsh-sessions"))
+    parser.add_argument("--session-root", type=Path, default=Path(".toh-sessions"))
     parser.add_argument("--session-id")
     parser.add_argument("--provider", default="deepseek-official")
-    parser.add_argument("--model", default=os.environ.get("DSH_MODEL", "deepseek-v4-flash"))
+    parser.add_argument("--model", default=os.environ.get("TOH_MODEL", "deepseek-v4-flash"))
     parser.add_argument("--max-tokens", type=int)
     args = parser.parse_args()
 

@@ -173,7 +173,7 @@ describe('DeepSeekHarness', () => {
   it('resolves a relative launch cwd to an absolute workspace before the handshake', async () => {
     // vitest workers forbid chdir, so derive a RELATIVE path from the real
     // process cwd to a temp worker dir; resolution is lexical either way.
-    const dir = await mkdtemp(join(process.cwd(), '.dsh-sdk-client-relcwd-'))
+    const dir = await mkdtemp(join(process.cwd(), '.toh-sdk-client-relcwd-'))
     cleanups.push(() => rm(dir, { recursive: true, force: true }))
     const recordFile = join(dir, 'init.jsonl')
     const inner = join(dir, 'worker')
@@ -308,7 +308,7 @@ describe('HarnessClient', () => {
   })
 
   it('fails fast when the command does not exist', async () => {
-    const client = new HarnessClient({ command: join(tmpdir(), 'dsh-no-such-runtime-bin') })
+    const client = new HarnessClient({ command: join(tmpdir(), 'toh-no-such-runtime-bin') })
     cleanups.push(() => client.close())
     await expect(client.request('initialize', {}, 1_000)).rejects.toThrow(TransportClosedError)
   })
@@ -368,7 +368,7 @@ describe('HarnessClient', () => {
 
     // A bare unbounded request with omitted params sends `{}` on the wire.
     const identity = await client.request('initialize') as { serverInfo: { name: string } }
-    expect(identity.serverInfo.name).toBe('deepseek-harness-sdk-runtime')
+    expect(identity.serverInfo.name).toBe('theopen-harness-sdk-runtime')
 
     // Async iteration consumes queued items and then parks.
     const collected: string[] = []

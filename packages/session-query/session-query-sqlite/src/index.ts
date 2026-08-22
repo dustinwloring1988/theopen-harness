@@ -1,19 +1,19 @@
 /**
  * Concrete session-query service with SQLite FTS5 over the live-preferred corpus.
  *
- * @module @deepseek-ai/dsh-session-query-sqlite
+ * @module @buckeyestudio/toh-session-query-sqlite
  */
 
 import { createHash, randomUUID } from 'node:crypto'
 import type { DatabaseSync } from 'node:sqlite'
-import { Context, Service, type Fiber } from '@deepseek-ai/cordis'
-import z from '@deepseek-ai/schemastery'
-import type { Session, SessionEvent, SessionHeader, SessionId } from '@deepseek-ai/dsh-session'
-import type SessionPersistence from '@deepseek-ai/dsh-session-persistence'
+import { Context, Service, type Fiber } from '@buckeyestudio/cordis'
+import z from '@buckeyestudio/schemastery'
+import type { Session, SessionEvent, SessionHeader, SessionId } from '@buckeyestudio/toh-session'
+import type SessionPersistence from '@buckeyestudio/toh-session-persistence'
 import type {
   SessionPersistenceRevision,
   SessionPersistenceSnapshot,
-} from '@deepseek-ai/dsh-session-persistence'
+} from '@buckeyestudio/toh-session-persistence'
 import SessionQueryEngine, {
   SESSION_QUERY_DEFAULT_PERSISTED_INSPECT_CONCURRENCY,
   SESSION_QUERY_READ_WINDOW_MAX,
@@ -21,7 +21,7 @@ import SessionQueryEngine, {
   SessionSearchCursor,
   assertSessionHeadersCompatible,
   buildSessionEventSearchDocuments,
-} from '@deepseek-ai/dsh-session-query'
+} from '@buckeyestudio/toh-session-query'
 import type {
   Config as SessionQueryConfig,
   SessionEventSearchDocument,
@@ -33,7 +33,7 @@ import type {
   SessionSearchCursor as SessionSearchCursorValue,
   SessionSearchPage,
   SessionSearchRequest,
-} from '@deepseek-ai/dsh-session-query'
+} from '@buckeyestudio/toh-session-query'
 import {
   type JournalMode,
   openSearchDatabase,
@@ -65,7 +65,7 @@ export {
 /** Boot-context slot for a launcher-owned absolute path to this process's derived query index. */
 export const SESSION_QUERY_SQLITE_PATH_KEY = 'launcherSessionQueryPath'
 
-declare module '@deepseek-ai/cordis' {
+declare module '@buckeyestudio/cordis' {
   interface Context {
     /** Launcher-owned absolute path to this process's disposable derived query index. */
     launcherSessionQueryPath?: string

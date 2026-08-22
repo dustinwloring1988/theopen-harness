@@ -1,13 +1,13 @@
 {
-  "name": "@deepseek-ai/dsh-invariants",
-  "description": "Registry service for package-owned DeepSeek Harness runtime invariants",
+  "name": "@buckeyestudio/toh-invariants",
+  "description": "Registry service for package-owned TheOpen Harness runtime invariants",
   "version": "0.1.1-rc.2",
   "publishConfig": {
     "access": "public"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/deepseek-ai/deepseek-harness.git",
+    "url": "git+https://github.com/dustinwloring1988/theopen-harness.git",
     "directory": "packages/runtime-diagnostics/invariants"
   },
   "type": "module",
@@ -31,13 +31,14 @@
     "lib/types/**/*.d.ts"
   ],
   "license": "MIT",
+  "author": "buckeyestudio",
   "peerDependencies": {
-    "@deepseek-ai/cordis": "workspace:^"
+    "@buckeyestudio/cordis": "workspace:^"
   },
   "dependencies": {
-    "@deepseek-ai/schemastery": "workspace:^"
+    "@buckeyestudio/schemastery": "workspace:^"
   },
   "devDependencies": {
-    "@deepseek-ai/cordis": "workspace:^"
+    "@buckeyestudio/cordis": "workspace:^"
   }
 }

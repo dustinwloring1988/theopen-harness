@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-host-webserver`.
- * @module @deepseek-ai/dsh-host-webserver/invariant
+ * Package-owned invariant companion for `@buckeyestudio/toh-host-webserver`.
+ * @module @buckeyestudio/toh-host-webserver/invariant
  */
 
 /* jscpd:ignore-start */
-import type { Context } from '@deepseek-ai/cordis'
-import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
+import type { Context } from '@buckeyestudio/cordis'
+import type { InvariantInstaller } from '@buckeyestudio/toh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-host-webserver'
+const PACKAGE_NAME = '@buckeyestudio/toh-host-webserver'
 
 /** Cordis companion plugin name. */
 export const name = 'host-webserver-invariant'
@@ -36,11 +36,11 @@ const install: InvariantInstaller = (ctx, fail) => {
     // behind, a second register throws the duplicate error — the asymmetry.
     // Each register(probe)() is one register+dispose cycle, so the probe never
     // leaves residue; a leftover from the first cycle makes the second throw.
-    const probe = { kind: 'exact' as const, path: '/__dsh_invariant_probe__', handler: () => {} }
+    const probe = { kind: 'exact' as const, path: '/__toh_invariant_probe__', handler: () => {} }
     try {
       server.register(probe)()
       server.register(probe)()
-      const upgradeProbe = { path: '/__dsh_invariant_upgrade_probe__', handler: () => {} }
+      const upgradeProbe = { path: '/__toh_invariant_upgrade_probe__', handler: () => {} }
       server.registerUpgrade(upgradeProbe)()
       server.registerUpgrade(upgradeProbe)()
     } catch {

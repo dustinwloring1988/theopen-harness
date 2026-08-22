@@ -1,4 +1,4 @@
-# dsh-timeout
+# toh-timeout
 
 English | [中文](README.zh.md)
 
@@ -11,7 +11,7 @@ It is a **library, not a service or plugin**: no `ctx`, registers nothing, holds
 ## API
 
 ```ts
-import { clampTimeout, deadline, idleWatchdog, MAX_TIMER_DELAY_MS, timeoutOf, TimeoutReason } from '@deepseek-ai/dsh-timeout'
+import { clampTimeout, deadline, idleWatchdog, MAX_TIMER_DELAY_MS, timeoutOf, TimeoutReason } from '@buckeyestudio/toh-timeout'
 ```
 
 | Export | Role |
@@ -30,7 +30,7 @@ import { clampTimeout, deadline, idleWatchdog, MAX_TIMER_DELAY_MS, timeoutOf, Ti
 ## Usage shape
 
 ```ts
-import { deadline, timeoutOf } from '@deepseek-ai/dsh-timeout'
+import { deadline, timeoutOf } from '@buckeyestudio/toh-timeout'
 
 declare function runWork(options: { signal: AbortSignal }): Promise<unknown>
 
@@ -56,7 +56,7 @@ Local file `read`/`write`/`edit` take no `timeoutMs`: file IO runs untimed becau
 
 ## Model Experience
 
-Indirectly, through consumers such as `dsh-tool-call-timeout-policy`, which may replace a provider result with a retained timeout error or suppress a late result.
+Indirectly, through consumers such as `toh-tool-call-timeout-policy`, which may replace a provider result with a retained timeout error or suppress a late result.
 
 #### KV Cache effect
 

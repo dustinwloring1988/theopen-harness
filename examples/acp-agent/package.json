@@ -3,5 +3,6 @@
   "description": "Runnable demo: an ACP automation server over JSON-RPC stdio",
   "private": true,
   "version": "0.0.1",
+  "author": "buckeyestudio",
   "type": "module"
 }
