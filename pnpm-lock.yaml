@@ -1622,11 +1622,11 @@ importers:
   packages/client/runtime:
     dependencies:
       immer:
-        specifier: ^10.1.1
-        version: 10.2.0
+        specifier: ^11.1.15
+        version: 11.1.15
       zustand:
         specifier: ~4.4.7
-        version: 4.4.7(@types/react@19.2.17)(immer@10.2.0)(react@19.2.8)
+        version: 4.4.7(@types/react@19.2.17)(immer@11.1.15)(react@19.2.8)
     devDependencies:
       '@buckeyestudio/cordis':
         specifier: workspace:^
@@ -12801,8 +12801,8 @@ packages:
   immediate@3.0.6:
     resolution: {integrity: sha512-XXOFtyqDjNDAQxVfYxuF7g9Il/IbWmmlQg2MYKOH8ExIT1qg6xc4zyS3HaEEATgs1btfzxq15ciUiY7gjSXRGQ==}
 
-  immer@10.2.0:
-    resolution: {integrity: sha512-d/+XTN3zfODyjr89gM3mPq1WNX2B8pYsu7eORitdwyA2sBubnTl3laYlBk4sXY5FUa5qTZGBDPJICVbvqzjlbw==}
+  immer@11.1.15:
+    resolution: {integrity: sha512-VrNANlmnWQnh5COXIIOQXM9oOJw7naGKlBT74ZOOR6lpVXc3gFEu9FJLDFcpCJ2j+NWr8TIwtWD//T6ZX6TKiQ==}
 
   import-meta-resolve@4.2.0:
     resolution: {integrity: sha512-Iqv2fzaTQN28s/FwZAoFq0ZSs/7hMAHJVX+w8PZl3cY19Pxk6jFFalxQoIfW2826i/fDLXv8IiEZRIT0lDuWcg==}
@@ -17965,7 +17965,7 @@ snapshots:
 
   immediate@3.0.6: {}
 
-  immer@10.2.0: {}
+  immer@11.1.15: {}
 
   import-meta-resolve@4.2.0: {}
 
@@ -20073,12 +20073,12 @@ snapshots:
 
   zod@4.4.3: {}
 
-  zustand@4.4.7(@types/react@19.2.17)(immer@10.2.0)(react@19.2.8):
+  zustand@4.4.7(@types/react@19.2.17)(immer@11.1.15)(react@19.2.8):
     dependencies:
       use-sync-external-store: 1.2.0(react@19.2.8)
     optionalDependencies:
       '@types/react': 19.2.17
-      immer: 10.2.0
+      immer: 11.1.15
       react: 19.2.8
 
   zwitch@2.0.4: {}
