@@ -23,11 +23,13 @@ afterEach(async () => {
   workdir = undefined
 })
 
+const FLASH = process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
+
 describe.skipIf(!process.env.DEEPSEEK_API_KEY)('todo_write: real model records a plan', () => {
   it('appends a todo/write event with the model-produced task list', async () => {
     workdir = await mkdtemp(join(tmpdir(), 'toh-todo-write-e2e-'))
     ctx = await codingHarness(workdir, { persona: TODO_SYSTEM_PROMPT })
-    const agent = ctx.agentLoop.create(SessionId('e2e-todo'), { provider: 'deepseek-official', model: 'deepseek-v4-flash' })
+    const agent = ctx.agentLoop.create(SessionId('e2e-todo'), { provider: 'deepseek-official', model: FLASH })
 
     agent.followup(createUserMessage({
       content: [{ type: 'text', text:

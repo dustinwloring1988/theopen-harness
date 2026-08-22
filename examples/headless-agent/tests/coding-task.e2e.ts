@@ -44,6 +44,8 @@ afterEach(async () => {
   workdir = undefined
 })
 
+const FLASH = process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
+
 describe.skipIf(!process.env.DEEPSEEK_API_KEY)('coding task: fix a failing test via bash', () => {
   it('repairs add.js so node add.test.js passes', async () => {
     workdir = await mkdtemp(join(tmpdir(), 'toh-coding-task-'))
@@ -55,7 +57,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('coding task: fix a failing test 
     expect(before.status).not.toBe(0)
 
     ctx = await codingHarness(workdir, { persona: SYSTEM_PROMPT })
-    const agent = ctx.agentLoop.create(SessionId('e2e-task'), { provider: 'deepseek-official', model: 'deepseek-v4-flash' })
+    const agent = ctx.agentLoop.create(SessionId('e2e-task'), { provider: 'deepseek-official', model: FLASH })
 
     agent.followup(createUserMessage({
       content: [{

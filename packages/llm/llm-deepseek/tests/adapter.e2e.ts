@@ -28,10 +28,14 @@ import { assemble, type AssembledResult } from './assemble.ts'
  * requires $DEEPSEEK_VISION_E2E=1 (see vitest.e2e.config.ts).
  */
 
-const FLASH = 'deepseek-v4-flash'
-const PRO = 'deepseek-v4-pro'
-const VISION = 'deepseek-v4-flash-vision-exp'
+const FLASH = process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
+const PRO = process.env.DEEPSEEK_E2E_MODEL_PRO ?? 'deepseek-v4-pro'
+const VISION = process.env.DEEPSEEK_E2E_MODEL_VISION ?? 'deepseek-v4-flash-vision-exp'
+// The image round-trip uploads through POST /files, a DeepSeek-only endpoint;
+// compat gateways (DEEPSEEK_BASE_URL overrides) keep it off regardless of the flag.
+const PUBLIC_BASE = 'https://api.deepseek.com'
 const VISION_E2E_ENABLED = process.env.DEEPSEEK_VISION_E2E === '1'
+  && (process.env.DEEPSEEK_BASE_URL ?? PUBLIC_BASE) === PUBLIC_BASE
 const TEST_PNG = Uint8Array.from(readFileSync(
   new URL('../../llm-pi-ai/tests/fixtures/qr-code.png', import.meta.url),
 ))

@@ -68,10 +68,12 @@ function waitForIdle(context: Context, agent: Agent): Promise<void> {
   })
 }
 
+const FLASH = process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
+
 describe.skipIf(!process.env.DEEPSEEK_API_KEY)('log-derived request cache hits (real API)', () => {
   it('every request after the first hits the provider prefix cache', async () => {
     ctx = await loopHarness()
-    const agent = ctx.agentLoop.create(SessionId('cache-e2e'), { provider: 'deepseek-official', model: 'deepseek-v4-flash' })
+    const agent = ctx.agentLoop.create(SessionId('cache-e2e'), { provider: 'deepseek-official', model: FLASH })
 
     // Turn 1: forces a tool call → at least two steps (two model requests).
     agent.followup(createUserMessage({ content: [{ type: 'text', text: 'Look up the key "deploy-color" with the lookup tool and tell me the value.' }], source: { kind: 'user' } }))

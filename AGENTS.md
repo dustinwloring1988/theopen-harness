@@ -94,7 +94,7 @@ Run checks before pushes via [toh-pre-push-checks](.agents/skills/toh-pre-push-c
 
 ## Secrets / .env
 
-Real-API tests and demos read `DEEPSEEK_API_KEY`, optional `DEEPSEEK_BASE_URL`, and root `.env`. cordis.yml allows `!!js` (never `!js`) under plugin `config` and entry `disabled`; other metadata stays literal, so conditional composition also uses overlays ([primer](docs/cordis-primer.md#loader-configuration)). Never commit credentials. CI e2e skips without a key; [testing.md](docs/testing.md) owns key policy.
+Real-API tests and demos read `DEEPSEEK_API_KEY`, optional `DEEPSEEK_BASE_URL`, and root `.env`. Any OpenAI-chat-completions gateway works through those variables plus the `DEEPSEEK_E2E_MODEL_*` slots — CI selects OpenRouter via `OPENROUTER_API_KEY_EXTERNAL`; [testing.md](docs/testing.md) owns key policy. cordis.yml allows `!!js` (never `!js`) under plugin `config` and entry `disabled`; other metadata stays literal, so conditional composition also uses overlays ([primer](docs/cordis-primer.md#loader-configuration)). Never commit credentials.
 
 ## Conventions
 

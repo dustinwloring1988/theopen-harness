@@ -59,12 +59,14 @@ const judged = await agent(
 )
 return { prose, containsFour: judged === null ? null : judged.containsFour }`
 
+const FLASH = process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
+
 describe.skipIf(!process.env.DEEPSEEK_API_KEY)('worker workflow engine with-key e2e', () => {
   it('runs a two-phase script in a worker thread over real children, one through the structured runtime', async () => {
     ctx = await harness()
     const parentHandle = await ctx.agents.create({
       sessionId: 'wf-worker-e2e-session' as never,
-      agentOptions: { provider: 'deepseek-official', model: 'deepseek-v4-flash' },
+      agentOptions: { provider: 'deepseek-official', model: FLASH },
     })
 
     const events: string[] = []
