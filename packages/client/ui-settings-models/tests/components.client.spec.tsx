@@ -363,66 +363,6 @@ describe('ModelsSection', () => {
     expect(screen.queryByRole('status')).toBeNull()
   })
 
-  it('reuses the provider editor as a required credential-only onboarding form', async () => {
-    let finishSet: ((response: RpcResponse<Record<string, never>>) => void) | undefined
-    const set = vi.fn(() => new Promise<RpcResponse<Record<string, never>>>((resolve) => {
-      finishSet = resolve
-    }))
-    const { face, mutate } = scriptedFace({ set })
-    const onClose = vi.fn()
-    const { ProviderEditor } = await import('../src/client/ProviderEditor.tsx')
-
-    render(<ProviderEditor
-      provider="deepseek-official"
-      displayName="DeepSeek"
-      hideTitle
-      namespace={wireNamespaces()[0]!}
-      schema={settingsSchema}
-      settingsPath={[]}
-      api={face as never}
-      t={t}
-      readOnly={false}
-      credentialOnly
-      credentialRequired
-      autoFocusCredential
-      cancelLabel="onboardingLater"
-      submitLabel="onboardingSave"
-      submitBusyLabel="onboardingSaving"
-      onClose={onClose}
-    />)
-
-    const key = screen.getByLabelText<HTMLInputElement>(en.keyInput)
-    const save = screen.getByText<HTMLButtonElement>(en.onboardingSave)
-    expect(document.activeElement).toBe(key)
-    expect(key.required).toBe(true)
-    expect(save.disabled).toBe(true)
-    expect(screen.getByText(en.onboardingLater)).toBeTruthy()
-    expect(screen.queryByText(en.customized)).toBeNull()
-    expect(screen.queryByLabelText(en.baseUrl)).toBeNull()
-
-    fireEvent.change(key, { target: { value: '   ' } })
-    expect(screen.getByText(en.keyRequired)).toBeTruthy()
-    expect(key.getAttribute('aria-invalid')).toBe('true')
-    expect(save.disabled).toBe(true)
-
-    fireEvent.change(key, { target: { value: '  sk-onboarding  ' } })
-    expect(screen.queryByText(en.keyRequired)).toBeNull()
-    expect(save.disabled).toBe(false)
-    fireEvent.click(save)
-
-    expect(await screen.findByText(en.onboardingSaving)).toBeTruthy()
-    expect(set).toHaveBeenCalledWith({ ref: 'DEEPSEEK_API_KEY', value: 'sk-onboarding' })
-    expect(mutate).not.toHaveBeenCalled()
-    expect(onClose).not.toHaveBeenCalled()
-
-    if (finishSet === undefined) throw new Error('credential write did not start')
-    await act(async () => {
-      finishSet?.(ok({}))
-      await Promise.resolve()
-    })
-    expect(onClose).toHaveBeenCalledWith(true)
-  })
-
   it('applies customized deepseek fields as path ops', async () => {
     const { mutate } = await mountDeepSeekCard({
       mutate: vi.fn(() => Promise.resolve(ok(wireNamespaces()[0]))),
@@ -931,6 +871,44 @@ describe('ModelsSection', () => {
     await waitFor(() => { expect(set).toHaveBeenCalledWith({ ref: 'ANTHROPIC_API_KEY', value: 'sk-ant' }) })
   })
 
+  it('adds the dormant whole-section provider by materializing its profile', async () => {
+    // Stock posture: the official route carries no user or base content, so it
+    // is not a row — it waits in the add select, and creating it writes the
+    // section that a later Delete removes.
+    const scripted = scriptedFace()
+    scripted.face.llm.providers = vi.fn(() => Promise.resolve(ok({
+      providers: [
+        { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [], active: true },
+      ],
+    })))
+    scripted.face.settings.describe = vi.fn(() => Promise.resolve(ok({
+      writable: true,
+      hasDocument: false,
+      namespaces: [{
+        ns: 'llm-deepseek',
+        schema: JSON.parse(JSON.stringify(DeepSeekConfig.toJSON())) as unknown,
+        value: { apiKeyEnv: 'DEEPSEEK_API_KEY', models: DEFAULT_DEEPSEEK_MODELS },
+        applies: 'live',
+        secrets: [],
+        revision: 0,
+      }],
+    })))
+    const { mutate, set } = await mountFace(scripted)
+    expect(screen.queryByText('DeepSeek')).toBeNull()
+    fireEvent.click(screen.getByText(en.add))
+    const pick = await screen.findByLabelText<HTMLSelectElement>(en.provider)
+    expect([...pick.options].map(option => option.value)).toEqual(['deepseek-official'])
+    fireEvent.change(screen.getByLabelText<HTMLInputElement>(en.keyInput), { target: { value: 'sk-dormant' } })
+    fireEvent.click(screen.getByText(en.apply))
+    await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
+    expect(mutate.mock.calls[0]?.[0]).toEqual({
+      ns: 'llm-deepseek',
+      ops: [{ op: 'set', path: ['apiKeyEnv'], value: 'DEEPSEEK_API_KEY' }],
+      expectedRevision: 0,
+    })
+    await waitFor(() => { expect(set).toHaveBeenCalledWith({ ref: 'DEEPSEEK_API_KEY', value: 'sk-dormant' }) })
+  })
+
   it('keeps pi-ai provider-native authentication when no key is entered', async () => {
     const { mutate, set } = await mountSection()
     fireEvent.click(screen.getByText(en.add))
@@ -1132,6 +1110,57 @@ describe('ModelsSection', () => {
       ns: 'llm-pi-ai',
       ops: [{ op: 'unset', path: ['providers', 'openai'] }],
     })
+  })
+
+  /** The shared fixture with the DeepSeek section carried by the user layer alone. */
+  function userOnlyDeepSeek(namespaces: SettingsNamespaceView[]): SettingsNamespaceView[] {
+    return namespaces.map(namespace => namespace.ns === 'llm-deepseek'
+      ? { ...namespace, base: undefined, value: { ...namespace.value as object, baseURL: 'https://base' } }
+      : namespace)
+  }
+
+  it('removes a whole-section provider by unsetting its section', async () => {
+    // The user layer alone carries the section and no DEEPSEEK_API_KEY
+    // credential is stored, so the removal is the settings write alone — the
+    // empty path addressing the section root.
+    const scripted = scriptedFace()
+    scripted.face.settings.describe = vi.fn(() => Promise.resolve(ok({
+      writable: true,
+      hasDocument: false,
+      namespaces: userOnlyDeepSeek(wireNamespaces()),
+    })))
+    const { mutate, unset } = await mountFace(scripted)
+    fireEvent.click(screen.getByRole('button', { name: deepSeekCopy(en.removeProvider) }))
+    const dialog = screen.getByRole('dialog', { name: deepSeekCopy(en.deleteTitle) })
+    expect(dialog.textContent).toContain(deepSeekCopy(en.deleteDescription))
+    fireEvent.click(within(dialog).getByRole('button', { name: deepSeekCopy(en.deleteConfirm) }))
+    await waitFor(() => { expect(mutate).toHaveBeenCalledTimes(1) })
+    expect(unset).not.toHaveBeenCalled()
+    expect(mutate.mock.calls[0]?.[0]).toEqual({
+      ns: 'llm-deepseek',
+      ops: [{ op: 'unset', path: [] }],
+    })
+  })
+
+  it('removes a whole-section provider\'s named credential with its section', async () => {
+    const scripted = scriptedFace()
+    scripted.face.settings.describe = vi.fn(() => Promise.resolve(ok({
+      writable: true,
+      hasDocument: false,
+      namespaces: userOnlyDeepSeek(wireNamespaces()),
+    })))
+    scripted.face.credentials.describe.mockImplementation((payload: { refs: string[] }) =>
+      Promise.resolve(ok({
+        credentials: Object.fromEntries(payload.refs.map(ref => [ref, { configured: true, writable: true }])),
+      })))
+    const { mutate, unset } = await mountFace(scripted)
+    fireEvent.click(screen.getByRole('button', { name: deepSeekCopy(en.removeProvider) }))
+    const dialog = screen.getByRole('dialog', { name: deepSeekCopy(en.deleteTitle) })
+    expect(dialog.textContent).toContain(deepSeekCopy(en.deleteDescriptionWithCredential))
+    fireEvent.click(within(dialog).getByRole('button', { name: deepSeekCopy(en.deleteConfirm) }))
+    await waitFor(() => { expect(unset).toHaveBeenCalledWith({ ref: 'DEEPSEEK_API_KEY' }) })
+    await waitFor(() => { expect(mutate).toHaveBeenCalledWith({ ns: 'llm-deepseek', ops: [{ op: 'unset', path: [] }] }) })
+    expect(mutate).toHaveBeenCalledOnce()
   })
 
   it('blocks duplicate deletion while the confirmed removal is pending', async () => {

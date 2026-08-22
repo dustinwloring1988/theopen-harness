@@ -140,10 +140,16 @@ export function needsSetup(row: ProviderRow, anyUsable: boolean): boolean {
 
 function targetOf(row: ProviderRow): EditorTarget {
   const managedRef = deriveKeyRef(row.entry.provider)
-  const credentialRef = row.apiKeyEnv === managedRef
+  // The page removes a credential it can name and write: the conventional
+  // route-stem derivation, or — for a whole-section provider, whose one
+  // profile is the section this page addresses wholesale — whatever that
+  // profile names.
+  const named = row.apiKeyEnv !== undefined
+    && (row.apiKeyEnv === managedRef || row.entry.settingsPath.length === 0)
+  const credentialRef = named
     && row.credential?.configured === true
     && row.credential.writable
-    ? managedRef
+    ? row.apiKeyEnv
     : undefined
   return {
     provider: row.entry.provider,

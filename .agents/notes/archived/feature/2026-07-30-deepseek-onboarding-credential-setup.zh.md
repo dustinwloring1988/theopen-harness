@@ -1,6 +1,7 @@
 # Agent Note: DeepSeek 官方首次使用凭据配置
 
 Status: implemented
+Archived: 2026-08-21
 
 [English](2026-07-30-deepseek-onboarding-credential-setup.md) | 中文
 

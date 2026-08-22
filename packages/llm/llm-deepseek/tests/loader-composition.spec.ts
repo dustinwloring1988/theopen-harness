@@ -115,6 +115,9 @@ describe('llm-deepseek real dynamic composition', () => {
     const { ctx, settingsPath, credentialsPath } = await loadComposition({ withDynamic: true, baseURL: serverA.url })
 
     expect(ctx.get('settings')!.describe().map(entry => entry.ns)).toEqual([NS])
+    // The base layer is the entry minus schema-default-equal fields, so the
+    // descriptor pins exactly what this composition contributed.
+    expect(ctx.get('settings')!.describe()[0]?.base).toEqual({ baseURL: serverA.url })
     await assemble(ctx, { model: 'deepseek-v4-flash', messages: [] })
     expect(serverA.headers[0]?.authorization).toBe('Bearer boot-key')
     expect(serverA.headers[0]?.['x-theopen-harness-user-id']).toBe(getOrCreateAnonymousUserId())
