@@ -37,7 +37,7 @@
     "@types/node": "^22.0.0",
     "@types/react": "~19.2.3",
     "@types/react-dom": "~19.2.3",
-    "@vitejs/plugin-react": "^4.0.0",
+    "@vitejs/plugin-react": "^6.0.4",
     "playwright": "^1.49.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
