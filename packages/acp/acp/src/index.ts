@@ -125,6 +125,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
   const logger = ctx.logger
   const sessions = new Map<SessionId, SessionRecord>()
   let closed = false
+  // oxlint-disable-next-line no-deprecated -- FIXME(acp-sdk-v2): migrate this call to the sdk v2 client()/agent() app builders.
   let conn: AgentSideConnection
   let imagePromptEnabled = false
 
@@ -284,6 +285,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
     })
   })
 
+  // oxlint-disable-next-line no-deprecated -- FIXME(acp-sdk-v2): migrate this call to the sdk v2 client()/agent() app builders.
   const makeAgent = (connection: AgentSideConnection): AcpAgent => {
     conn = connection
     return {
@@ -445,6 +447,7 @@ export function apply(ctx: Context, config: AcpConfig): void {
     Writable.toWeb(process.stdout) as WritableStream<Uint8Array>,
     Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>,
   )
+  // oxlint-disable-next-line no-deprecated -- FIXME(acp-sdk-v2): migrate this call to the sdk v2 client()/agent() app builders.
   conn = new AgentSideConnection(makeAgent, stream)
 
   let quiescing: Promise<void> | undefined

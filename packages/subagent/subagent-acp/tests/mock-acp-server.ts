@@ -55,19 +55,12 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, writeFileSync } from 'node:fs'
 import { Readable, Writable } from 'node:stream'
 import {
-  AgentSideConnection,
+  agent,
   ndJsonStream,
   PROTOCOL_VERSION,
-  type Agent,
-  type CancelNotification,
-  type AuthenticateRequest,
-  type InitializeRequest,
-  type InitializeResponse,
-  type NewSessionRequest,
-  type NewSessionResponse,
-  type PromptRequest,
-  type PromptResponse,
   type StopReason,
+  type NewSessionResponse,
+  type RequestPermissionResponse,
 } from '@agentclientprotocol/sdk'
 
 // When MOCK_ECHO_ENV names a variable, stream that variable's value in place
@@ -93,115 +86,106 @@ const NEWSESSION_GATE = process.env.MOCK_NEWSESSION_READY !== undefined && proce
   ? { ready: process.env.MOCK_NEWSESSION_READY, go: process.env.MOCK_NEWSESSION_GO }
   : undefined
 
-function makeAgent(conn: AgentSideConnection): Agent {
-  // Pending cancel resolver for the HANG path: a `session/cancel` resolves the
-  // prompt with `cancelled`.
-  let resolveCancel: ((reason: StopReason) => void) | undefined
-  // The cwd the client announced in `session/new`, echoed under MOCK_ECHO_CWD.
-  let sessionCwd: string | undefined
+// Pending cancel resolver for the HANG path: a `session/cancel` resolves the
+// prompt with `cancelled`.
+let resolveCancel: ((reason: StopReason) => void) | undefined
+// The cwd the client announced in `session/new`, echoed under MOCK_ECHO_CWD.
+let sessionCwd: string | undefined
 
-  return {
-    initialize(_params: InitializeRequest): Promise<InitializeResponse> {
-      return Promise.resolve({
-        protocolVersion: PROTOCOL_VERSION,
-        agentCapabilities: { loadSession: false, promptCapabilities: { image: false, audio: false, embeddedContext: false } },
-        authMethods: [],
-      })
-    },
-    async newSession(params: NewSessionRequest): Promise<NewSessionResponse> {
-      sessionCwd = params.cwd
-      // Optionally signal "newSession reached" and block until released, so a
-      // test can cancel DURING newSession (the early-cancel race window) on a
-      // condition rather than a timeout.
-      if (NEWSESSION_GATE !== undefined) {
-        writeFileSync(NEWSESSION_GATE.ready, 'at-newSession')
-        while (!existsSync(NEWSESSION_GATE.go)) await new Promise(r => setTimeout(r, 10))
-      }
-      if (process.env.MOCK_MISSING_SESSION_ID === '1') return {} as NewSessionResponse
-      return { sessionId: process.env.MOCK_SESSION_ID ?? randomUUID() }
-    },
-    authenticate(_params: AuthenticateRequest): Promise<void> {
-      // No auth methods advertised; nothing to do.
-      return Promise.resolve()
-    },
-    async prompt(params: PromptRequest): Promise<PromptResponse> {
-      if (CRASH_ON_PROMPT) process.exit(1)
-      if (WANT_PERMISSION) {
-        // Ask the client to approve before answering; honor its decision. Under
-        // MOCK_NO_ALLOW the only options are reject-shaped, so an `allow`-policy
-        // client finds no allow option and must fall back to cancelled.
-        const options = NO_ALLOW
-          ? [{ optionId: 'no', name: 'Reject', kind: 'reject_once' as const }]
-          : [
-            { optionId: 'yes', name: 'Allow', kind: 'allow_once' as const },
-            { optionId: 'no', name: 'Reject', kind: 'reject_once' as const },
-          ]
-        const decision = await conn.requestPermission({
-          sessionId: params.sessionId,
-          toolCall: { toolCallId: 'mock-call', title: 'mock side effect' },
-          options,
-        })
-        if (decision.outcome.outcome === 'cancelled') {
-          return { stopReason: 'cancelled' }
-        }
-      }
-      // Optionally emit a NON-message update first (a thought), so the client's
-      // sessionUpdate sees an update it must consume-but-not-accumulate.
-      if (THOUGHT) {
-        await conn.sessionUpdate({
-          sessionId: params.sessionId,
-          update: { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'thinking…' } },
-        })
-      }
-      // Stream the canned assistant text as one chunk (or, under MOCK_ECHO_CWD,
-      // the observable process cwd + announced session cwd).
-      await conn.sessionUpdate({
+agent({ name: 'mock-acp-agent' })
+  .onRequest('initialize', () => ({
+    protocolVersion: PROTOCOL_VERSION,
+    agentCapabilities: { loadSession: false, promptCapabilities: { image: false, audio: false, embeddedContext: false } },
+    authMethods: [],
+  }))
+  .onRequest('session/new', async ({ params }): Promise<NewSessionResponse> => {
+    sessionCwd = params.cwd
+    // Optionally signal "newSession reached" and block until released, so a
+    // test can cancel DURING newSession (the early-cancel race window) on a
+    // condition rather than a timeout.
+    if (NEWSESSION_GATE !== undefined) {
+      writeFileSync(NEWSESSION_GATE.ready, 'at-newSession')
+      while (!existsSync(NEWSESSION_GATE.go)) await new Promise(r => setTimeout(r, 10))
+    }
+    if (process.env.MOCK_MISSING_SESSION_ID === '1') return { } as NewSessionResponse
+    return { sessionId: process.env.MOCK_SESSION_ID ?? randomUUID() }
+  })
+  .onRequest('authenticate', () => Promise.resolve())
+  .onRequest('session/prompt', async ({ params, client }) => {
+    if (CRASH_ON_PROMPT) process.exit(1)
+    if (WANT_PERMISSION) {
+      // Ask the client to approve before answering; honor its decision. Under
+      // MOCK_NO_ALLOW the only options are reject-shaped, so an `allow`-policy
+      // client finds no allow option and must fall back to cancelled.
+      const options = NO_ALLOW
+        ? [{ optionId: 'no', name: 'Reject', kind: 'reject_once' as const }]
+        : [
+          { optionId: 'yes', name: 'Allow', kind: 'allow_once' as const },
+          { optionId: 'no', name: 'Reject', kind: 'reject_once' as const },
+        ]
+      const decision = await client.request('session/request_permission', {
         sessionId: params.sessionId,
-        update: {
-          sessionUpdate: 'agent_message_chunk',
-          content: { type: 'text', text: ECHO_CWD ? `${process.cwd()}\n${sessionCwd ?? ''}` : TEXT },
-        },
+        toolCall: { toolCallId: 'mock-call', title: 'mock side effect' },
+        options,
+      }) as RequestPermissionResponse
+      if (decision.outcome.outcome === 'cancelled') {
+        return { stopReason: 'cancelled' }
+      }
+    }
+    // Optionally emit a NON-message update first (a thought), so the client's
+    // sessionUpdate sees an update it must consume-but-not-accumulate.
+    if (THOUGHT) {
+      await client.notify('session/update', {
+        sessionId: params.sessionId,
+        update: { sessionUpdate: 'agent_thought_chunk', content: { type: 'text', text: 'thinking…' } },
       })
-      // Signal "prompt is in flight" by touching the readiness file, so a test
-      // can wait on a CONDITION (file exists) rather than an arbitrary timeout
-      // before cancelling — deterministic regardless of subprocess cold-start.
-      if (READY_FILE !== undefined) writeFileSync(READY_FILE, 'ready')
-      if (HANG) {
-        // Never resolve on our own: wait for session/cancel to settle us.
-        return new Promise<PromptResponse>((resolve) => {
-          resolveCancel = (reason) => { resolve({ stopReason: reason }) }
-        })
-      }
-      return { stopReason: STOP }
-    },
-    cancel(_params: CancelNotification): Promise<void> {
-      if (CRASH_ON_CANCEL) {
-        // Exit hard instead of answering — tears the ACP pipe, so the client's
-        // pending prompt REJECTS (exercises the backend's catch-while-cancelled
-        // path: a transport failure after a cancel settles `aborted`).
-        process.exit(1)
-      }
-      if (IGNORE_CANCEL) {
-        // A NON-COOPERATIVE child: receive session/cancel but never resolve the
-        // pending prompt and never exit. The backend's `result` must still settle
-        // `aborted` on its own (the cancel-settle race), and `dispose()` must
-        // still kill the process — proving cancellation does not depend on the
-        // child cooperating.
-        return Promise.resolve()
-      }
-      resolveCancel?.('cancelled')
+    }
+    // Stream the canned assistant text as one chunk (or, under MOCK_ECHO_CWD,
+    // the observable process cwd + announced session cwd).
+    await client.notify('session/update', {
+      sessionId: params.sessionId,
+      update: {
+        sessionUpdate: 'agent_message_chunk',
+        content: { type: 'text', text: ECHO_CWD ? `${process.cwd()}\n${sessionCwd ?? ''}` : TEXT },
+      },
+    })
+    // Signal "prompt is in flight" by touching the readiness file, so a test
+    // can wait on a CONDITION (file exists) rather than an arbitrary timeout
+    // before cancelling — deterministic regardless of subprocess cold-start.
+    if (READY_FILE !== undefined) writeFileSync(READY_FILE, 'ready')
+    if (HANG) {
+      // Never resolve on our own: wait for session/cancel to settle us.
+      return new Promise<PromptResponseShape>((resolve) => {
+        resolveCancel = (reason) => { resolve({ stopReason: reason }) }
+      })
+    }
+    return { stopReason: STOP }
+  })
+  .onNotification('session/cancel', () => {
+    if (CRASH_ON_CANCEL) {
+      // Exit hard instead of answering — tears the ACP pipe, so the client's
+      // pending prompt REJECTS (exercises the backend's catch-while-cancelled
+      // path: a transport failure after a cancel settles `aborted`).
+      process.exit(1)
+    }
+    if (IGNORE_CANCEL) {
+      // A NON-COOPERATIVE child: receive session/cancel but never resolve the
+      // pending prompt and never exit. The backend's `result` must still settle
+      // `aborted` on its own (the cancel-settle race), and `dispose()` must
+      // still kill the process — proving cancellation does not depend on the
+      // child cooperating.
       return Promise.resolve()
-    },
-  }
-}
-
-new AgentSideConnection(
-  makeAgent,
-  ndJsonStream(
+    }
+    resolveCancel?.('cancelled')
+    return Promise.resolve()
+  })
+  .connect(ndJsonStream(
     Writable.toWeb(process.stdout) as WritableStream<Uint8Array>,
     Readable.toWeb(process.stdin) as ReadableStream<Uint8Array>,
-  ),
-)
+  ))
+
+/** Local structural stand-in for the wire shape the mock returns from prompt. */
+type PromptResponseShape = { stopReason: StopReason }
 
 // Under MOCK_TRAP_SIGTERM, ignore SIGTERM and keep stdin open so the process
 // neither quiesces on EOF nor dies on the graceful signal — exercising the

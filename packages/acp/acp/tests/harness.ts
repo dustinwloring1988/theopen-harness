@@ -3,10 +3,15 @@
 import { Context } from '@buckeyestudio/cordis'
 import { createHash } from 'node:crypto'
 import {
-  ClientSideConnection,
+  client as makeClientApp,
   ndJsonStream,
-  type Agent as AcpAgent,
-  type Client,
+  type AuthenticateRequest,
+  type CancelNotification,
+  type InitializeRequest,
+  type InitializeResponse,
+  type ClientConnection,
+  type NewSessionRequest,
+  type PromptRequest,
   type RequestPermissionRequest,
   type RequestPermissionResponse,
   type SessionNotification,
@@ -153,9 +158,18 @@ export function errorResponse(message: string): StreamChunk[] {
 
 export type CapturedUpdate = SessionNotification['update']
 
+/** The client-side surface the specs exercise, served over one live connection. */
+export interface BridgeClient {
+  initialize(params: InitializeRequest): Promise<InitializeResponse>
+  newSession(params: NewSessionRequest): Promise<{ sessionId: string }>
+  prompt(params: PromptRequest): Promise<{ stopReason: string }>
+  authenticate(params: AuthenticateRequest): Promise<unknown>
+  cancel(params: CancelNotification): Promise<void>
+}
+
 export interface BridgeHarness {
   ctx: Context
-  client: ClientSideConnection
+  client: BridgeClient
   adapter: MockAdapter
   attachments: MemoryAttachmentStore | undefined
   updates: CapturedUpdate[]
@@ -209,26 +223,13 @@ export async function makeBridgeHarness(options: {
     permissionRequests,
     onPermission: () => ({ outcome: { outcome: 'cancelled' } }),
     onSessionUpdateError: undefined,
-    client: undefined as unknown as ClientSideConnection,
+    client: undefined as unknown as BridgeClient,
     acpFiber: undefined as unknown as BridgeHarness['acpFiber'],
     loopFiber,
     closeClientTransport: async () => { await clientToAgentWriter.close() },
     abortClientTransport: async () => { await clientToAgentWriter.abort(new Error('client transport failed')) },
     dispose: async () => { await ctx.fiber.dispose() },
   }
-
-  const makeClient = (_agent: AcpAgent): Client => ({
-    sessionUpdate(params: SessionNotification): Promise<void> {
-      updates.push(params.update)
-      sessionUpdates.push({ sessionId: params.sessionId, update: params.update })
-      if (harness.onSessionUpdateError !== undefined) return Promise.reject(new Error('client update rejected'))
-      return Promise.resolve()
-    },
-    requestPermission(params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
-      permissionRequests.push(params)
-      return Promise.resolve(harness.onPermission(params))
-    },
-  })
 
   const config = { stream: agentStream, ...options.config } as AcpConfig
   if (!(options.config && 'provider' in options.config)) config.provider = 'mock'
@@ -238,6 +239,26 @@ export async function makeBridgeHarness(options: {
     inject: [...AcpPlugin.inject],
     apply: (inner: Context) => { AcpPlugin.apply(inner, config) },
   })
-  harness.client = new ClientSideConnection(makeClient, clientStream)
+
+  const app = makeClientApp({ name: 'toh-acp-bridge-test' })
+    .onNotification('session/update', ({ params }) => {
+      updates.push(params.update)
+      sessionUpdates.push({ sessionId: params.sessionId, update: params.update })
+      if (harness.onSessionUpdateError !== undefined) return Promise.reject(new Error('client update rejected'))
+      return Promise.resolve()
+    })
+    .onRequest('session/request_permission', ({ params }) => {
+      permissionRequests.push(params)
+      return Promise.resolve(harness.onPermission(params))
+    })
+  const connection: ClientConnection = app.connect(clientStream)
+  // Thin facade so specs keep calling named helpers; the context owns the wire.
+  harness.client = {
+    initialize: params => connection.agent.request('initialize', params),
+    newSession: params => connection.agent.request('session/new', params),
+    prompt: params => connection.agent.request('session/prompt', params),
+    authenticate: params => connection.agent.request('authenticate', params),
+    cancel: params => connection.agent.notify('session/cancel', params),
+  }
   return harness
 }

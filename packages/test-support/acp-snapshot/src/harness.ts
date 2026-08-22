@@ -377,6 +377,7 @@ export async function runScenario(input: InputScript, opts: RunOptions): Promise
 
 /** Drive one input step over the client connection. */
 async function runStep(
+  // oxlint-disable-next-line no-deprecated -- FIXME(acp-sdk-v2): migrate this call to the sdk v2 client()/agent() app builders.
   client: ClientSideConnection,
   step: InputStep,
   cwd: string,
