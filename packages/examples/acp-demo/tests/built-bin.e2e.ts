@@ -5,13 +5,9 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
 import {
-  ClientSideConnection,
+  client as makeClientApp,
   ndJsonStream,
   PROTOCOL_VERSION,
-  type Agent as AcpAgent,
-  type Client,
-  type RequestPermissionRequest,
-  type RequestPermissionResponse,
   type SessionNotification,
 } from '@agentclientprotocol/sdk'
 import { Readable, Writable } from 'node:stream'
@@ -156,24 +152,21 @@ describe.skipIf(!existsSync(acpBin))('toh-acp-demo BUILT bin (node lib/bin.js, n
       Readable.toWeb(passthrough) as ReadableStream<Uint8Array>,
     )
     const updates: SessionNotification['update'][] = []
-    const makeClient = (_a: AcpAgent): Client => ({
-      sessionUpdate(params: SessionNotification): Promise<void> {
+    const client = makeClientApp({ name: 'toh-acp-demo-built-bin' })
+      .onNotification('session/update', ({ params }) => {
         updates.push(params.update)
         return Promise.resolve()
-      },
-      requestPermission(_p: RequestPermissionRequest): Promise<RequestPermissionResponse> {
-        return Promise.resolve({ outcome: { outcome: 'cancelled' } })
-      },
-    })
-    const client = new ClientSideConnection(makeClient, stream)
+      })
+      .onRequest('session/request_permission', () => Promise.resolve({ outcome: { outcome: 'cancelled' } }))
+      .connect(stream)
 
-    const init = await client.initialize({ protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
+    const init = await client.agent.request('initialize', { protocolVersion: PROTOCOL_VERSION, clientCapabilities: {} })
     expect(init.agentCapabilities).toEqual({
       promptCapabilities: { image: false, audio: false, embeddedContext: false },
     })
     const sessionCwd = consumer
-    const { sessionId } = await client.newSession({ cwd: sessionCwd, mcpServers: [] })
-    const result = await client.prompt({ sessionId, prompt: [{ type: 'text', text: 'reply' }] })
+    const { sessionId } = await client.agent.request('session/new', { cwd: sessionCwd, mcpServers: [] })
+    const result = await client.agent.request('session/prompt', { sessionId, prompt: [{ type: 'text', text: 'reply' }] })
     expect(result.stopReason).toBe('end_turn')
     await expect.poll(() => updates).toEqual([{
       sessionUpdate: 'agent_message_chunk',

@@ -6,14 +6,9 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it } from 'vitest'
 import {
-  ClientSideConnection,
+  client as makeClientApp, type ClientConnection,
   ndJsonStream,
   PROTOCOL_VERSION,
-  type Agent as AcpAgent,
-  type Client,
-  type RequestPermissionRequest,
-  type RequestPermissionResponse,
-  type SessionNotification,
 } from '@agentclientprotocol/sdk'
 
 /**
@@ -60,7 +55,7 @@ const CORDIS_YML = `
 
 interface Spawned {
   child: ChildProcessWithoutNullStreams
-  client: ClientSideConnection
+  client: ClientConnection
   stderr: string[]
 }
 
@@ -104,15 +99,10 @@ async function boot(): Promise<Spawned & { cwd: string }> {
     Writable.toWeb(child.stdin) as WritableStream<Uint8Array>,
     Readable.toWeb(child.stdout) as ReadableStream<Uint8Array>,
   )
-  const makeClient = (_agent: AcpAgent): Client => ({
-    sessionUpdate(_params: SessionNotification): Promise<void> {
-      return Promise.resolve()
-    },
-    requestPermission(_params: RequestPermissionRequest): Promise<RequestPermissionResponse> {
-      return Promise.resolve({ outcome: { outcome: 'cancelled' } })
-    },
-  })
-  const client = new ClientSideConnection(makeClient, stream)
+  const client = makeClientApp({ name: 'toh-acp-demo-load-path' })
+    .onNotification('session/update', () => Promise.resolve())
+    .onRequest('session/request_permission', () => Promise.resolve({ outcome: { outcome: 'cancelled' } }))
+    .connect(stream)
   spawned = { child, client, stderr }
   return { ...spawned, cwd }
 }
@@ -122,7 +112,7 @@ describe('toh-acp-demo real-load-path smoke (bin + Loader, keyless)', () => {
     const { client, cwd, stderr } = await boot()
     // initialize: a broken export shape (collapsed bridge plugin, dropped inject)
     // crashes the tree on the first service read here — see postmortem 0001.
-    const init = await client.initialize({
+    const init = await client.agent.request('initialize', {
       protocolVersion: PROTOCOL_VERSION,
       clientCapabilities: {},
     })
@@ -131,7 +121,7 @@ describe('toh-acp-demo real-load-path smoke (bin + Loader, keyless)', () => {
     })
 
     // session/new reaches the agent FACTORY (create) without the model.
-    const { sessionId } = await client.newSession({ cwd, mcpServers: [] })
+    const { sessionId } = await client.agent.request('session/new', { cwd, mcpServers: [] })
     expect(sessionId).toBeTruthy()
 
     expect(stderr.join('')).not.toContain('without inject')

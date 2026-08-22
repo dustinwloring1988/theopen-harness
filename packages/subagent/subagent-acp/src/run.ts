@@ -263,6 +263,7 @@ export async function startAcpRun(request: SubagentStartRequest, spec: AcpRunSpe
     },
   })
 
+  // oxlint-disable-next-line no-deprecated -- FIXME(acp-sdk-v2): migrate this call to the sdk v2 client()/agent() app builders.
   const conn = new ClientSideConnection(
     makeClient,
     ndJsonStream(

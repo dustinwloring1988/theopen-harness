@@ -56,6 +56,7 @@ export interface LaunchedAcpTestAgent {
   /** Resolve when the OS spawns the child; reject with its asynchronous spawn failure. */
   spawned: Promise<void>
   /** The SDK connection backed by the child's stdio. */
+  // oxlint-disable-next-line no-deprecated -- FIXME(acp-sdk-v2): migrate this call to the sdk v2 client()/agent() app builders.
   client: ClientSideConnection
   /** Session updates in receive order. */
   updates: SessionNotification['update'][]
@@ -176,6 +177,7 @@ export function launchAcpTestAgent(options: AcpTestLaunchOptions): LaunchedAcpTe
     },
     requestPermission: params => trackClientCallback(() => requestPermission(params)),
   })
+  // oxlint-disable-next-line no-deprecated -- FIXME(acp-sdk-v2): migrate this call to the sdk v2 client()/agent() app builders.
   const client = new ClientSideConnection(makeClient, stream)
   // `exit` only reports the parent process's status. Descendants may retain
   // inherited stdout/stderr handles and buffered ACP frames may still be
