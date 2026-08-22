@@ -39,7 +39,7 @@
     "@buckeyestudio/toh-host-apiproxy": "workspace:^",
     "@buckeyestudio/toh-invariants": "workspace:^",
     "@buckeyestudio/cordis": "workspace:^",
-    "react": "^18.2.0",
+    "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
@@ -48,10 +48,10 @@
     "@buckeyestudio/toh-client-ui-renderer": "workspace:^",
     "@buckeyestudio/toh-host-apiproxy": "workspace:^",
     "@buckeyestudio/toh-invariants": "workspace:^",
-    "@types/react": "~18.3.1",
+    "@types/react": "~19.2.3",
     "@types/react-dom": "~19.2.3",
     "@buckeyestudio/cordis": "workspace:^",
-    "react": "^18.2.0",
+    "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "files": [

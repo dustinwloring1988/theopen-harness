@@ -70,8 +70,8 @@
     "@buckeyestudio/toh-client-ui-slots": "workspace:^",
     "@buckeyestudio/toh-invariants": "workspace:^",
     "@testing-library/react": "^16.1.0",
-    "@types/react": "~18.3.1",
-    "react": "^18.2.0",
+    "@types/react": "~19.2.3",
+    "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "files": [
