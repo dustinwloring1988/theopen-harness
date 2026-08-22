@@ -96,6 +96,25 @@ describe('translate: reasoning', () => {
       { type: 'block-start', index: 0, blockType: 'text' },
     ])
   })
+
+  it('accepts the gateway-normalized `reasoning` alias when reasoning_content is absent', async () => {
+    const chunks = await collect(translate(feed(
+      firstChunk,
+      { choices: [{ delta: { content: null, reasoning: 'think' } }] },
+      { choices: [{ delta: { content: 'answer', reasoning_content: null, reasoning: null } }] },
+      { choices: [{ delta: {}, finish_reason: 'stop' }] },
+      DONE,
+    )))
+    expect(chunks).toEqual([
+      { type: 'block-start', index: 0, blockType: 'reasoning' },
+      { type: 'reasoning-delta', index: 0, text: 'think' },
+      { type: 'block-start', index: 1, blockType: 'text' },
+      { type: 'text-delta', index: 1, text: 'answer' },
+      { type: 'block-end', index: 0, block: { type: 'reasoning', text: 'think' } },
+      { type: 'block-end', index: 1, block: { type: 'text', text: 'answer' } },
+      { type: 'finish', reason: { kind: 'stop' } },
+    ])
+  })
 })
 
 describe('translate: tool calls', () => {

@@ -15,6 +15,11 @@ afterEach(async () => {
 
 const FLASH = process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
 
+// A gateway model may ignore `thinking: disabled` and reason before titling;
+// give its output room so the 64-token smoke budget is not consumed by CoT.
+const PUBLIC_BASE = 'https://api.deepseek.com'
+const GATEWAY_MODE = (process.env.DEEPSEEK_BASE_URL ?? PUBLIC_BASE) !== PUBLIC_BASE
+
 describe.skipIf(!process.env.DEEPSEEK_API_KEY)('first-prompt title provider with real DeepSeek API', () => {
   it('replaces the fallback with a short model title', async () => {
     const ctx = new Context()
@@ -31,7 +36,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('first-prompt title provider with
       targetWords: 5,
       targetCjkCharacters: 10,
       maxInputBytes: 4_096,
-      maxOutputTokens: 64,
+      maxOutputTokens: GATEWAY_MODE ? 2_048 : 64,
       timeoutMs: 60_000,
       provider: 'deepseek-official',
       model: FLASH,
