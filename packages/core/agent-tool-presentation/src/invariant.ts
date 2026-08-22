@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-agent-tool-presentation`.
- * @module @deepseek-ai/dsh-agent-tool-presentation/invariant
+ * Package-owned invariant companion for `@buckeyestudio/toh-agent-tool-presentation`.
+ * @module @buckeyestudio/toh-agent-tool-presentation/invariant
  */
 
 /* jscpd:ignore-start */
-import type { Context } from '@deepseek-ai/cordis'
-import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
+import type { Context } from '@buckeyestudio/cordis'
+import type { InvariantInstaller } from '@buckeyestudio/toh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-agent-tool-presentation'
+const PACKAGE_NAME = '@buckeyestudio/toh-agent-tool-presentation'
 
 /** Cordis companion plugin name. */
 export const name = 'tool-presentation-invariant'
@@ -18,7 +18,7 @@ export const inject = ['invariants']
  * No runtime invariant: this package makes exactly one scoped call into
  * `ctx.tools` and owns no event or snapshot of its own; the relation it
  * establishes — which presentation one agent's assembly uses — is the tool
- * registry's to hold, and `dsh-tools` observes it there.
+ * registry's to hold, and `toh-tools` observes it there.
  */
 const install: InvariantInstaller = () => {}
 

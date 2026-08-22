@@ -3,11 +3,11 @@
  * conversion, workspace-grouped location rendering with `file:`-URI resolution, complete-result
  * capping, and UI presentation. No I/O — a UI may call the presenter on live streaming and on
  * replay, so it depends only on the tool arguments.
- * @module @deepseek-ai/dsh-tool-lsp/render
+ * @module @buckeyestudio/toh-tool-lsp/render
  */
 
-import type { GenericCallView } from '@deepseek-ai/dsh-tools'
-import type { LspHover, LspLocation, LspOperation, LspPosition } from '@deepseek-ai/dsh-lsp'
+import type { GenericCallView } from '@buckeyestudio/toh-tools'
+import type { LspHover, LspLocation, LspOperation, LspPosition } from '@buckeyestudio/toh-lsp'
 import { posix, win32 } from 'node:path'
 import { fileURLToPath } from 'node:url'
 

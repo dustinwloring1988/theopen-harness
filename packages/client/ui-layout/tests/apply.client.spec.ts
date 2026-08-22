@@ -6,15 +6,15 @@
 // and the invariant companion ride along — one line exposes the aggregate
 // coverage gate still requires exercised.
 
-import { Context } from '@deepseek-ai/cordis'
-import { stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
+import { Context } from '@buckeyestudio/cordis'
+import { stubSettingsScope } from '@buckeyestudio/toh-client-test-runtime'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { SlotRegistry } from '@deepseek-ai/dsh-client-runtime/client'
-import { LocaleRuntime } from '@deepseek-ai/dsh-client-locale/client'
-import { apply as themeApply, inject as themeInject, ThemeRuntime } from '@deepseek-ai/dsh-client-ui-theme/client'
-import { apply, inject, LayoutController } from '@deepseek-ai/dsh-client-ui-layout/client'
-import { apply as nodeApply } from '@deepseek-ai/dsh-client-ui-layout'
-import * as invariant from '@deepseek-ai/dsh-client-ui-layout/invariant'
+import { SlotRegistry } from '@buckeyestudio/toh-client-runtime/client'
+import { LocaleRuntime } from '@buckeyestudio/toh-client-locale/client'
+import { apply as themeApply, inject as themeInject, ThemeRuntime } from '@buckeyestudio/toh-client-ui-theme/client'
+import { apply, inject, LayoutController } from '@buckeyestudio/toh-client-ui-layout/client'
+import { apply as nodeApply } from '@buckeyestudio/toh-client-ui-layout'
+import * as invariant from '@buckeyestudio/toh-client-ui-layout/invariant'
 
 beforeEach(() => {
   document.head.querySelectorAll('meta[name="theme-color"]').forEach((node) => { node.remove() })
@@ -117,7 +117,7 @@ describe('node half + invariant companion', () => {
     // The /invariant subpath types live in lib/types (build product); assert
     // the API so the call stays typed where lint runs without a build.
     const dispose = await (invariant as { apply: (ctx: never) => Promise<() => void> }).apply(ctx)
-    expect(register).toHaveBeenCalledWith('@deepseek-ai/dsh-client-ui-layout', expect.any(Function))
+    expect(register).toHaveBeenCalledWith('@buckeyestudio/toh-client-ui-layout', expect.any(Function))
     // The installer is the declared no-op — calling it must not throw.
     expect(() => { (register.mock.calls[0]![1] as (c: never) => void)(undefined as never) }).not.toThrow()
     expect(dispose).toBeTypeOf('function')

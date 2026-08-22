@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-settings
+# @buckeyestudio/toh-settings
 
 English | [中文](README.zh.md)
 

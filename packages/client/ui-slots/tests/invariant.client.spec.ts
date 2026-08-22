@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
-import * as SlotsInvariant from '@deepseek-ai/dsh-client-ui-slots/invariant'
-import InvariantRegistry from '@deepseek-ai/dsh-invariants'
+import { Context } from '@buckeyestudio/cordis'
+import * as SlotsInvariant from '@buckeyestudio/toh-client-ui-slots/invariant'
+import InvariantRegistry from '@buckeyestudio/toh-invariants'
 
 describe('invariant companion', () => {
   it('registers under the package name with an empty installer', async () => {

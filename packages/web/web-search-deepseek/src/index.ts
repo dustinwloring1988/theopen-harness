@@ -2,17 +2,17 @@
  * Register a DeepSeek-backed provider in `ctx.web`. It calls the Anthropic-compatible Messages API
  * with native `web_search_20250305`. The provider reuses `DEEPSEEK_API_KEY` but not
  * `DEEPSEEK_BASE_URL`, because search and chat-completions use different bases.
- * @module @deepseek-ai/dsh-web-search-deepseek
+ * @module @buckeyestudio/toh-web-search-deepseek
  */
 
-import type { Context } from '@deepseek-ai/cordis'
-import z from '@deepseek-ai/schemastery'
-import type {} from '@deepseek-ai/dsh-agent'
-import { credentialRef } from '@deepseek-ai/dsh-credentials'
-import { installSettingsSection, settingsNamespace } from '@deepseek-ai/dsh-settings'
-import { launchEnvironmentOf } from '@deepseek-ai/dsh-launch-environment'
-import type {} from '@deepseek-ai/dsh-session'
-import type {} from '@deepseek-ai/dsh-web'
+import type { Context } from '@buckeyestudio/cordis'
+import z from '@buckeyestudio/schemastery'
+import type {} from '@buckeyestudio/toh-agent'
+import { credentialRef } from '@buckeyestudio/toh-credentials'
+import { installSettingsSection, settingsNamespace } from '@buckeyestudio/toh-settings'
+import { launchEnvironmentOf } from '@buckeyestudio/toh-launch-environment'
+import type {} from '@buckeyestudio/toh-session'
+import type {} from '@buckeyestudio/toh-web'
 import {
   DeepSeekSearchProvider,
   DEEPSEEK_DEFAULT_API_VERSION,

@@ -2,11 +2,11 @@
  * Crash-recovery repair for an interrupted session log. It preserves a fully
  * written final turn and supplies the missing tool, step, and turn boundaries
  * needed to resume with a provider-valid transcript.
- * @module @deepseek-ai/dsh-session/repair
+ * @module @buckeyestudio/toh-session/repair
  */
 
-import { MessageId, freezeMessage, type CallId } from '@deepseek-ai/dsh-llm'
-import type { ToolResultMessage } from '@deepseek-ai/dsh-llm'
+import { MessageId, freezeMessage, type CallId } from '@buckeyestudio/toh-llm'
+import type { ToolResultMessage } from '@buckeyestudio/toh-llm'
 import type { SessionEvent } from './types.ts'
 
 /** Recovery code for an assistant tool request that never reached a recorded call start. */

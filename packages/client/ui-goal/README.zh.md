@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-client-ui-goal
+# @buckeyestudio/toh-client-ui-goal
 
 [English](README.md) | 中文
 

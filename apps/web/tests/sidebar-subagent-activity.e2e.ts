@@ -4,12 +4,12 @@ import { fileURLToPath } from 'node:url'
 import type { Browser, Page } from 'playwright'
 import { chromium } from 'playwright'
 import { afterAll, beforeAll, describe, expect, it, onTestFailed } from 'vitest'
-import type { AgentHandle } from '@deepseek-ai/dsh-agent'
-import { createUserMessage, LlmAdapter } from '@deepseek-ai/dsh-llm'
-import type { GenerateOptions, StreamChunk } from '@deepseek-ai/dsh-llm'
-import { SessionId, type SessionId as SessionIdValue } from '@deepseek-ai/dsh-session'
-import type {} from '@deepseek-ai/dsh-subagent'
-import type {} from '@deepseek-ai/dsh-workspace'
+import type { AgentHandle } from '@buckeyestudio/toh-agent'
+import { createUserMessage, LlmAdapter } from '@buckeyestudio/toh-llm'
+import type { GenerateOptions, StreamChunk } from '@buckeyestudio/toh-llm'
+import { SessionId, type SessionId as SessionIdValue } from '@buckeyestudio/toh-session'
+import type {} from '@buckeyestudio/toh-subagent'
+import type {} from '@buckeyestudio/toh-workspace'
 import {
   assertFixtureInventory,
   captureStableAria,

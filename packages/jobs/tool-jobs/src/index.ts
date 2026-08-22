@@ -4,19 +4,19 @@
  * producers. It also delivers unreported completions to the owning agent:
  * injected into a busy owner's next step, or opening a turn on an idle one
  * under the default `wakeup` delivery, bounded per owner.
- * @module @deepseek-ai/dsh-tool-jobs
+ * @module @buckeyestudio/toh-tool-jobs
  */
 
-import type { Context } from '@deepseek-ai/cordis'
-import z from '@deepseek-ai/schemastery'
-import { boundContextSummary, createUserMessage, type ContentBlock } from '@deepseek-ai/dsh-llm'
-import { TextRetainer } from '@deepseek-ai/dsh-output-retention'
-import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { GenericCallView, ToolDefinition, ToolExecution } from '@deepseek-ai/dsh-tools'
-import { JobId } from '@deepseek-ai/dsh-jobs'
-import type { JobSnapshot } from '@deepseek-ai/dsh-jobs'
-import type {} from '@deepseek-ai/dsh-system-prompt'
-import type { Agent } from '@deepseek-ai/dsh-agent'
+import type { Context } from '@buckeyestudio/cordis'
+import z from '@buckeyestudio/schemastery'
+import { boundContextSummary, createUserMessage, type ContentBlock } from '@buckeyestudio/toh-llm'
+import { TextRetainer } from '@buckeyestudio/toh-output-retention'
+import { defineTool } from '@buckeyestudio/toh-tools'
+import type { GenericCallView, ToolDefinition, ToolExecution } from '@buckeyestudio/toh-tools'
+import { JobId } from '@buckeyestudio/toh-jobs'
+import type { JobSnapshot } from '@buckeyestudio/toh-jobs'
+import type {} from '@buckeyestudio/toh-system-prompt'
+import type { Agent } from '@buckeyestudio/toh-agent'
 
 export const name = 'tool-jobs'
 export const inject = ['tools', 'jobs', 'systemPrompt']

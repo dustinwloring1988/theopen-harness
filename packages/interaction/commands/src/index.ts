@@ -1,17 +1,17 @@
 /**
  * Plugin-owned human-command registry shared by interactive UI adapters.
- * @module @deepseek-ai/dsh-commands
+ * @module @buckeyestudio/toh-commands
  */
 
-import { Context } from '@deepseek-ai/cordis'
-import type { Agent } from '@deepseek-ai/dsh-agent'
-import { AttachmentError, admitEncodedImages } from '@deepseek-ai/dsh-attachment'
-import type { EncodedImageAttachment } from '@deepseek-ai/dsh-attachment/types'
-import type { ImageBlock } from '@deepseek-ai/dsh-llm'
-import { NamedEntries, ScopedLayers } from '@deepseek-ai/dsh-scope'
-import type { ScopeKey, ScopeLayer } from '@deepseek-ai/dsh-scope'
-import type { Session, SessionEvent, SessionEventMap } from '@deepseek-ai/dsh-session'
-import { TypertRemoteService, Remote } from '@deepseek-ai/dsh-typert-protocol'
+import { Context } from '@buckeyestudio/cordis'
+import type { Agent } from '@buckeyestudio/toh-agent'
+import { AttachmentError, admitEncodedImages } from '@buckeyestudio/toh-attachment'
+import type { EncodedImageAttachment } from '@buckeyestudio/toh-attachment/types'
+import type { ImageBlock } from '@buckeyestudio/toh-llm'
+import { NamedEntries, ScopedLayers } from '@buckeyestudio/toh-scope'
+import type { ScopeKey, ScopeLayer } from '@buckeyestudio/toh-scope'
+import type { Session, SessionEvent, SessionEventMap } from '@buckeyestudio/toh-session'
+import { TypertRemoteService, Remote } from '@buckeyestudio/toh-typert-protocol'
 import { CommandId } from './brand.ts'
 import type {
   CommandDescriptor,
@@ -101,7 +101,7 @@ class CommandLayer implements ScopeLayer {
   }
 }
 
-declare module '@deepseek-ai/cordis' {
+declare module '@buckeyestudio/cordis' {
   interface Context {
     commands: CommandRuntime
   }

@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-client-ui-slots`.
- * @module @deepseek-ai/dsh-client-ui-slots/invariant
+ * Package-owned invariant companion for `@buckeyestudio/toh-client-ui-slots`.
+ * @module @buckeyestudio/toh-client-ui-slots/invariant
  */
 
 /* jscpd:ignore-start */
-import type { Context } from '@deepseek-ai/cordis'
-import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
+import type { Context } from '@buckeyestudio/cordis'
+import type { InvariantInstaller } from '@buckeyestudio/toh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-client-ui-slots'
+const PACKAGE_NAME = '@buckeyestudio/toh-client-ui-slots'
 
 /** Cordis companion plugin name. */
 export const name = 'client-ui-slots-invariant'

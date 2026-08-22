@@ -1,18 +1,18 @@
 /**
  * Model-facing `str_replace_editor` over the Harness filesystem seam.
- * @module @deepseek-ai/dsh-tool-str-replace-editor
+ * @module @buckeyestudio/toh-tool-str-replace-editor
  */
 
 import { isAbsolute } from 'node:path'
-import type { Context } from '@deepseek-ai/cordis'
-import z from '@deepseek-ai/schemastery'
-import { FsError } from '@deepseek-ai/dsh-fs'
-import type { FsInfo, FsTarget, FsWriteIntent } from '@deepseek-ai/dsh-fs'
-import { sandboxDenialMarker } from '@deepseek-ai/dsh-sandbox'
-import type { SandboxExecutionPolicy } from '@deepseek-ai/dsh-sandbox'
-import type { SandboxPolicyService } from '@deepseek-ai/dsh-sandbox-policy'
-import { defineTool } from '@deepseek-ai/dsh-tools'
-import type { ToolCallView, ToolRunContext } from '@deepseek-ai/dsh-tools'
+import type { Context } from '@buckeyestudio/cordis'
+import z from '@buckeyestudio/schemastery'
+import { FsError } from '@buckeyestudio/toh-fs'
+import type { FsInfo, FsTarget, FsWriteIntent } from '@buckeyestudio/toh-fs'
+import { sandboxDenialMarker } from '@buckeyestudio/toh-sandbox'
+import type { SandboxExecutionPolicy } from '@buckeyestudio/toh-sandbox'
+import type { SandboxPolicyService } from '@buckeyestudio/toh-sandbox-policy'
+import { defineTool } from '@buckeyestudio/toh-tools'
+import type { ToolCallView, ToolRunContext } from '@buckeyestudio/toh-tools'
 
 const TRUNCATED_MESSAGE = '<response clipped><NOTE>To save on context only part of this file has been shown to you. You should retry this tool after you have searched inside the file with `grep -n` in order to find the line numbers of what you are looking for.</NOTE>'
 

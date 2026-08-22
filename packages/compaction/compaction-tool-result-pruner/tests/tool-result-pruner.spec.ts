@@ -1,22 +1,22 @@
 import { describe, expect, it } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
-import { CallId , createMessage, createToolResultMessage } from '@deepseek-ai/dsh-llm'
-import type { ContentBlock } from '@deepseek-ai/dsh-llm'
+import { Context } from '@buckeyestudio/cordis'
+import { CallId , createMessage, createToolResultMessage } from '@buckeyestudio/toh-llm'
+import type { ContentBlock } from '@buckeyestudio/toh-llm'
 import SessionStore, {
   Session,
   SessionId,
-} from '@deepseek-ai/dsh-session'
-import type { SurfaceEvent } from '@deepseek-ai/dsh-session'
-import * as SessionInvariant from '@deepseek-ai/dsh-session/invariant'
-import InvariantRegistry from '@deepseek-ai/dsh-invariants'
-import TokenMeter from '@deepseek-ai/dsh-token-meter'
+} from '@buckeyestudio/toh-session'
+import type { SurfaceEvent } from '@buckeyestudio/toh-session'
+import * as SessionInvariant from '@buckeyestudio/toh-session/invariant'
+import InvariantRegistry from '@buckeyestudio/toh-invariants'
+import TokenMeter from '@buckeyestudio/toh-token-meter'
 import ToolResultPruner, {
   codePointLength,
   DEFAULTS,
   PRUNE_MARKER,
   resolveConfig,
-} from '@deepseek-ai/dsh-compaction-tool-result-pruner'
-import type { ToolResultPruneConfig } from '@deepseek-ai/dsh-compaction-tool-result-pruner'
+} from '@buckeyestudio/toh-compaction-tool-result-pruner'
+import type { ToolResultPruneConfig } from '@buckeyestudio/toh-compaction-tool-result-pruner'
 
 const MODEL = 'test-model'
 const SMALL: ToolResultPruneConfig = {

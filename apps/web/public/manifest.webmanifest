@@ -1,7 +1,7 @@
 {
   "id": "/",
-  "name": "DeepSeek Harness",
-  "short_name": "DSH",
+  "name": "TheOpen Harness",
+  "short_name": "TOH",
   "start_url": "/",
   "scope": "/",
   "display": "fullscreen",

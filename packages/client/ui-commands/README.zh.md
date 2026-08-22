@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-client-ui-commands
+# @buckeyestudio/toh-client-ui-commands
 
 [English](README.md) | 中文
 

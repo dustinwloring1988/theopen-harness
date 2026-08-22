@@ -1,13 +1,13 @@
 /**
- * Package-owned invariant companion for `@deepseek-ai/dsh-client-ui-permission-presets`.
- * @module @deepseek-ai/dsh-client-ui-permission-presets/invariant
+ * Package-owned invariant companion for `@buckeyestudio/toh-client-ui-permission-presets`.
+ * @module @buckeyestudio/toh-client-ui-permission-presets/invariant
  */
 
 /* jscpd:ignore-start */
-import type { Context } from '@deepseek-ai/cordis'
-import type { InvariantInstaller } from '@deepseek-ai/dsh-invariants'
+import type { Context } from '@buckeyestudio/cordis'
+import type { InvariantInstaller } from '@buckeyestudio/toh-invariants'
 
-const PACKAGE_NAME = '@deepseek-ai/dsh-client-ui-permission-presets'
+const PACKAGE_NAME = '@buckeyestudio/toh-client-ui-permission-presets'
 
 /** Cordis companion plugin name. */
 export const name = 'client-ui-permission-presets-invariant'

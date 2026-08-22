@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-user-approval
+# @buckeyestudio/toh-user-approval
 
 English | [中文](README.zh.md)
 

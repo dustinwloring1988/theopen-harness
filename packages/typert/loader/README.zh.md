@@ -1,4 +1,4 @@
-# @deepseek-ai/dsh-typert-loader
+# @buckeyestudio/toh-typert-loader
 
 [English](README.md) | 中文
 

@@ -28,12 +28,12 @@
 
 ```ts ignore-check
 import { createElement } from 'react'
-import type { Branded } from '@deepseek-ai/dsh-brand'
+import type { Branded } from '@buckeyestudio/toh-brand'
 import type {
   ClientContext, ConversationLocation, ConversationNodeContext,
   ConversationNodeDefinition,
-} from '@deepseek-ai/dsh-client-runtime/client'
-import type { ChatNodeViewProps } from '@deepseek-ai/dsh-client-ui-conversation/client'
+} from '@buckeyestudio/toh-client-runtime/client'
+import type { ChatNodeViewProps } from '@buckeyestudio/toh-client-ui-conversation/client'
 
 type ReviewId = Branded<'ReviewId'>
 
@@ -58,7 +58,7 @@ interface ReviewEndData {
   readonly summary: string
 }
 
-declare module '@deepseek-ai/dsh-session/types' {
+declare module '@buckeyestudio/toh-session/types' {
   interface SessionEventMap {
     /**
      * Opens one durable review job.
@@ -88,13 +88,13 @@ interface ReviewChatData {
   readonly summary?: string
 }
 
-declare module '@deepseek-ai/dsh-client-ui-conversation/client' {
+declare module '@buckeyestudio/toh-client-ui-conversation/client' {
   interface ChatNodeDataMap {
     'review-job': ReviewChatData
   }
 }
 
-declare module '@deepseek-ai/dsh-client-runtime/client' {
+declare module '@buckeyestudio/toh-client-runtime/client' {
   interface ConversationStepDataMap {
     'review-job': ReviewChatData
   }
