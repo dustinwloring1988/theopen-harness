@@ -73,6 +73,13 @@ function scriptedFace(options: {
   baseProviders?: Record<string, unknown>
   /** Routes the adapter reports as hand-declared; the rest come back as shipped. */
   declaredRoutes?: readonly string[]
+  /**
+   * Routes the directory reports, including dormant offers nothing configures
+   * yet; defaults to the configured keys.
+   */
+  directoryRoutes?: readonly string[]
+  /** Suggested endpoints by route id, carried the way the directory ships them. */
+  suggestedBaseURLs?: Record<string, string>
   discover?: ReturnType<typeof vi.fn>
   mutate?: ReturnType<typeof vi.fn>
   set?: ReturnType<typeof vi.fn>
@@ -84,16 +91,18 @@ function scriptedFace(options: {
   const discover = options.discover ?? vi.fn(() => Promise.resolve(ok({ models: [] })))
   const mutate = options.mutate ?? vi.fn(() => Promise.resolve(ok(namespace)))
   const set = options.set ?? vi.fn(() => Promise.resolve(ok({})))
+  const directoryRoutes = options.directoryRoutes ?? Object.keys(providers)
   const face = {
     llm: {
       providers: vi.fn(() => Promise.resolve(ok({
-        providers: Object.keys(providers).map(provider => ({
+        providers: directoryRoutes.map(provider => ({
           provider,
           displayName: provider,
           settingsNs: 'llm-pi-ai',
           settingsPath: ['providers', provider],
           active: true,
           declared: options.declaredRoutes?.includes(provider) ?? false,
+          ...options.suggestedBaseURLs?.[provider] === undefined ? {} : { baseURL: options.suggestedBaseURLs[provider] },
         })),
       }))),
       models: vi.fn(() => Promise.resolve(ok({ groups: [], failures: [] }))),
@@ -1402,5 +1411,130 @@ describe('API key field', () => {
     await waitFor(() => { expect(mutate).toHaveBeenCalledOnce() })
     await waitFor(() => { expect(load).toHaveBeenCalledOnce() })
     expect(screen.queryByText(en.customTitle)).toBeNull()
+  })
+})
+
+describe('adopting a shipped option from the picker', () => {
+  it('starts from the suggested endpoint, fetches the model list live, and stores a keyless profile', async () => {
+    const discover = vi.fn(() => Promise.resolve(ok({
+      models: [{ id: 'qwen3:8b', contextWindow: 40_960 }],
+    })))
+    const { mutate, set } = await mountSection({
+      providers: {},
+      directoryRoutes: ['ollama'],
+      declaredRoutes: ['ollama'],
+      suggestedBaseURLs: { ollama: 'http://host.docker.internal:11434/v1' },
+      discover,
+    })
+    fireEvent.click(buttonNamed(en.add))
+
+    // A route being adopted owes exactly what the create card asks for, so
+    // those fields start visible rather than folded away behind the validator,
+    // with the adapter's own endpoint and protocol already in them.
+    expect(document.querySelector('details')?.getAttribute('open')).not.toBeNull()
+    const endpoint = screen.getByLabelText<HTMLInputElement>(en.baseUrl)
+    expect(endpoint.value).toBe('http://host.docker.internal:11434/v1')
+    expect(screen.getByLabelText<HTMLSelectElement>(en.customApi).value).toBe('openai-completions')
+
+    // Nothing left to type before asking the instance what it serves.
+    expect(buttonNamed(en.fetchModels).disabled).toBe(false)
+    fireEvent.click(buttonNamed(en.fetchModels))
+    await waitFor(() => { expect(discover).toHaveBeenCalled() })
+    expect(firstProbe(discover)).toEqual({
+      settingsNs: 'llm-pi-ai',
+      provider: 'ollama',
+      baseURL: 'http://host.docker.internal:11434/v1',
+      api: 'openai-completions',
+    })
+
+    await screen.findByText(en.fetchTitle)
+    fireEvent.click(screen.getByText(en.fetchAdopt))
+
+    // No key typed: a local server authenticates natively, and the profile
+    // must not grow a reference nothing would ever set.
+    expect(screen.getByLabelText<HTMLInputElement>(en.keyInput).value).toBe('')
+    expect(buttonNamed(en.apply).disabled).toBe(false)
+    fireEvent.click(screen.getByText(en.apply))
+
+    await waitFor(() => { expect(mutate).toHaveBeenCalled() })
+    expect(firstMutate(mutate).ops).toEqual([
+      { op: 'set', path: ['providers', 'ollama', 'api'], value: 'openai-completions' },
+      { op: 'set', path: ['providers', 'ollama', 'baseURL'], value: 'http://host.docker.internal:11434/v1' },
+      { op: 'set', path: ['providers', 'ollama', 'models'], value: [{ id: 'qwen3:8b', contextWindow: 40_960 }] },
+    ])
+    expect(set).not.toHaveBeenCalled()
+  })
+
+  it('shows each adopted model as its id when the endpoint names nothing', async () => {
+    const discover = vi.fn(() => Promise.resolve(ok({ models: [{ id: 'qwen3:8b' }] })))
+    await mountSection({
+      providers: {},
+      directoryRoutes: ['ollama'],
+      declaredRoutes: ['ollama'],
+      suggestedBaseURLs: { ollama: 'http://localhost:11434/v1' },
+      discover,
+    })
+    fireEvent.click(buttonNamed(en.add))
+    fireEvent.click(buttonNamed(en.fetchModels))
+    await screen.findByText(en.fetchTitle)
+    fireEvent.click(screen.getByText(en.fetchAdopt))
+    cleanup()
+
+    // The same fallback on an ordinary editor card: an unnamed row displays as
+    // its id, which is what every selector will call it.
+    await mountSection({
+      providers: { ollama: { baseURL: 'http://localhost:11434/v1', models: [{ id: 'qwen3:8b' }] } },
+      declaredRoutes: ['ollama'],
+    })
+    openEditor('ollama')
+    expect(screen.getByLabelText<HTMLInputElement>(`${en.modelName} 1`).value).toBe('qwen3:8b')
+  })
+
+  it('keeps a stored declared route folded until its fold is asked for', async () => {
+    await mountSection({
+      providers: { 'acme-gateway': { baseURL: 'https://gateway.acme.example/v1' } },
+      declaredRoutes: ['acme-gateway'],
+    })
+    const row = screen.getByText('acme-gateway').closest('li')
+    if (row === null) throw new Error('no row for acme-gateway')
+    fireEvent.click(within_(row, en.edit))
+
+    // Only an adoption starts unfolded; an existing route keeps the collapsed
+    // fold its editor has always had, and its unset protocol selects nothing
+    // rather than reading as if it had picked the first choice.
+    expect(document.querySelector('details')?.getAttribute('open')).toBeNull()
+    const summary = document.querySelector('summary')
+    if (summary === null) throw new Error('no customized fold')
+    fireEvent.click(summary)
+    expect(screen.getByLabelText<HTMLSelectElement>(en.customApi).value).toBe('')
+  })
+
+  it('initializes nothing extra when the schema offers no protocols', async () => {
+    // The prefill reads its one choice out of the namespace schema; a schema
+    // that cannot even address the route has none to give, and the card says
+    // so instead of guessing.
+    const scripted = scriptedFace({
+      providers: {},
+      directoryRoutes: ['ollama'],
+      declaredRoutes: ['ollama'],
+    })
+    scripted.namespace.schema = JSON.parse(JSON.stringify(Schema.object({}).toJSON())) as unknown
+    scripted.face.settings.describe = vi.fn(() => Promise.resolve(ok({
+      writable: true,
+      namespaces: [scripted.namespace],
+    })))
+    const controller = new ModelsSettingsStore(
+      scripted.face as unknown as WireFace, settingsSchema, new SettingsDescribeMirror(scripted.face as never))
+    await controller.load()
+    render(<ModelsSection
+      controller={controller}
+      useSnapshot={bindSnapshotSelector(controller.store)}
+      api={scripted.face as never}
+      schema={settingsSchema}
+      t={t}
+    />)
+
+    fireEvent.click(buttonNamed(en.add))
+    expect(screen.getByText('ollama: unresolvable settings path')).toBeTruthy()
   })
 })

@@ -67,6 +67,7 @@ import { assertServiceable, Config, resolveProfiles } from './config.ts'
 import type { ResolvedPiAiProviderProfile } from './config.ts'
 import { discoverModels } from './discovery.ts'
 import { registerPiAiFlows } from './login.ts'
+import { SHIPPED_ROUTES } from './shipped.ts'
 
 export { PiAiAdapter } from './adapter.ts'
 export type { PiAiAdapterOptions } from './adapter.ts'
@@ -108,10 +109,11 @@ function registrationFacts(profiles: ReadonlyMap<string, ResolvedPiAiProviderPro
 }
 
 /**
- * The configurable-provider directory: every installed catalog route, plus
- * every route the current profiles declare. A hand-declared route has no
- * catalog entry, so without this union it would have no settings address and
- * configuration surfaces could neither show nor edit it.
+ * The configurable-provider directory: every installed catalog route, every
+ * route this adapter ships beside the catalog, and every route the current
+ * profiles declare. A hand-declared route has no catalog entry, so without
+ * this union it would have no settings address and configuration surfaces
+ * could neither show nor edit it.
  * @param profiles - the currently resolved provider profiles.
  * @returns the directory entries in catalog order, declared routes last.
  */
@@ -120,7 +122,7 @@ function directoryEntries(
 ): LlmConfigurableProvider[] {
   const catalog = new Set(catalogProviderIds())
   const entries = new Map<string, LlmConfigurableProvider>()
-  const declare = (provider: string, displayName: string): void => {
+  const declare = (provider: string, displayName: string, baseURL?: string): void => {
     entries.set(provider, {
       provider,
       displayName,
@@ -130,9 +132,15 @@ function directoryEntries(
       // narrowing a shipped provider's models stores a profile too, and that
       // route is still one pi-ai knows.
       declared: !catalog.has(provider),
+      ...baseURL === undefined ? {} : { baseURL },
     })
   }
   for (const provider of catalog) declare(provider, provider)
+  for (const [provider, route] of Object.entries(SHIPPED_ROUTES)) {
+    // A key the installed catalog also describes stays a catalog route: one
+    // answer per question about what pi-ai carries for a key.
+    if (!catalog.has(provider)) declare(provider, route.displayName, route.baseURL)
+  }
   for (const [provider, profile] of profiles) declare(provider, profile.displayName)
   return [...entries.values()]
 }
@@ -210,10 +218,11 @@ export function apply(ctx: Context, config: Config): void {
   // composition without it (headless, ACP) simply has no surface to sign in
   // from, while everything else this plugin does still works.
   ctx.inject(['authorization'], (authorized) => { registerPiAiFlows(authorized, auth) })
-  // The full installed catalog is configurable from the moment the plugin
-  // mounts — dormant or not — so configuration surfaces can offer every
-  // pi-ai provider before any route exists. Hand-declared routes join it as
-  // profiles appear, and leave with them.
+  // The full installed catalog and the routes shipped beside it are
+  // configurable from the moment the plugin mounts — dormant or not — so
+  // configuration surfaces can offer every pi-ai provider (and the local
+  // ones) before any route exists. Hand-declared routes join it as profiles
+  // appear, and leave with them.
   let directory: DirectoryRegistrationHandle | undefined
   let directoryFacts: unknown
   const ensureDirectory = (): void => {

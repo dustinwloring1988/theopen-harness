@@ -65,6 +65,8 @@ interface EditorTarget extends ProviderIdentity {
   credentialRef?: string
   /** The adapter reports this route as one it does not ship (see {@link ProviderEditorProps.declared}). */
   declared?: boolean
+  /** Endpoint the adapter suggests for a route nothing stores yet (see {@link ProviderEditorProps.suggestedBaseURL}). */
+  suggestedBaseURL?: string
 }
 
 /** Values that vary around the shared provider-editor rendering. */
@@ -161,6 +163,7 @@ function targetOf(row: ProviderRow): EditorTarget {
     // route-level fields only a declared route owns off the card, exactly as
     // it leaves the custom tag off the row.
     ...row.entry.declared === true ? { declared: true } : {},
+    ...row.entry.baseURL === undefined ? {} : { suggestedBaseURL: row.entry.baseURL },
   }
 }
 
@@ -439,6 +442,8 @@ function Loaded({ injected }: { injected: ModelsSectionFace }): ReactNode {
                 namespace={addNamespace}
                 schema={schema}
                 settingsPath={addTarget.settingsPath}
+                {...addTarget.declared === true ? { declared: true } : {}}
+                {...addTarget.suggestedBaseURL === undefined ? {} : { suggestedBaseURL: addTarget.suggestedBaseURL }}
                 api={api}
                 t={t}
                 readOnly={!state.writable}

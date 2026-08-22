@@ -38,6 +38,7 @@ import type {
   PiAiReasoningEfforts,
 } from './catalog.ts'
 import { buildProvider, supportedProtocols } from './provider.ts'
+import { SHIPPED_ROUTES } from './shipped.ts'
 
 /** Default maximum idle interval while an adapter stream read is outstanding. */
 export const DEFAULT_STREAM_IDLE_TIMEOUT_MS = 300_000
@@ -88,7 +89,10 @@ export type {
 export interface PiAiProviderProfile {
   /** Credential reference (environment-variable name) resolved per request through `ctx.credentials`. */
   apiKeyEnv?: string
-  /** Name shown by configuration surfaces; defaults to the route key. */
+  /**
+   * Name shown by configuration surfaces; defaults to a shipped route's own
+   * name, then the route key.
+   */
   displayName?: string
   /**
    * Wire protocol every model on this route speaks. Omission keeps each
@@ -425,7 +429,11 @@ export function resolveProfiles(
     // The route key, not the installed provider's own name: the directory has
     // always shown route keys, and a catalog route must not silently rename
     // itself on every configuration surface just because it gained a profile.
-    const displayName = source.displayName ?? provider
+    // A route this adapter ships beside the catalog carries its shipped name —
+    // the same one the directory offered before any profile existed, so the
+    // surface that listed "Ollama (Local)" does not relabel the adopted route
+    // back to its key.
+    const displayName = source.displayName ?? SHIPPED_ROUTES[provider]?.displayName ?? provider
     const catalog = resolveRouteModels({
       provider,
       ...source.api === undefined ? {} : { api: source.api },

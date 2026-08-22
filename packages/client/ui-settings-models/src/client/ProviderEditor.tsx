@@ -10,7 +10,10 @@
  * both families, DeepSeek's id/name/context-window model catalog, and the
  * display name and wire protocol of a pi-ai route the adapter does not ship —
  * the two fields the create card asked that route for, editable here for the
- * same reason).
+ * same reason). Adopting one of those routes fresh — picked from the add
+ * card with nothing stored yet — starts where the create card starts: the
+ * first protocol preselected and that area unfolded, because its model rows
+ * are what the route still owes.
  * Reasoning effort is deliberately absent: it is a per-MODEL capability, and
  * the models under one provider disagree about it, so a provider-scoped
  * control can only be set to a value some of them reject. The composer's
@@ -57,6 +60,12 @@ export interface ProviderEditorProps {
    * override every one of them and the card does not offer it.
    */
   declared?: boolean
+  /**
+   * Endpoint the adapter suggests for this route. A route being adopted fresh
+   * — nothing stored yet — starts with it in the draft, editable like anything
+   * typed; a stored profile is never second-guessed with it.
+   */
+  suggestedBaseURL?: string
   /** The owning namespace view (schema, layers, secrets). */
   namespace: SettingsNamespaceView
   /** Settings-owned synchronous schema and immutable path operations. */
@@ -141,7 +150,21 @@ function refFor(
  */
 export function ProviderEditor(props: ProviderEditorProps): ReactNode {
   const { namespace, schema, settingsPath, api, t } = props
-  const [draft, setDraft] = useState<Record<string, unknown>>(() => draftAt(schema, namespace, settingsPath))
+  const [draft, setDraft] = useState<Record<string, unknown>>(() => {
+    const stored = draftAt(schema, namespace, settingsPath)
+    if (Object.keys(stored).length > 0 || props.declared !== true) return stored
+    // A route being adopted fresh starts where the create card starts: the
+    // first wire protocol preselected, and the adapter's suggested endpoint in
+    // the field it belongs to — both visible, both editable. Only a route
+    // nothing stores reaches this arm, so nothing hand-written or stored is
+    // ever second-guessed.
+    const first = protocolChoices(namespace, schema)[0]
+    return first === undefined ? stored : {
+      ...stored,
+      api: first,
+      ...props.suggestedBaseURL === undefined ? {} : { baseURL: props.suggestedBaseURL },
+    }
+  })
   const [keyDraft, setKeyDraft] = useState('')
   const [keyState, setKeyState] = useState<CredentialView | undefined>(undefined)
   const [busy, setBusy] = useState(false)
@@ -333,6 +356,10 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
     // A whole-section `llm-deepseek` profile is a composition fact with no
     // per-route identity for its schema to carry, hence the family test.
     const ownsIdentity = family === 'pi-ai' && props.declared === true
+    // A declared route nothing stores yet is being adopted: its declaration
+    // fields are the whole point of the card, so they start unfolded instead
+    // of hiding the model list behind a collapsed fold.
+    const adopting = ownsIdentity && fallback === undefined
     const customModels = schema.getPath(draft, ['models'])
     const modelsOverridden = schema.hasPath(draft, ['models'])
     const models = modelDrafts(modelsOverridden ? customModels : inheritedModels())
@@ -371,7 +398,7 @@ export function ProviderEditor(props: ProviderEditorProps): ReactNode {
           />
           {shownKeyFailure === undefined ? null : <p className={styles['error']}>{t(shownKeyFailure)}</p>}
         </div>
-        <details className={styles['customized']}>
+        <details className={styles['customized']} open={adopting}>
           <summary className={styles['customizedSummary']}>{t('customized')}</summary>
           <div className={styles['customizedBody']}>
             {/* The name and the protocol are the create card's two remaining
