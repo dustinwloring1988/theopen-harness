@@ -71,10 +71,10 @@
     "@buckeyestudio/toh-invariants": "workspace:^",
     "@buckeyestudio/toh-tools": "workspace:^",
     "@types/react": "~18.3.1",
-    "@types/react-dom": "~18.3.0",
+    "@types/react-dom": "~19.2.3",
     "@buckeyestudio/cordis": "workspace:^",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0"
+    "react-dom": "^19.2.8"
   },
   "files": [
     "lib/index.js",
