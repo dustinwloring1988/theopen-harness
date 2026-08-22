@@ -65,9 +65,9 @@
     "@buckeyestudio/toh-client-ui-settings": "workspace:^",
     "@buckeyestudio/toh-client-ui-slots": "workspace:^",
     "@buckeyestudio/toh-invariants": "workspace:^",
-    "@types/react": "~18.3.1",
+    "@types/react": "~19.2.3",
     "@buckeyestudio/cordis": "workspace:^",
-    "react": "^18.2.0"
+    "react": "^19.2.8"
   },
   "files": [
     "lib/index.js",

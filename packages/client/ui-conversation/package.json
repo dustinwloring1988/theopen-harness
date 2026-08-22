@@ -104,8 +104,8 @@
     "@buckeyestudio/toh-token-meter": "workspace:^",
     "@buckeyestudio/toh-tool-todo": "workspace:^",
     "@buckeyestudio/toh-tools": "workspace:^",
-    "@types/react": "~18.3.1",
-    "react": "^18.2.0",
+    "@types/react": "~19.2.3",
+    "react": "^19.2.8",
     "@buckeyestudio/toh-settings": "workspace:^"
   },
   "files": [

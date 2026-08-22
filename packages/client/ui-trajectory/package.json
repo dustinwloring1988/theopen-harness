@@ -70,10 +70,10 @@
     "@buckeyestudio/toh-compaction": "workspace:^",
     "@buckeyestudio/toh-invariants": "workspace:^",
     "@buckeyestudio/toh-tools": "workspace:^",
-    "@types/react": "~18.3.1",
+    "@types/react": "~19.2.3",
     "@types/react-dom": "~19.2.3",
     "@buckeyestudio/cordis": "workspace:^",
-    "react": "^18.2.0",
+    "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "files": [
