@@ -23,7 +23,7 @@ NotificationFilter: TypeAlias = Callable[[Notification], bool]
 
 @dataclass(slots=True)
 class HarnessConfig:
-    """Configuration for launching the local DeepSeek Harness SDK runtime."""
+    """Configuration for launching the local TheOpen Harness SDK runtime."""
 
     runtime_bin: str | None = None
     bridge_bin: str | None = None
@@ -35,7 +35,7 @@ class HarnessConfig:
 
 
 class HarnessClient:
-    """Synchronous JSON-RPC client for the DeepSeek Harness SDK runtime over stdio."""
+    """Synchronous JSON-RPC client for the TheOpen Harness SDK runtime over stdio."""
 
     def __init__(self, config: HarnessConfig | None = None) -> None:
         self.config = config or HarnessConfig()
@@ -108,7 +108,7 @@ class HarnessClient:
             proc.kill()
             proc.wait()
         self._proc = None
-        self._fail_waiters(self._runtime_closed_error("DeepSeek Harness runtime closed"))
+        self._fail_waiters(self._runtime_closed_error("TheOpen Harness runtime closed"))
         if self._reader_thread and self._reader_thread.is_alive():
             self._reader_thread.join(timeout=0.5)
         if self._stderr_thread and self._stderr_thread.is_alive():
@@ -272,7 +272,7 @@ class HarnessClient:
                         diagnostics = self._runtime_diagnostics()
                         suffix = f"\n{diagnostics}" if diagnostics else ""
                         raise TimeoutError(
-                            f"{method} timed out waiting for DeepSeek Harness runtime{suffix}"
+                            f"{method} timed out waiting for TheOpen Harness runtime{suffix}"
                         )
                     wait_timeout = remaining if wait_timeout is None else min(wait_timeout, remaining)
                 try:
@@ -298,21 +298,21 @@ class HarnessClient:
     def _write_message(self, message: JsonObject) -> None:
         proc = self._proc
         if proc is None or proc.stdin is None:
-            raise TransportClosedError("DeepSeek Harness runtime is not running")
+            raise TransportClosedError("TheOpen Harness runtime is not running")
         try:
             payload = json.dumps(message, separators=(",", ":")) + "\n"
             with self._write_lock:
                 proc.stdin.write(payload)
                 proc.stdin.flush()
         except Exception as exc:
-            raise self._runtime_closed_error("Failed to write to DeepSeek Harness runtime") from exc
+            raise self._runtime_closed_error("Failed to write to TheOpen Harness runtime") from exc
 
     def _start_reader_thread(self) -> None:
-        self._reader_thread = threading.Thread(target=self._reader_loop, name="dsh-runtime-reader", daemon=True)
+        self._reader_thread = threading.Thread(target=self._reader_loop, name="toh-runtime-reader", daemon=True)
         self._reader_thread.start()
 
     def _start_stderr_thread(self) -> None:
-        self._stderr_thread = threading.Thread(target=self._stderr_loop, name="dsh-runtime-stderr", daemon=True)
+        self._stderr_thread = threading.Thread(target=self._stderr_loop, name="toh-runtime-stderr", daemon=True)
         self._stderr_thread.start()
 
     def _reader_loop(self) -> None:
@@ -331,7 +331,7 @@ class HarnessClient:
         except BaseException as exc:
             self._fail_waiters(exc)
         finally:
-            self._fail_waiters(self._runtime_closed_error("DeepSeek Harness runtime stdout closed"))
+            self._fail_waiters(self._runtime_closed_error("TheOpen Harness runtime stdout closed"))
 
     def _stderr_loop(self) -> None:
         proc = self._proc
@@ -427,11 +427,11 @@ class HarnessClient:
         if self.config.bridge_bin is not None:
             return (self.config.bridge_bin,)
         try:
-            from deepseek_harness_runtime import resolve_bundled_launch_args
+            from theopen_harness_runtime import resolve_bundled_launch_args
         except ImportError as exc:
             raise FileNotFoundError(
-                "Unable to locate the bundled DeepSeek Harness SDK runtime. "
-                "Install deepseek-harness-runtime-bin or set HarnessConfig.runtime_bin."
+                "Unable to locate the bundled TheOpen Harness SDK runtime. "
+                "Install theopen-harness-runtime-bin or set HarnessConfig.runtime_bin."
             ) from exc
         return resolve_bundled_launch_args()
 
@@ -446,12 +446,12 @@ class HarnessClient:
             and self.config.runtime_bin is None
             and self.config.bridge_bin is None
         )
-        if not uses_bundled_runtime or env.get("DSH_CORDIS_CONFIG"):
+        if not uses_bundled_runtime or env.get("TOH_CORDIS_CONFIG"):
             return
         # _default_launch_args already imported the package or raised its install error.
-        from deepseek_harness_runtime import bundled_default_config_path
+        from theopen_harness_runtime import bundled_default_config_path
 
-        env["DSH_CORDIS_CONFIG"] = str(bundled_default_config_path())
+        env["TOH_CORDIS_CONFIG"] = str(bundled_default_config_path())
 
     def _unsubscribe_notifications(self, subscription_id: str) -> None:
         with self._lock:

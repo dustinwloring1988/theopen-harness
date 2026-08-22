@@ -15,8 +15,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from typing import Any
 
-from deepseek_harness import DeepSeekHarness
-from deepseek_harness_runtime import bundled_default_config_path
+from theopen_harness import DeepSeekHarness
+from theopen_harness_runtime import bundled_default_config_path
 
 
 class MockCompletionHandler(BaseHTTPRequestHandler):
@@ -43,7 +43,7 @@ class MockCompletionHandler(BaseHTTPRequestHandler):
 
 
 def run_smoke(repo_root: Path, keep_sessions: bool) -> None:
-    session_root = Path(tempfile.mkdtemp(prefix="dsh-sdk-smoke-sessions-"))
+    session_root = Path(tempfile.mkdtemp(prefix="toh-sdk-smoke-sessions-"))
     runtime_entry = repo_root / "packages/examples/jsonrpc-demo/src/bin.ts"
     server = ThreadingHTTPServer(("127.0.0.1", 0), MockCompletionHandler)
     thread = threading.Thread(target=server.serve_forever, name="mock-openai-compatible-server", daemon=True)
@@ -104,7 +104,7 @@ def main() -> None:
         "--repo-root",
         type=Path,
         default=Path(__file__).resolve().parents[3],
-        help="Path to the deepseek-harness checkout.",
+        help="Path to the theopen-harness checkout.",
     )
     parser.add_argument("--keep-sessions", action="store_true")
     args = parser.parse_args()

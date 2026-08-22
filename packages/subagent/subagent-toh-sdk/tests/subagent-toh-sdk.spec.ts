@@ -7,13 +7,13 @@
  */
 
 import { describe, expect, it } from 'vitest'
-import { Context } from '@deepseek-ai/cordis'
+import { Context } from '@buckeyestudio/cordis'
 import { existsSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import SubagentRuntime from '@deepseek-ai/dsh-subagent'
-import type { Agent } from '@deepseek-ai/dsh-agent'
+import SubagentRuntime from '@buckeyestudio/toh-subagent'
+import type { Agent } from '@buckeyestudio/toh-agent'
 import * as sdk from '../src/index.ts'
 import {
   DEFAULT_DISPOSE_EOF_GRACE_MS,
@@ -41,7 +41,7 @@ async function setup(fakeEnv: Record<string, string> = {}, config: Partial<sdk.C
   // name is stated here; the Loader-composition fixture omits providerName and
   // exercises the schemastery default end to end.
   await ctx.plugin(sdk, {
-    providerName: 'dsh-sdk',
+    providerName: 'toh-sdk',
     command: process.execPath,
     args: [fakeRuntime],
     provider: 'fake-provider',
@@ -85,10 +85,10 @@ describe('sdkStopReason', () => {
   })
 })
 
-describe('dsh-subagent-dsh-sdk provider', () => {
+describe('toh-subagent-toh-sdk provider', () => {
   it('runs a child turn end to end with a parent-unique run id', async () => {
     const ctx = await setup({ FAKE_TEXT: 'hello from sdk child' })
-    const run = await ctx.subagents.start('dsh-sdk', request('do X'))
+    const run = await ctx.subagents.start('toh-sdk', request('do X'))
     expect(run.localAgent).toBeUndefined()
     const result = await run.result
     expect(result.stopReason).toBe('completed')
@@ -98,7 +98,7 @@ describe('dsh-subagent-dsh-sdk provider', () => {
     expect(run.dispose()).toBe(disposal)
     await disposal
 
-    const nextRun = await ctx.subagents.start('dsh-sdk', request('again'))
+    const nextRun = await ctx.subagents.start('toh-sdk', request('again'))
     expect(nextRun.id).not.toBe(run.id)
     await nextRun.result
     await nextRun.dispose()
@@ -106,11 +106,11 @@ describe('dsh-subagent-dsh-sdk provider', () => {
   })
 
   it('initializes the child with the configured provider/model/maxTokens and the parent cwd', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'subagent-dsh-sdk-init-'))
+    const tmp = mkdtempSync(join(tmpdir(), 'subagent-toh-sdk-init-'))
     const recordFile = join(tmp, 'init.jsonl')
     try {
       const ctx = await setup({ FAKE_RECORD_INIT: recordFile }, { maxTokens: 4096 })
-      const run = await ctx.subagents.start('dsh-sdk', request())
+      const run = await ctx.subagents.start('toh-sdk', request())
       await run.result
       await run.dispose()
       const { readFileSync } = await import('node:fs')
@@ -128,28 +128,28 @@ describe('dsh-subagent-dsh-sdk provider', () => {
   })
 
   it('scrubs ambient credentials but forwards explicit config env', async () => {
-    process.env.DSH_TEST_AMBIENT_SECRET_KEY = 'leak-me-not'
+    process.env.TOH_TEST_AMBIENT_SECRET_KEY = 'leak-me-not'
     try {
       const ctx = await setup({
-        FAKE_ECHO_ENV: 'DSH_TEST_AMBIENT_SECRET_KEY,DEEPSEEK_API_KEY',
+        FAKE_ECHO_ENV: 'TOH_TEST_AMBIENT_SECRET_KEY,DEEPSEEK_API_KEY',
         DEEPSEEK_API_KEY: 'explicit-child-key',
         FAKE_TEXT: 'done',
       })
-      const run = await ctx.subagents.start('dsh-sdk', request())
+      const run = await ctx.subagents.start('toh-sdk', request())
       const result = await run.result
       const answer = text(result.output)
-      expect(answer).toContain('DSH_TEST_AMBIENT_SECRET_KEY=\n')
+      expect(answer).toContain('TOH_TEST_AMBIENT_SECRET_KEY=\n')
       expect(answer).toContain('DEEPSEEK_API_KEY=explicit-child-key')
       await run.dispose()
       await ctx.fiber.dispose()
     } finally {
-      delete process.env.DSH_TEST_AMBIENT_SECRET_KEY
+      delete process.env.TOH_TEST_AMBIENT_SECRET_KEY
     }
   })
 
   it('maps a max-tokens child turn end', async () => {
     const ctx = await setup({ FAKE_REASON_KIND: 'max-tokens', FAKE_STATUS: 'error' })
-    const run = await ctx.subagents.start('dsh-sdk', request())
+    const run = await ctx.subagents.start('toh-sdk', request())
     expect((await run.result).stopReason).toBe('max-tokens')
     await run.dispose()
     await ctx.fiber.dispose()
@@ -157,7 +157,7 @@ describe('dsh-subagent-dsh-sdk provider', () => {
 
   it('flattens a child turn error into stopReason error and keeps partial text', async () => {
     const ctx = await setup({ FAKE_REASON_KIND: 'error', FAKE_STATUS: 'error', FAKE_TEXT: 'partial answer' })
-    const run = await ctx.subagents.start('dsh-sdk', request())
+    const run = await ctx.subagents.start('toh-sdk', request())
     const result = await run.result
     expect(result.stopReason).toBe('error')
     expect(text(result.output)).toBe('partial answer')
@@ -167,7 +167,7 @@ describe('dsh-subagent-dsh-sdk provider', () => {
 
   it('keeps streamed text when a malformed final message prevents completion', async () => {
     const ctx = await setup({ FAKE_MALFORMED_MESSAGE: '1', FAKE_TEXT: 'stream-only answer' })
-    const run = await ctx.subagents.start('dsh-sdk', request())
+    const run = await ctx.subagents.start('toh-sdk', request())
     const result = await run.result
 
     expect(result.stopReason).toBe('error')
@@ -182,7 +182,7 @@ describe('dsh-subagent-dsh-sdk provider', () => {
     // max-tokens step that assembled no text blocks). The empty message is
     // not assistant output and must not erase the streamed answer.
     const ctx = await setup({ FAKE_EMPTY_MESSAGE: '1', FAKE_REASON_KIND: 'max-tokens' })
-    const run = await ctx.subagents.start('dsh-sdk', request())
+    const run = await ctx.subagents.start('toh-sdk', request())
     const result = await run.result
     expect(result.stopReason).toBe('max-tokens')
     expect(text(result.output)).toBe('hello from fake runtime')
@@ -192,7 +192,7 @@ describe('dsh-subagent-dsh-sdk provider', () => {
 
   it('reports a settled-without-turn child as an error', async () => {
     const ctx = await setup({ FAKE_REASON_KIND: 'none', FAKE_STATUS: 'error' })
-    const run = await ctx.subagents.start('dsh-sdk', request())
+    const run = await ctx.subagents.start('toh-sdk', request())
     expect((await run.result).stopReason).toBe('error')
     await run.dispose()
     await ctx.fiber.dispose()
@@ -201,7 +201,7 @@ describe('dsh-subagent-dsh-sdk provider', () => {
   it('aborting the required signal settles a hung child as aborted', async () => {
     const ctx = await setup({ FAKE_HANG_PROMPT: '1' }, { disposeEofGraceMs: 200, disposeGraceMs: 200 })
     const controller = new AbortController()
-    const run = await ctx.subagents.start('dsh-sdk', request('p', controller.signal))
+    const run = await ctx.subagents.start('toh-sdk', request('p', controller.signal))
     controller.abort('test')
     const result = await run.result
     expect(result.stopReason).toBe('aborted')
@@ -216,7 +216,7 @@ describe('dsh-subagent-dsh-sdk provider', () => {
     // handshake window): the fake touches READY, we abort, then GO lets the
     // handshake complete — so the post-race `flags.cancelled` recheck must
     // reject even though the handshake itself succeeded.
-    const tmp = mkdtempSync(join(tmpdir(), 'subagent-dsh-sdk-midcancel-'))
+    const tmp = mkdtempSync(join(tmpdir(), 'subagent-toh-sdk-midcancel-'))
     const ready = join(tmp, 'ready')
     const go = join(tmp, 'go')
     try {
@@ -248,7 +248,7 @@ describe('dsh-subagent-dsh-sdk provider', () => {
     // needed to establish this run's durable inbox receipt. The text therefore
     // lies outside an owned activity interval and cannot become its output.
     const ctx = await setup({ FAKE_STREAM_THEN_MALFORMED: '1' }, { shutdownTimeoutMs: 100, disposeEofGraceMs: 200, disposeGraceMs: 200 })
-    const run = await ctx.subagents.start('dsh-sdk', request())
+    const run = await ctx.subagents.start('toh-sdk', request())
     const result = await run.result
     expect(result.stopReason).toBe('error')
     expect(result.output).toEqual([])
@@ -258,14 +258,14 @@ describe('dsh-subagent-dsh-sdk provider', () => {
 
   it('dispose cancels a hung child locally and reaps it', async () => {
     const ctx = await setup({ FAKE_HANG_PROMPT: '1' }, { shutdownTimeoutMs: 100, disposeEofGraceMs: 200, disposeGraceMs: 200 })
-    const run = await ctx.subagents.start('dsh-sdk', request())
+    const run = await ctx.subagents.start('toh-sdk', request())
     await run.dispose()
     expect((await run.result).stopReason).toBe('aborted')
     await ctx.fiber.dispose()
   })
 
   it('rejects WITHOUT spawning when the signal is already aborted', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'subagent-dsh-sdk-preabort-'))
+    const tmp = mkdtempSync(join(tmpdir(), 'subagent-toh-sdk-preabort-'))
     const sentinel = join(tmp, 'spawned')
     try {
       const controller = new AbortController()
@@ -293,7 +293,7 @@ describe('dsh-subagent-dsh-sdk provider', () => {
 
   it('rejects after reaping when the child dies before the handshake', async () => {
     const ctx = await setup({ FAKE_EXIT_BEFORE_INIT: '1', FAKE_STDERR: 'scripted boot failure' })
-    const failure = await ctx.subagents.start('dsh-sdk', request()).then(
+    const failure = await ctx.subagents.start('toh-sdk', request()).then(
       () => { throw new Error('start unexpectedly succeeded') },
       (error: unknown) => error,
     )
@@ -351,10 +351,10 @@ describe('dsh-subagent-dsh-sdk provider', () => {
     const ctx = await setup({ FAKE_MALFORMED_PROMPT: '1' })
     const warnings: string[] = []
     ctx.logger.warn = ((message: unknown) => { warnings.push(String(message)) }) as typeof ctx.logger.warn
-    const run = await ctx.subagents.start('dsh-sdk', request())
+    const run = await ctx.subagents.start('toh-sdk', request())
     expect((await run.result).stopReason).toBe('error')
     expect(warnings).toHaveLength(1)
-    expect(warnings[0]).toContain('subagent-dsh-sdk "dsh-sdk": child run failed (error)')
+    expect(warnings[0]).toContain('subagent-toh-sdk "toh-sdk": child run failed (error)')
     await run.dispose()
     await ctx.fiber.dispose()
   })
@@ -448,10 +448,10 @@ describe('dsh-subagent-dsh-sdk provider', () => {
   })
 
   it('uses a validated config cwd override instead of the parent session cwd', async () => {
-    const tmp = mkdtempSync(join(tmpdir(), 'subagent-dsh-sdk-cwd-'))
+    const tmp = mkdtempSync(join(tmpdir(), 'subagent-toh-sdk-cwd-'))
     try {
       const ctx = await setup({ FAKE_ECHO_CWD: '1', FAKE_TEXT: 'done' }, { cwd: tmp })
-      const run = await ctx.subagents.start('dsh-sdk', request())
+      const run = await ctx.subagents.start('toh-sdk', request())
       const result = await run.result
       const { realpathSync } = await import('node:fs')
       expect(text(result.output)).toContain(`cwd=${realpathSync(tmp)}`)
@@ -465,7 +465,7 @@ describe('dsh-subagent-dsh-sdk provider', () => {
   it('fails loud when neither config cwd nor parent session cwd exists', async () => {
     const ctx = await setup()
     const parent = { id: 'parent', session: { header: {} } } as unknown as Agent
-    await expect(ctx.subagents.start('dsh-sdk', {
+    await expect(ctx.subagents.start('toh-sdk', {
       label: 'p', prompt: [{ type: 'text' as const, text: 'p' }], parent, signal: new AbortController().signal,
     }))
       .rejects.toThrow('no working directory for the child')
@@ -473,7 +473,7 @@ describe('dsh-subagent-dsh-sdk provider', () => {
   })
 
   it('keeps named plugin exports with no default export (loader shape)', () => {
-    expect(sdk.name).toBe('subagent-dsh-sdk')
+    expect(sdk.name).toBe('subagent-toh-sdk')
     expect(sdk.inject).toEqual(['subagents'])
     expect(typeof sdk.apply).toBe('function')
     expect(typeof sdk.Config).toBe('function')

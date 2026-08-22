@@ -1,23 +1,23 @@
 import { fileURLToPath } from 'node:url'
-import { Context } from '@deepseek-ai/cordis'
-import { agentEvents, Inbox, type Agent } from '@deepseek-ai/dsh-agent'
-import { CallId } from '@deepseek-ai/dsh-llm'
-import { boot, loadOverlayPatches } from '@deepseek-ai/dsh-app-boot'
-import { SessionId } from '@deepseek-ai/dsh-session'
-import type {} from '@deepseek-ai/dsh-skill'
-import type {} from '@deepseek-ai/dsh-tools'
+import { Context } from '@buckeyestudio/cordis'
+import { agentEvents, Inbox, type Agent } from '@buckeyestudio/toh-agent'
+import { CallId } from '@buckeyestudio/toh-llm'
+import { boot, loadOverlayPatches } from '@buckeyestudio/toh-app-boot'
+import { SessionId } from '@buckeyestudio/toh-session'
+import type {} from '@buckeyestudio/toh-skill'
+import type {} from '@buckeyestudio/toh-tools'
 
 const overlayPath = process.argv[2]
-if (overlayPath === undefined) throw new Error('dsh-badge snapshot requires an overlay path')
+if (overlayPath === undefined) throw new Error('toh-badge snapshot requires an overlay path')
 const rootConfigPath = fileURLToPath(new URL('../../../../../packages/bundle/base/tests/fixtures/root.cordis.yml', import.meta.url))
 const basePatchPath = fileURLToPath(new URL('../../../../../packages/bundle/base/cordis.patch.yml', import.meta.url))
-const ctx = await boot('dsh-badge-snapshot', rootConfigPath, [
-  ...loadOverlayPatches('dsh-badge-snapshot', basePatchPath),
-  ...loadOverlayPatches('dsh-badge-snapshot', overlayPath),
+const ctx = await boot('toh-badge-snapshot', rootConfigPath, [
+  ...loadOverlayPatches('toh-badge-snapshot', basePatchPath),
+  ...loadOverlayPatches('toh-badge-snapshot', overlayPath),
 ])
 
 try {
-  const agentId = SessionId('dsh-badge-snapshot')
+  const agentId = SessionId('toh-badge-snapshot')
   const session = ctx.sessions.create(agentId, { meta: { cwd: process.cwd() } })
   const agent: Agent = {
     ctx: new Context(),
@@ -29,7 +29,7 @@ try {
     send: () => {},
     followup: () => {},
     steer: () => {},
-    inject: () => { throw new Error('dsh-badge snapshot must receive the catalog at the step boundary') },
+    inject: () => { throw new Error('toh-badge snapshot must receive the catalog at the step boundary') },
     cancel: () => {},
     runMaintenance: job => job(new AbortController().signal),
     whenIdle: () => Promise.resolve(),
@@ -43,11 +43,11 @@ try {
     ? decision.messages.find(message => message.role === 'user'
       && message.source.kind === 'skill-catalog')?.content
     : undefined
-  const summary = (await ctx.skills.list()).find(skill => skill.name === 'dsh-badge')
+  const summary = (await ctx.skills.list()).find(skill => skill.name === 'toh-badge')
   const result = await ctx.tools.execute({
-    callId: CallId('dsh-badge-snapshot'),
+    callId: CallId('toh-badge-snapshot'),
     name: 'skill',
-    arguments: { name: 'dsh-badge' },
+    arguments: { name: 'toh-badge' },
     signal: new AbortController().signal,
   })
   process.stdout.write(`${JSON.stringify({ catalog: catalog ?? null, summary: summary ?? null, result })}\n`)

@@ -14,10 +14,10 @@ import { readFile, readdir } from 'node:fs/promises'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { type SessionEvent } from '@deepseek-ai/dsh-session'
-import { resolveExampleLaunch, runLoaderSmoke } from '@deepseek-ai/dsh-loader-smoke'
+import { type SessionEvent } from '@buckeyestudio/toh-session'
+import { resolveExampleLaunch, runLoaderSmoke } from '@buckeyestudio/toh-loader-smoke'
 
-const fixtureDir = new URL('../../../../examples/jsonrpc-agent/tests/fixtures/subagent/subagent-dsh-sdk/', import.meta.url)
+const fixtureDir = new URL('../../../../examples/jsonrpc-agent/tests/fixtures/subagent/subagent-toh-sdk/', import.meta.url)
 const driver = fileURLToPath(new URL('driver.ts', fixtureDir))
 const configPath = fileURLToPath(new URL('cordis.yml', fixtureDir))
 const childConfigPath = fileURLToPath(new URL('child.cordis.yml', fixtureDir))
@@ -54,8 +54,8 @@ describe('SDK subagent cwd inheritance through a real cordis.yml', () => {
     let childEvents: SessionEvent[] = []
     let workspace = ''
     const { stderr } = await runLoaderSmoke({
-      label: 'dsh-sdk-subagent cwd composition smoke',
-      tempDirPrefix: 'dsh-sdk-subagent-cwd-e2e-',
+      label: 'toh-sdk-subagent cwd composition smoke',
+      tempDirPrefix: 'toh-sdk-subagent-cwd-e2e-',
       binScript: driver,
       libBinScript: driver,
       configPath,
@@ -65,9 +65,9 @@ describe('SDK subagent cwd inheritance through a real cordis.yml', () => {
       // 30s window.
       processTimeoutMs: 120_000,
       env: {
-        DSH_TEST_CHILD_COMMAND: childLaunch.command,
-        DSH_TEST_CHILD_ARGS: JSON.stringify(childLaunch.args),
-        DSH_TEST_CHILD_ENV: JSON.stringify({
+        TOH_TEST_CHILD_COMMAND: childLaunch.command,
+        TOH_TEST_CHILD_ARGS: JSON.stringify(childLaunch.args),
+        TOH_TEST_CHILD_ENV: JSON.stringify({
           ...Object.fromEntries(Object.entries(childLaunch.env).filter(([, value]) => value !== undefined)),
         }),
       },

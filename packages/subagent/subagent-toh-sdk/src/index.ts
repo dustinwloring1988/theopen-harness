@@ -7,13 +7,13 @@
  * `request.parent` is the session's workspace cwd. This plugin uses named
  * exports only; a default would hide its loader metadata (see
  * `docs/postmortem/0001-acp-default-export-drops-inject.md`).
- * @module @deepseek-ai/dsh-subagent-dsh-sdk
+ * @module @buckeyestudio/toh-subagent-toh-sdk
  */
 
-import type { Context } from '@deepseek-ai/cordis'
-import z from '@deepseek-ai/schemastery'
-import type { SubagentCapabilities, SubagentProvider, SubagentStartRequest } from '@deepseek-ai/dsh-subagent'
-import { assertPositiveFinite, NO_START_CAPABILITIES, resolveChildCwd, validateConfiguredCwd } from '@deepseek-ai/dsh-subagent'
+import type { Context } from '@buckeyestudio/cordis'
+import z from '@buckeyestudio/schemastery'
+import type { SubagentCapabilities, SubagentProvider, SubagentStartRequest } from '@buckeyestudio/toh-subagent'
+import { assertPositiveFinite, NO_START_CAPABILITIES, resolveChildCwd, validateConfiguredCwd } from '@buckeyestudio/toh-subagent'
 import {
   DEFAULT_DISPOSE_EOF_GRACE_MS,
   DEFAULT_DISPOSE_GRACE_MS,
@@ -22,12 +22,12 @@ import {
   type SdkRunSpec,
 } from './run.ts'
 
-export const name = 'subagent-dsh-sdk'
+export const name = 'subagent-toh-sdk'
 export const inject = ['subagents']
 
 /** Config: how to spawn and drive the child SDK runtime process. */
 export interface Config {
-  /** Provider name on `ctx.subagents` (default `dsh-sdk`). */
+  /** Provider name on `ctx.subagents` (default `toh-sdk`). */
   providerName: string
   /** The executable to spawn for each run (the child runtime bin or packaged exe). */
   command: string
@@ -50,7 +50,7 @@ export interface Config {
   maxTokens?: number
   /**
    * Extra environment variables for the child process — e.g. the child
-   * runtime's own `DEEPSEEK_API_KEY`, or `DSH_CORDIS_CONFIG` naming its
+   * runtime's own `DEEPSEEK_API_KEY`, or `TOH_CORDIS_CONFIG` naming its
    * config. Forwarded on top of a credential-scrubbed copy of the parent
    * env, so an explicit key here reaches the child while ambient secrets do
    * not leak implicitly.
@@ -69,7 +69,7 @@ export interface Config {
 }
 
 export const Config: z<Config> = z.object({
-  providerName: z.string().default('dsh-sdk'),
+  providerName: z.string().default('toh-sdk'),
   command: z.string().required(),
   args: z.array(z.string()).default([]),
   cwd: z.string(),
@@ -101,7 +101,7 @@ class SdkSubagentProvider implements SubagentProvider {
     const spec: SdkRunSpec = {
       command: this.config.command,
       args: this.config.args,
-      cwd: resolveChildCwd('subagent-dsh-sdk', this.config.cwd, request.parent.session.header.cwd),
+      cwd: resolveChildCwd('subagent-toh-sdk', this.config.cwd, request.parent.session.header.cwd),
       provider: this.config.provider,
       model: this.config.model,
       ...this.config.maxTokens === undefined ? {} : { maxTokens: this.config.maxTokens },
@@ -112,7 +112,7 @@ class SdkSubagentProvider implements SubagentProvider {
       onError: (error, stopReason) => {
         // The seam forbids `result` rejecting, so a child-level failure is
         // flattened to a stop reason — preserve it here rather than losing it.
-        this.ctx.logger.warn(`subagent-dsh-sdk "${this.name}": child run failed (${stopReason}): ${error.message}`)
+        this.ctx.logger.warn(`subagent-toh-sdk "${this.name}": child run failed (${stopReason}): ${error.message}`)
       },
     }
     return startSdkRun(request, spec)
@@ -122,15 +122,15 @@ class SdkSubagentProvider implements SubagentProvider {
 export function apply(ctx: Context, config: Config): void {
   // schemastery (Config) has already filled every defaulted field.
   const resolved = config as ResolvedConfig
-  assertPositiveFinite('subagent-dsh-sdk', 'shutdownTimeoutMs', resolved.shutdownTimeoutMs)
-  assertPositiveFinite('subagent-dsh-sdk', 'disposeEofGraceMs', resolved.disposeEofGraceMs)
-  assertPositiveFinite('subagent-dsh-sdk', 'disposeGraceMs', resolved.disposeGraceMs)
+  assertPositiveFinite('subagent-toh-sdk', 'shutdownTimeoutMs', resolved.shutdownTimeoutMs)
+  assertPositiveFinite('subagent-toh-sdk', 'disposeEofGraceMs', resolved.disposeEofGraceMs)
+  assertPositiveFinite('subagent-toh-sdk', 'disposeGraceMs', resolved.disposeGraceMs)
   if (resolved.maxTokens !== undefined && (!Number.isSafeInteger(resolved.maxTokens) || resolved.maxTokens <= 0)) {
-    throw new TypeError('subagent-dsh-sdk maxTokens must be a positive safe integer')
+    throw new TypeError('subagent-toh-sdk maxTokens must be a positive safe integer')
   }
   // Interpret a relative configured cwd against the harness launch directory
   // ONCE, at load, and fail a misconfigured directory here — not per start.
-  const configuredCwd = validateConfiguredCwd('subagent-dsh-sdk', resolved.cwd)
+  const configuredCwd = validateConfiguredCwd('subagent-toh-sdk', resolved.cwd)
   const validated: ResolvedConfig = configuredCwd === undefined
     ? resolved
     : { ...resolved, cwd: configuredCwd }
