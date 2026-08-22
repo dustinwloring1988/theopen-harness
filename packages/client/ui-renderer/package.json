@@ -45,7 +45,7 @@
   "license": "MIT",
   "author": "buckeyestudio",
   "dependencies": {
-    "use-sync-external-store": "1.2.0"
+    "use-sync-external-store": "1.6.0"
   },
   "peerDependencies": {
     "@buckeyestudio/toh-client-runtime": "workspace:^",
