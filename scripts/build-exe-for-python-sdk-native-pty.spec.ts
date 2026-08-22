@@ -36,7 +36,7 @@ describe('resolveLinuxNodePtyAddon', () => {
 })
 
 function temporaryPackage(): string {
-  const root = mkdtempSync(join(tmpdir(), 'dsh-node-pty-addon-'))
+  const root = mkdtempSync(join(tmpdir(), 'toh-node-pty-addon-'))
   roots.push(root)
   return root
 }
