@@ -1,6 +1,6 @@
 {
-  "name": "@buckeyestudio/toh-terminal",
-  "description": "Persistent PTY session seam for the TheOpen Harness — owner-scoped ids, backend registry, interactive sends, reads, signals, and awaited cleanup",
+  "name": "@buckeyestudio/toh-subagent-toh-sdk",
+  "description": "Out-of-process SDK subagent backend: drives a child TheOpen Harness runtime subprocess over stdio JSON-RPC through the TypeScript SDK client",
   "version": "0.1.1-rc.2",
   "publishConfig": {
     "access": "public"
@@ -8,7 +8,7 @@
   "repository": {
     "type": "git",
     "url": "git+https://github.com/dustinwloring1988/theopen-harness.git",
-    "directory": "packages/terminal/terminal"
+    "directory": "packages/subagent/subagent-toh-sdk"
   },
   "type": "module",
   "main": "lib/index.js",
@@ -34,15 +34,28 @@
   "author": "buckeyestudio",
   "peerDependencies": {
     "@buckeyestudio/toh-agent": "workspace:^",
-    "@buckeyestudio/toh-brand": "workspace:^",
     "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-llm": "workspace:^",
+    "@buckeyestudio/toh-sdk-client": "workspace:^",
+    "@buckeyestudio/toh-session": "workspace:^",
+    "@buckeyestudio/toh-subagent": "workspace:^",
+    "@buckeyestudio/toh-subprocess": "workspace:^",
     "@buckeyestudio/cordis": "workspace:^"
   },
+  "dependencies": {
+    "@buckeyestudio/schemastery": "workspace:^"
+  },
   "devDependencies": {
+    "@buckeyestudio/cordis-plugin-loader": "workspace:^",
     "@buckeyestudio/toh-agent": "workspace:^",
-    "@buckeyestudio/toh-brand": "workspace:^",
     "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-llm": "workspace:^",
+    "@buckeyestudio/toh-loader-smoke": "workspace:^",
+    "@buckeyestudio/toh-sdk-client": "workspace:^",
+    "@buckeyestudio/toh-sdk-protocol": "workspace:^",
     "@buckeyestudio/toh-session": "workspace:^",
+    "@buckeyestudio/toh-subagent": "workspace:^",
+    "@buckeyestudio/toh-subprocess": "workspace:^",
     "@buckeyestudio/cordis": "workspace:^"
   }
 }

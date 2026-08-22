@@ -2,6 +2,7 @@
   "name": "jsonrpc-agent-example",
   "private": true,
   "version": "0.0.1",
+  "author": "buckeyestudio",
   "type": "module",
   "description": "Unattended JSON-RPC coding-agent composition"
 }
