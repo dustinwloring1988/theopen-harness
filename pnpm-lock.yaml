@@ -16,8 +16,8 @@ importers:
   .:
     devDependencies:
       '@agentclientprotocol/sdk':
-        specifier: 0.25.1
-        version: 0.25.1(zod@4.4.3)
+        specifier: 1.3.0
+        version: 1.3.0(zod@4.4.3)
       '@buckeyestudio/toh-tool-session-query':
         specifier: workspace:^
         version: link:packages/session-query/tool-session-query
@@ -780,8 +780,8 @@ importers:
   packages/acp/acp:
     dependencies:
       '@agentclientprotocol/sdk':
-        specifier: 0.25.1
-        version: 0.25.1(zod@4.4.3)
+        specifier: 1.3.0
+        version: 1.3.0(zod@4.4.3)
       '@buckeyestudio/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
@@ -7388,8 +7388,8 @@ importers:
   packages/subagent/subagent-acp:
     dependencies:
       '@agentclientprotocol/sdk':
-        specifier: 0.25.1
-        version: 0.25.1(zod@4.4.3)
+        specifier: 1.3.0
+        version: 1.3.0(zod@4.4.3)
       '@buckeyestudio/schemastery':
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
@@ -8005,8 +8005,8 @@ importers:
   packages/test-support/acp-snapshot:
     dependencies:
       '@agentclientprotocol/sdk':
-        specifier: 0.25.1
-        version: 0.25.1(zod@4.4.3)
+        specifier: 1.3.0
+        version: 1.3.0(zod@4.4.3)
       '@buckeyestudio/toh-loader-smoke':
         specifier: workspace:*
         version: link:../loader-smoke
@@ -9191,8 +9191,8 @@ importers:
 
 packages:
 
-  '@agentclientprotocol/sdk@0.25.1':
-    resolution: {integrity: sha512-jx2rF3bdpGwZ75Q/meyEDLLbYmbtxk82Uh9hDCdxDvcEedBnNSF5hZAnL/kJR5VNz56JqwOmqnAqasC84MwwkQ==}
+  '@agentclientprotocol/sdk@1.3.0':
+    resolution: {integrity: sha512-i3h/efaeuMUFAO1HSfo97QZQnnvMd7wWBYtBsdL6UMZg3a78sk3Ffya5Xu7C7tYsXomXoDXJBAzQF2PcFKAhIQ==}
     peerDependencies:
       zod: ^3.25.0 || ^4.0.0
 
@@ -14665,7 +14665,7 @@ packages:
 
 snapshots:
 
-  '@agentclientprotocol/sdk@0.25.1(zod@4.4.3)':
+  '@agentclientprotocol/sdk@1.3.0(zod@4.4.3)':
     dependencies:
       zod: 4.4.3
 
