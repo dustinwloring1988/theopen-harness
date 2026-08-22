@@ -50,13 +50,13 @@
     "@buckeyestudio/cordis": "workspace:^",
     "@buckeyestudio/toh-invariants": "workspace:^",
     "@types/react": "~18.3.1",
-    "@types/react-dom": "~18.3.0",
+    "@types/react-dom": "~19.2.3",
     "@buckeyestudio/toh-client-runtime": "workspace:^",
     "@buckeyestudio/toh-client-ui-conversation": "workspace:^",
     "@buckeyestudio/toh-client-ui-primitives": "workspace:^",
     "@buckeyestudio/toh-client-ui-slots": "workspace:^",
     "react": "^18.2.0",
-    "react-dom": "^18.2.0",
+    "react-dom": "^19.2.8",
     "@buckeyestudio/toh-attachment": "workspace:^"
   },
   "files": [
