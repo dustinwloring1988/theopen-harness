@@ -135,9 +135,12 @@ export interface WireDelta {
   content?: string | null
   /**
    * Thinking-mode CoT. The FIRST chunk carries an empty string (must not
-   * open a reasoning block); absent entirely in non-thinking mode.
+   * open a reasoning block); absent entirely in non-thinking mode. Gateways
+   * (OpenRouter) spell the same payload `reasoning`.
    */
   reasoning_content?: string | null
+  /** Gateway-normalized alias of {@link WireDelta.reasoning_content}. */
+  reasoning?: string | null
   tool_calls?: WireToolCallDelta[]
 }
 

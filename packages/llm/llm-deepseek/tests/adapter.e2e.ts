@@ -36,6 +36,10 @@ const VISION = process.env.DEEPSEEK_E2E_MODEL_VISION ?? 'deepseek-v4-flash-visio
 const PUBLIC_BASE = 'https://api.deepseek.com'
 const VISION_E2E_ENABLED = process.env.DEEPSEEK_VISION_E2E === '1'
   && (process.env.DEEPSEEK_BASE_URL ?? PUBLIC_BASE) === PUBLIC_BASE
+// A compat gateway (base-URL override) fronts arbitrary models: whether the
+// upstream honors `thinking: disabled`, and how usage itemizes reasoning, are
+// provider behavior the adapter does not control.
+const GATEWAY_MODE = (process.env.DEEPSEEK_BASE_URL ?? PUBLIC_BASE) !== PUBLIC_BASE
 const TEST_PNG = Uint8Array.from(readFileSync(
   new URL('../../llm-pi-ai/tests/fixtures/qr-code.png', import.meta.url),
 ))
@@ -223,7 +227,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('llm-deepseek e2e (real API)', ()
     })
     expect(withoutThinking.finish.kind).toBe('stop')
     expect(textOf(withoutThinking).toLowerCase()).toContain('pong')
-    expect(withoutThinking.message.content.some(block => block.type === 'reasoning')).toBe(false)
+    if (!GATEWAY_MODE) expect(withoutThinking.message.content.some(block => block.type === 'reasoning')).toBe(false)
     expect(withoutThinking.usage?.inputTokens).toBeGreaterThan(0)
     expect(withoutThinking.usage?.outputTokens).toBeGreaterThan(0)
 
@@ -234,9 +238,11 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('llm-deepseek e2e (real API)', ()
       maxTokens: 2000,
     })
     expect(withThinking.finish.kind).toBe('stop')
-    expect(withThinking.message.content.some(block => block.type === 'reasoning')).toBe(true)
+    // Whether the gateway model emits visible reasoning for a given prompt is
+    // provider behavior; the field-spelling contract is covered by unit tests.
+    if (!GATEWAY_MODE) expect(withThinking.message.content.some(block => block.type === 'reasoning')).toBe(true)
     expect(textOf(withThinking)).toContain('9.8')
-    expect(withThinking.usage?.reasoningTokens).toBeGreaterThan(0)
+    if (!GATEWAY_MODE) expect(withThinking.usage?.reasoningTokens).toBeGreaterThan(0)
   })
 
   it.each(['high', 'max'] as const)(
@@ -294,7 +300,7 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('llm-deepseek e2e (real API)', ()
       maxTokens: 50,
     })
     expect(result.finish.kind).toBe('stop')
-    expect(result.message.content.some(block => block.type === 'reasoning')).toBe(false)
+    if (!GATEWAY_MODE) expect(result.message.content.some(block => block.type === 'reasoning')).toBe(false)
   })
 
   it('streams raw chunks in protocol order', async () => {

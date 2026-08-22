@@ -128,8 +128,9 @@ export async function* translate(payloads: AsyncIterable<string>): AsyncGenerato
       const delta = choice.delta
 
       // Reasoning first: thinking mode interleaves it before text. The
-      // empty-string first chunk must not open a block.
-      const reasoning = delta?.reasoning_content
+      // empty-string first chunk must not open a block. Compat gateways
+      // (OpenRouter) deliver the same payload spelled `reasoning`.
+      const reasoning = delta?.reasoning_content ?? delta?.reasoning
       if (typeof reasoning === 'string' && reasoning.length > 0) {
         if (!reasoningBlock) {
           reasoningBlock = open('reasoning')
