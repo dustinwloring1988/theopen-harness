@@ -14,7 +14,7 @@ SDK JSON-RPC 服务器把原始解码参数直接转型为类型化处理程序�
 
 `handleRequest` 分发的每个方法都会在类型化处理程序运行前，根据 [wire.ts](../../../../packages/sdk/server/src/wire.ts) 中的 zod schema 校验其参数。这些 schema 在两个表面重叠之处逐字段镜像 Web 网关的请求 schema 策略：必填字段有类型且非空、未知字段被剥离而非拒绝、`initialize.maxTokens` 为正的安全整数，并且 `session/prompt.contentBlocks` 只接受提示词侧的内容块——`text`，以及携带持久化附件引用（正整数尺寸）的核心 `image` 块。harness 产生的标签（`tool-call`、`tool-result`、`reasoning`）与未知标签都无法通过校验，因此除用户创作的内容外，任何东西都不能经由这一边界进入日志。
 
-校验失败抛出代码为 `-32602` 的 `JsonRpcResponseError`；消息指明方法名与每个未通过的字段，`data.issues` 携带结构化问题列表。行传输现在会把处理程序抛出的 `JsonRpcResponseError` 原样写回——code、message 与 `data`——而其余拒绝仍保持 `-32603` 映射。该协议类本就为客户端表示错误帧；服务器抛出它是同一表示在出站方向上的使用。
+校验失败抛出代码为 `-32602` 的 `JsonRpcResponseError`；消息指明方法名与每个未通过的字段，`data.issues` 携带结构化问题列表。行传输现在会把处理程序抛出的 `JsonRpcResponseError` 原样写回——code、message 与 `data`——只要其 `code` 为数值；错误码缺失或非数值时回退为不带 `data` 的 `-32603`，而无法通过 JSON 序列化的 `data` 会被从帧中丢弃，从而对端总能收到响应。其余拒绝仍保持 `-32603` 映射。该协议类本就为客户端表示错误帧；服务器抛出它是同一表示在出站方向上的使用。
 
 ## Alternatives considered
 
@@ -40,4 +40,4 @@ SDK JSON-RPC 服务器把原始解码参数直接转型为类型化处理程序�
 
 `packages/sdk/server/tests/plugin-apply.spec.ts` 经真实的注入 stdio 对发送伪造块，并固定 `-32602` 错误帧以及不存在任何 `session.event` 或 `session.status` 通知。
 
-`packages/sdk/protocol/tests/transport.spec.ts` 固定处理程序抛出的 `JsonRpcResponseError` 会往返其 code、message 与 `data`，而普通处理程序失败仍应答 `-32603`。
+`packages/sdk/protocol/tests/transport.spec.ts` 固定处理程序抛出的 `JsonRpcResponseError` 会往返其 code、message 与 `data`，而普通处理程序失败仍应答 `-32603`。它还固定了抛出无数值错误码的 `JsonRpcResponseError` 时回退为不带 `data` 的 `-32603`，以及 `data` 无法序列化（循环引用、`BigInt`）时从帧中丢弃的回退行为。

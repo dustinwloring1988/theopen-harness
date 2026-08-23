@@ -14,7 +14,7 @@ Malformed shapes also failed late and vaguely. `contentBlocks: {}` threw deep in
 
 Every method dispatched by `handleRequest` validates its params against a zod schema in [wire.ts](../../../../packages/sdk/server/src/wire.ts) before the typed handler runs. The schemas mirror the web gateway's request-schema policy field for field where the two surfaces overlap: required fields typed and non-empty, unknown fields stripped rather than rejected, `initialize.maxTokens` a positive safe integer, and `session/prompt.contentBlocks` restricted to prompt-side blocks only — `text`, and core `image` blocks carrying a durable attachment reference with positive integer dimensions. The harness-produced tags (`tool-call`, `tool-result`, `reasoning`) and unknown tags fail validation, so nothing but user-authored content can enter the log through this boundary.
 
-A failure throws `JsonRpcResponseError` with code `-32602`; the message names the method and each failing field, and `data.issues` carries the structured issue list. The line transport now writes a handler-thrown `JsonRpcResponseError` back verbatim — code, message, `data` — while every other rejection keeps the `-32603` mapping. The protocol class already represented an error frame for clients; servers throwing it is the same representation used in the outbound direction.
+A failure throws `JsonRpcResponseError` with code `-32602`; the message names the method and each failing field, and `data.issues` carries the structured issue list. The line transport now writes a handler-thrown `JsonRpcResponseError` back verbatim — code, message, `data` — when its `code` is numeric; a missing or non-numeric `code` falls back to `-32603` without `data`, and `data` that fails JSON serialization is dropped from the frame so the peer always receives a response. Every other rejection keeps the `-32603` mapping. The protocol class already represented an error frame for clients; servers throwing it is the same representation used in the outbound direction.
 
 ## Alternatives considered
 
@@ -40,4 +40,4 @@ Clients that never sent non-prompt blocks — both shipped SDKs normalize input 
 
 `packages/sdk/server/tests/plugin-apply.spec.ts` sends a forged block over the real injected stdio pair and pins the `-32602` error frame plus the absence of any `session.event` or `session.status` notification.
 
-`packages/sdk/protocol/tests/transport.spec.ts` pins that a handler-thrown `JsonRpcResponseError` round-trips its code, message, and `data` while plain handler failures still answer `-32603`.
+`packages/sdk/protocol/tests/transport.spec.ts` pins that a handler-thrown `JsonRpcResponseError` round-trips its code, message, and `data` while plain handler failures still answer `-32603`. It also pins the `-32603` no-data fallback for a thrown `JsonRpcResponseError` without a numeric code and the dropped-data fallback when `data` cannot serialize (circular reference, `BigInt`).

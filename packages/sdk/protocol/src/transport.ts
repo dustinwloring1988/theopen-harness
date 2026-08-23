@@ -61,8 +61,10 @@ interface PendingRequest {
  * Line-delimited endpoint over caller-owned streams. {@link start} attaches
  * listeners; {@link close} detaches them and rejects pending requests without
  * destroying the streams. Missing request handlers return `-32601`; handler
- * failures return `-32603`, except a thrown {@link JsonRpcResponseError}
- * whose wire code and `data` are written verbatim. Notifications without a
+ * failures return `-32603`, except a thrown {@link JsonRpcResponseError} with
+ * a numeric wire `code`, whose code, message, and `data` are written verbatim
+ * (a non-numeric or missing code falls back to `-32603` without `data`, and
+ * `data` that fails JSON serialization is dropped). Notifications without a
  * handler are dropped.
  */
 export class JsonRpcLineTransport implements JsonRpcTransportPeer {
@@ -101,7 +103,9 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
    * Install the request handler, replacing any prior handler.
    * @param handler - resolves to the response `result`; a rejection becomes an
    * error response carrying the message (`-32603`, or the thrown
-   * {@link JsonRpcResponseError}'s own wire `code` and data).
+   * {@link JsonRpcResponseError}'s own numeric wire `code` plus `data`;
+   * a non-numeric or missing `code` falls back to `-32603` without `data`,
+   * and `data` that fails JSON serialization is dropped).
    */
   onRequest(handler: RequestHandler): void {
     this.requestHandler = handler
@@ -265,6 +269,12 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
   }
 
   private writeError(id: JsonRpcId, code: number, message: string, data?: unknown): void {
+    if (data !== undefined && !isJsonSerializable(data)) {
+      // Unserializable data (circular references, BigInt) would throw inside
+      // write and leave the peer request without any response frame; drop it.
+      this.write({ jsonrpc: '2.0', id, error: { code, message } })
+      return
+    }
     this.write(data === undefined
       ? { jsonrpc: '2.0', id, error: { code, message } }
       : { jsonrpc: '2.0', id, error: { code, message, data } })
@@ -284,6 +294,16 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
 /** Normalize JSON-RPC `params` to a plain object (arrays and scalars collapse to `{}`). */
 function objectParams(params: unknown): Record<string, unknown> {
   return params && typeof params === 'object' && !Array.isArray(params) ? params as Record<string, unknown> : {}
+}
+
+/** Check whether a value survives JSON.stringify (circular references and BigInt do not). */
+function isJsonSerializable(value: unknown): boolean {
+  try {
+    JSON.stringify(value)
+  } catch {
+    return false
+  }
+  return true
 }
 
 /** Normalize an abort reason into the rejection Error (a non-Error reason is stringified). */

@@ -91,7 +91,47 @@ describe('JsonRpcLineTransport', () => {
     a.start()
     b.start()
 
-    await expect(b.request('explode', {})).rejects.toMatchObject({ code: -32603, message: 'no wire code' })
+    await expect(b.request('explode', {})).rejects.toMatchObject({ code: -32603, message: 'no wire code', data: undefined })
+
+    a.close()
+    b.close()
+  })
+
+  it('drops circular error data and still answers the peer with the error frame', async () => {
+    const { a, b } = transportPair()
+    const circular: Record<string, unknown> = {}
+    circular.self = circular
+    a.onRequest(async () => {
+      throw new JsonRpcResponseError(-32000, 'circular data', circular)
+    })
+    a.start()
+    b.start()
+
+    const failure = await b.request('explode-circular', {}).then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({ code: -32000, message: 'circular data', data: undefined })
+
+    a.close()
+    b.close()
+  })
+
+  it('drops BigInt error data and still answers the peer with the error frame', async () => {
+    const { a, b } = transportPair()
+    a.onRequest(async () => {
+      throw new JsonRpcResponseError(-32000, 'bigint data', { tokens: 1n })
+    })
+    a.start()
+    b.start()
+
+    const failure = await b.request('explode-bigint', {}).then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({ code: -32000, message: 'bigint data', data: undefined })
 
     a.close()
     b.close()
