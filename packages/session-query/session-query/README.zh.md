@@ -29,6 +29,8 @@
 
 `SessionQueryEngine.searchSessions(request, exec?)` 按匹配最强的事件对逻辑语料库分组；`searchEvents(request, exec?)` 搜索一个逻辑会话。这两个是服务仅有的抽象方法。两者都返回分页结果，其延续信息是由服务持有的带品牌 `SessionSearchCursor`；接受可选取消，并在不使用提供方专用数值分数的情况下提供摘录。事件搜索分页结果还携带来自与命中相同索引世代的克隆目标 header，使授权消费方可将策略绑定到此次载荷观察。搜索请求只接受事件元数据过滤器，因为字面文本过滤使用上文所述扫描路径。
 
+两个范围的结果排序都遵循同一份有序排名键约定，只在 [`src/ranking.ts`](src/ranking.ts) 定义一次：SQLite 后端从它生成 SQL 排序片段，浏览器开发 fixture 从它派生结果比较器，使两侧实现无法漂移。事件范围和每会话最强事件窗口使用不含 session-id 键的列表；该派生关系由共享定义在结构上保证。
+
 该包没有提供方协调器、回退实现或独立具体插件。具体服务后端继承已实现的读取、过滤和跟踪，同时负责全文观察、对账、排名、游标世代和查询执行；第一个实现是 [`@buckeyestudio/toh-session-query-sqlite`](../session-query-sqlite/README.zh.md)。
 
 `SessionQueryError.code` 是一个封闭联合，覆盖请求验证、缺失目标、格式错误的表层、来源冲突、持久化/索引失败、取消，以及无效或陈旧游标；精确字面值在 [`src/config.ts`](src/config.ts) 中定义。

@@ -1543,6 +1543,9 @@ importers:
       '@buckeyestudio/toh-session':
         specifier: workspace:^
         version: link:../../core/session
+      '@buckeyestudio/toh-session-query':
+        specifier: workspace:^
+        version: link:../../session-query/session-query
       '@buckeyestudio/toh-tools':
         specifier: workspace:^
         version: link:../../core/tools

@@ -79,6 +79,12 @@ describe('client bundle purity gate', () => {
     expect(resolveId('@buckeyestudio/toh-host-apiproxy/api')).toBeNull()
     expect(resolveId('@buckeyestudio/toh-session/surface')).toBeNull()
     expect(resolveId('@buckeyestudio/toh-brand')).toBeNull()
+    expect(resolveId('@buckeyestudio/toh-session-query/ranking')).toBeNull()
+  })
+
+  it('admits the pure session-search ranking submodule without admitting its package implementation', () => {
+    expect(() => resolveId('@buckeyestudio/toh-session-query')).toThrow(/purity/)
+    expect(() => resolveId('@buckeyestudio/toh-session-query/client')).toThrow(/purity/)
   })
 
   it('lets exact generated Remote contributions inline without admitting their package implementation', () => {
