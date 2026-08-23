@@ -114,6 +114,41 @@ describe('BoundedOutputBuffer bounds', () => {
     expect(buffer.snapshot()).toEqual({ text: '', truncated: false })
   })
 
+  it('skips newline indexing when no line cap is configured', () => {
+    const buffer = new BoundedOutputBuffer(64, undefined)
+    const legacy = new LegacyBoundedTextBuffer(64, undefined)
+    for (let index = 0; index < 25; index += 1) {
+      buffer.append('a\nb\n')
+      legacy.append('a\nb\n')
+    }
+    const internals = buffer as unknown as { newlinePages: number[][]; newlinesSeen: number }
+    expect(internals.newlinesSeen).toBe(0)
+    expect(internals.newlinePages).toEqual([])
+    expect(buffer.snapshot()).toEqual(legacy.snapshot())
+  })
+
+  it('addresses newlines across index pages while a line cap releases head data', () => {
+    const buffer = new BoundedOutputBuffer(4096, 2500)
+    const legacy = new LegacyBoundedTextBuffer(4096, 2500)
+    for (let index = 0; index < 60; index += 1) {
+      buffer.append('\n'.repeat(100))
+      legacy.append('\n'.repeat(100))
+      expect(buffer.snapshot()).toEqual(legacy.snapshot())
+    }
+    expect(buffer.consume()).toEqual(legacy.consume())
+  })
+
+  it('reclaims released newline index pages without disturbing line-cap addressing', () => {
+    const buffer = new BoundedOutputBuffer(4096, 50)
+    const legacy = new LegacyBoundedTextBuffer(4096, 50)
+    for (let index = 0; index < 80; index += 1) {
+      buffer.append('\n'.repeat(500))
+      legacy.append('\n'.repeat(500))
+      expect(buffer.snapshot()).toEqual(legacy.snapshot())
+    }
+    expect(buffer.consume()).toEqual(legacy.consume())
+  })
+
   it('compacts the newline index while line-heavy floods keep releasing head data', () => {
     const buffer = new BoundedOutputBuffer(4096, 3)
     const legacy = new LegacyBoundedTextBuffer(4096, 3)
@@ -192,5 +227,36 @@ describe('BoundedOutputBuffer steady-state cost', () => {
     expect(elapsedMs).toBeLessThan(10_000)
     expect(buffer.snapshot().truncated).toBe(true)
     expect(buffer.consume().delta.endsWith(chunk)).toBe(true)
+  })
+
+  it('keeps newline-dense appends flat at a 4 MiB cap with a line cap larger than the window', { timeout: 120_000 }, () => {
+    const maxBytes = 4 * 1024 * 1024
+    const buffer = new BoundedOutputBuffer(maxBytes, 20_000_000)
+    while (buffer.byteLength < maxBytes) buffer.append('\n')
+
+    const iterations = 2_500_000
+    let slowestAppend = 0n
+    const started = process.hrtime.bigint()
+    for (let index = 0; index < iterations; index += 1) {
+      const appendStarted = process.hrtime.bigint()
+      buffer.append('\n')
+      const took = process.hrtime.bigint() - appendStarted
+      if (took > slowestAppend) slowestAppend = took
+    }
+    const elapsedMs = Number(process.hrtime.bigint() - started) / 1e6
+
+    expect(buffer.byteLength).toBeLessThanOrEqual(maxBytes)
+    expect(elapsedMs).toBeLessThan(30_000)
+    // Releasing millions of indexed newlines must never move retained index
+    // entries within one append; such a stall would pause the event loop.
+    expect(Number(slowestAppend) / 1e6).toBeLessThan(50)
+
+    const releaseStarted = process.hrtime.bigint()
+    for (let index = 0; index < 40_000; index += 1) buffer.append('x'.repeat(64))
+    const releaseElapsedMs = Number(process.hrtime.bigint() - releaseStarted) / 1e6
+    expect(releaseElapsedMs).toBeLessThan(30_000)
+
+    expect(buffer.snapshot().truncated).toBe(true)
+    expect(buffer.consume().delta.startsWith('\n')).toBe(true)
   })
 })

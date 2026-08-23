@@ -5,6 +5,9 @@ import { Buffer } from 'node:buffer'
 /** Ring slack that lets the byte-cap cut advance to the next UTF-8 lead byte before releasing retained data. */
 const CODE_POINT_SLACK_BYTES = 3
 
+/** Newline offsets per index page so released head data is reclaimed without moving retained entries. */
+const NEWLINE_PAGE_ENTRIES = 1024
+
 /**
  * Retain the bounded tail of an appended text stream as UTF-8 bytes.
  *
@@ -29,12 +32,14 @@ export class BoundedOutputBuffer {
   /** Stream offset of the first retained byte within the current consume epoch. */
   private base = 0
   private droppedValue = false
-  /** Absolute stream offsets of every newline appended this epoch, in order. */
-  private newlineOffsets: number[] = []
-  /** Stream newline index of `newlineOffsets[0]`, advanced by compaction. */
+  /** Fixed-size FIFO pages of absolute stream offsets of the newlines appended this epoch. */
+  private newlinePages: number[][] = []
+  /** Page holding the oldest queued offset. */
+  private firstPage = 0
+  /** Consumed entry count at the start of `newlinePages[firstPage]`. */
+  private consumedInFirstPage = 0
+  /** Stream newline index of the oldest queued offset. */
   private newlineStart = 0
-  /** Count of leading `newlineOffsets` entries whose bytes are no longer retained. */
-  private newlineCursor = 0
   private newlinesSeen = 0
 
   constructor(
@@ -67,14 +72,11 @@ export class BoundedOutputBuffer {
       this.replaceWithChunkTail(bytes, streamStart)
       return
     }
-    let newlines = 0
-    for (let index = 0; index < bytes.length; index += 1) {
-      if ((bytes[index] as number) === 0x0a) {
-        this.newlineOffsets.push(streamStart + index)
-        newlines += 1
+    if (this.maxLines !== undefined) {
+      for (let index = 0; index < bytes.length; index += 1) {
+        if ((bytes[index] as number) === 0x0a) this.queueNewline(streamStart + index)
       }
     }
-    this.newlinesSeen += newlines
     const free = this.ring.length - this.size
     if (bytes.length > free) {
       const loss = bytes.length - free
@@ -88,7 +90,7 @@ export class BoundedOutputBuffer {
     bytes.copy(this.ring, writeAt, 0, headRun)
     bytes.copy(this.ring, 0, headRun)
     this.size += bytes.length
-    this.purgeReleasedNewlines()
+    this.releaseNewlinesBeforeCut()
     this.enforceLineCap()
     this.enforceByteCap()
   }
@@ -100,9 +102,10 @@ export class BoundedOutputBuffer {
     this.size = 0
     this.base = 0
     this.droppedValue = false
-    this.newlineOffsets = []
+    this.newlinePages = []
+    this.firstPage = 0
+    this.consumedInFirstPage = 0
     this.newlineStart = 0
-    this.newlineCursor = 0
     this.newlinesSeen = 0
     return { delta, truncated }
   }
@@ -121,10 +124,9 @@ export class BoundedOutputBuffer {
   private replaceWithChunkTail(bytes: Buffer, streamStart: number): void {
     let cut = bytes.length - this.maxBytes
     while (cut < bytes.length && ((bytes[cut] as number) & 0xc0) === 0x80) cut += 1
-    for (let index = 0; index < bytes.length; index += 1) {
-      if ((bytes[index] as number) === 0x0a) {
-        this.newlineOffsets.push(streamStart + index)
-        this.newlinesSeen += 1
+    if (this.maxLines !== undefined) {
+      for (let index = 0; index < bytes.length; index += 1) {
+        if ((bytes[index] as number) === 0x0a) this.queueNewline(streamStart + index)
       }
     }
     this.head = 0
@@ -132,7 +134,7 @@ export class BoundedOutputBuffer {
     this.size = bytes.length - cut
     this.base = streamStart + bytes.length - this.size
     this.droppedValue = true
-    this.purgeReleasedNewlines()
+    this.releaseNewlinesBeforeCut()
     this.enforceLineCap()
   }
 
@@ -140,10 +142,10 @@ export class BoundedOutputBuffer {
     if (this.maxLines === undefined) return
     const excessSegments = this.newlinesSeen + 1 - this.maxLines
     if (excessSegments <= 0) return
-    const target = excessSegments - 1 - this.newlineStart
-    // A target behind the cursor lies outside the window, and the window start
-    // already sits at or after that cut, so no further release is possible.
-    if (target >= this.newlineCursor) this.dropHeadTo((this.newlineOffsets[target] as number) + 1)
+    const target = excessSegments - 1
+    // A target behind the oldest queued newline lies outside the window, and the
+    // window start already sits at or after that cut, so no further release is possible.
+    if (target >= this.newlineStart) this.dropHeadTo(this.newlineOffsetAt(target) + 1)
     this.droppedValue = true
   }
 
@@ -168,19 +170,40 @@ export class BoundedOutputBuffer {
       this.size -= droppable
     }
     if (this.size === 0) this.head = 0
-    this.purgeReleasedNewlines()
+    this.releaseNewlinesBeforeCut()
   }
 
-  private purgeReleasedNewlines(): void {
-    while (this.newlineCursor < this.newlineOffsets.length
-      && (this.newlineOffsets[this.newlineCursor] as number) < this.base) {
-      this.newlineCursor += 1
+  private queueNewline(offset: number): void {
+    const last = this.newlinePages[this.newlinePages.length - 1]
+    if (last !== undefined && last.length < NEWLINE_PAGE_ENTRIES) last.push(offset)
+    else this.newlinePages.push([offset])
+    this.newlinesSeen += 1
+  }
+
+  private releaseNewlinesBeforeCut(): void {
+    if (this.maxLines === undefined) return
+    while (this.newlineStart < this.newlinesSeen) {
+      const frontPage = this.newlinePages[this.firstPage] as number[]
+      if ((frontPage[this.consumedInFirstPage] as number) >= this.base) break
+      this.consumedInFirstPage += 1
+      this.newlineStart += 1
+      if (this.consumedInFirstPage === frontPage.length) {
+        this.firstPage += 1
+        this.consumedInFirstPage = 0
+      }
     }
-    if (this.newlineCursor > 2048 && this.newlineCursor * 2 >= this.newlineOffsets.length) {
-      this.newlineOffsets.splice(0, this.newlineCursor)
-      this.newlineStart += this.newlineCursor
-      this.newlineCursor = 0
+    if (this.firstPage > 0 && this.firstPage * 2 >= this.newlinePages.length) {
+      this.newlinePages.splice(0, this.firstPage)
+      this.firstPage = 0
     }
+  }
+
+  private newlineOffsetAt(ordinal: number): number {
+    const firstPage = this.newlinePages[this.firstPage] as number[]
+    const later = ordinal - this.newlineStart - (firstPage.length - this.consumedInFirstPage)
+    if (later < 0) return firstPage[this.consumedInFirstPage + (ordinal - this.newlineStart)] as number
+    const page = this.newlinePages[this.firstPage + 1 + Math.floor(later / NEWLINE_PAGE_ENTRIES)] as number[]
+    return page[later % NEWLINE_PAGE_ENTRIES] as number
   }
 
   private decode(): string {
