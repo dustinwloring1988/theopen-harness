@@ -3,7 +3,7 @@ import { EventEmitter, once } from 'node:events'
 import { createServer, request as httpRequest } from 'node:http'
 import { PassThrough, Readable } from 'node:stream'
 import { Context } from '@buckeyestudio/cordis'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import type { AddressInfo } from 'node:net'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { ApiProxy } from '@buckeyestudio/toh-host-apiproxy/api'
@@ -397,11 +397,19 @@ describe('connection node half', () => {
       })
     }
 
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
     const failed = fakeResponse()
     await route.handler(fakePost({ host: 'harness.example' }, '/rpc/fail', {
       type: 'client-request', rpcId: 'rpc-fail', method: 'fail', payload: {},
     }), failed.response)
-    expect(failed.state).toMatchObject({ status: 500, body: 'handler failure: Error: handler broke' })
+    expect(failed.state.status).toBe(500)
+    const failureBody = String(failed.state.body)
+    expect(failureBody).toMatch(/^handler failure \(id [0-9a-f-]+\)$/)
+    expect(failureBody).not.toContain('handler broke')
+    const logged = String(errorSpy.mock.calls.at(-1)?.join(' '))
+    expect(logged).toContain(`handler failure (id ${failureBody.match(/\(id ([0-9a-f-]+)\)/)?.[1] ?? ''})`)
+    expect(logged).toContain('handler broke')
+    errorSpy.mockRestore()
 
     expect(() => connection.rpc.handle('/api', async () => ({ ok: true, value: null }), {
       authority: 'loopback',

@@ -1,5 +1,6 @@
 /** Host registry and HTTP adapter for generic Connection RPC channels. */
 
+import { randomUUID } from 'node:crypto'
 import { Context, Service } from '@buckeyestudio/cordis'
 import type { WebRoute } from '@buckeyestudio/toh-host-webserver'
 import {
@@ -181,7 +182,11 @@ function rpcFetchHandler(
         const result = await handler(endpoint, message.payload, request.signal)
         return fullResponse(message.rpcId, result)
       } catch (error) {
-        return new Response(`handler failure: ${String(error)}`, { status: 500 })
+        // Carrier-layer 500: String(error) may carry absolute host paths or adapter internals, so the
+        // response stays error-free and the full error is logged under a correlation id echoed in its place.
+        const failureId = randomUUID()
+        console.error(`[client-connection] handler failure (id ${failureId}):`, error)
+        return new Response(`handler failure (id ${failureId})`, { status: 500 })
       }
     },
   }
