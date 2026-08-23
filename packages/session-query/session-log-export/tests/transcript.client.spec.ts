@@ -161,6 +161,42 @@ describe('serializeSessionTranscript', () => {
     ].join('\n'))
   })
 
+  it('escapes tilde fences and spaced thematic breaks across leading-space depths', () => {
+    const hostile = [
+      '~~~',
+      'hidden between tilde fences',
+      '   ~~~js',
+      '~~~~~~',
+      '```~~~',
+      '- - -',
+      '  * * *',
+      '   _ _ _',
+      '~~ stays inline',
+      'plain trailing',
+    ].join('\n')
+    const document = serializeSessionTranscript({
+      sessionId: 'session-tilde' as never,
+      exportedAt: EXPORTED_AT,
+      nodes: [user(hostile), user('still exported')],
+    })
+    expect(document).toContain([
+      '## User',
+      '',
+      '\\~\\~\\~',
+      'hidden between tilde fences',
+      '   \\~\\~\\~js',
+      '\\~\\~\\~\\~\\~\\~',
+      '\\`\\`\\`~~~',
+      '\\- - -',
+      '  \\* * *',
+      '   \\_ _ _',
+      '~~ stays inline',
+      'plain trailing',
+    ].join('\n'))
+    expect(document).not.toMatch(/^ {0,3}[`~]{3,}/m)
+    expect(document).toContain('## User\n\nstill exported')
+  })
+
   it('lengthens a fence past any line-start backtick run inside verbatim tool output', () => {
     const document = serializeSessionTranscript({
       sessionId: 'session-fence-war' as never,

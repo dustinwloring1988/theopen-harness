@@ -283,8 +283,9 @@ function quoteNote(...lines: string[]): string {
 
 /**
  * Escape transcript prose so it cannot inject document structure: leading
- * backtick runs (fences), ATX headings, blockquotes, and full-line horizontal
- * rules lose their structural meaning while rendering literally.
+ * backtick or tilde runs (fences), ATX headings, blockquotes, and full-line
+ * horizontal rules (compact or spaced) lose their structural meaning while
+ * rendering literally.
  * @param text - multi-line transcript prose.
  * @returns escaped prose.
  */
@@ -298,15 +299,15 @@ function escapeProse(text: string): string {
  * @returns the escaped line.
  */
 function escapeLine(line: string): string {
-  const fence = /^( {0,3})(`{3,})/.exec(line)
+  const fence = /^( {0,3})(`{3,}|~{3,})/.exec(line)
   if (fence !== null) {
     const run = fence[2] ?? ''
-    const escapedRun = run.split('').map(() => '\\`').join('')
+    const escapedRun = run.split('').map(character => `\\${character}`).join('')
     return `${fence[1] ?? ''}${escapedRun}${line.slice(fence[0].length)}`
   }
   if (/^ {0,3}#{1,6}(\s|$)/.test(line)) return line.replace('#', '\\#')
   if (/^ {0,3}>/.test(line)) return line.replace('>', '\\>')
-  if (/^ {0,3}(-{3,}|={3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+  if (/^ {0,3}(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,}|={3,}\s*)$/.test(line)) {
     return line.replace(/^( {0,3})([-=*_])/, '$1\\$2')
   }
   return line
@@ -333,7 +334,8 @@ function excerpt(text: string): string {
 
 /**
  * Wrap verbatim content in a code fence long enough to survive any backtick
- * run inside it.
+ * run inside it; a closing fence reuses the opener's character, so embedded
+ * tilde runs stay inert.
  * @param language - fence info string.
  * @param content - verbatim fenced content.
  * @returns the fenced block.
