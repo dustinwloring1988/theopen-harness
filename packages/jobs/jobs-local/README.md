@@ -18,6 +18,8 @@ Service disposal closes listeners, cancels all live jobs, awaits their records, 
 
 Settlement is first-wins: the earliest terminal outcome — producer settlement, a rejected `done` contained as `failed`, or a teardown force-failure — records once, releases waiters, and notifies listeners once with per-listener containment. Pending waits mark the job reported before listeners run so completion reporters do not duplicate notices, and a teardown cancel marks it for the same reason: nothing will read a notice addressed to an owner being destroyed. Completion is the last thing a settlement announces, after the record is committed and the visible-set change is published, because a reporter may open a model turn synchronously and every other observer must already have seen the settled record.
 
+`wait()` validates its timeout before registering a resolver: the bound must be a positive finite number of milliseconds no greater than [`MAX_TIMER_DELAY_MS`](../../util/timeout/README.md). Anything beyond that rejects through the public `invalid wait timeout` error, leaving no waiter behind and the job untouched.
+
 Controllers and listeners are layered by the scope that registered them, in the tools-registry shape: a registration files into its registering context's scope, and a read unions the global layer with the owner's scope chain. One process-wide registry therefore answers per-owner questions per owner — `start()` refuses `background jobs unavailable: no job controller serves this agent (load @buckeyestudio/toh-tool-jobs in its composition)` for an owner whose own composition attaches none, however many other compositions attach theirs, and a settlement reaches only the listeners its owner's composition registered.
 
 ## Model Experience

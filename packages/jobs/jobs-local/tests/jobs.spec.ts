@@ -5,6 +5,7 @@ import AgentRegistry, { Inbox } from '@buckeyestudio/toh-agent'
 import type { Agent } from '@buckeyestudio/toh-agent'
 import { bindScopeParent, createScope, scopeOf } from '@buckeyestudio/toh-scope'
 import type { ScopeKey } from '@buckeyestudio/toh-scope'
+import { MAX_TIMER_DELAY_MS } from '@buckeyestudio/toh-timeout'
 import { JobId } from '@buckeyestudio/toh-jobs'
 import type { JobHooks, JobKind, JobOutcome, JobSnapshot, JobStart } from '@buckeyestudio/toh-jobs'
 import LocalJobRegistry, { type Config as JobsConfig } from '@buckeyestudio/toh-jobs-local'
@@ -502,13 +503,22 @@ describe('LocalJobRegistry.wait', () => {
     await expect(ctx.jobs.wait(id, Number.NaN)).rejects.toThrow('invalid wait timeout')
   })
 
-  it('rejects a timeout beyond the platform timer bound with the public error', async () => {
+  it('rejects a timeout just above the platform timer bound with the public error', async () => {
     const ctx = await harness()
     const id = ctx.jobs.start(producer().spec)
-    await expect(ctx.jobs.wait(id, Number.MAX_SAFE_INTEGER)).rejects.toThrow('invalid wait timeout')
+    await expect(ctx.jobs.wait(id, MAX_TIMER_DELAY_MS + 1)).rejects.toThrow('invalid wait timeout')
     // The rejected attempt leaves no waiter registered and the job untouched.
     expect(waitResolverCount(ctx, id)).toBe(0)
     expect(ctx.jobs.get(id)).toMatchObject({ status: 'running' })
+  })
+
+  it('accepts a wait at the exact platform timer bound against an already-settled job', async () => {
+    const ctx = await harness()
+    const p = producer()
+    const id = ctx.jobs.start(p.spec)
+    p.settle({ status: 'completed' })
+    await tick()
+    await expect(ctx.jobs.wait(id, MAX_TIMER_DELAY_MS)).resolves.toMatchObject({ status: 'completed', reported: true })
   })
 
   it('an aborted signal rejects the wait only — the job stays alive', async () => {
