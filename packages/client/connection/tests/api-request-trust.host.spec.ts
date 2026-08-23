@@ -1,7 +1,7 @@
 /** Behavior of the /api browser-trust fence (rebinding + cross-site defense). */
 
 import { describe, expect, it } from 'vitest'
-import { assertTrustedAuthority, isTrustedApiRequest } from '../src/api-request-trust.ts'
+import { assertTrustedAuthority, isLocalApiRequest, isTrustedApiRequest } from '../src/api-request-trust.ts'
 
 function request(headers: Record<string, string | undefined>): { headers: Record<string, string | undefined> } {
   return { headers }
@@ -104,5 +104,31 @@ describe('isTrustedApiRequest', () => {
     expect(isTrustedApiRequest(request({ ...markers, host: 'bad host' }), [])).toBe(false)
     expect(isTrustedApiRequest(request({ ...markers, host: '127.0.0.999' }), [])).toBe(false)
     expect(isTrustedApiRequest(request({ ...markers, host: '128.0.0.1' }), [])).toBe(false)
+  })
+})
+
+describe('isLocalApiRequest', () => {
+  it('releases the pin only when the loopback Host and the loopback socket peer agree', () => {
+    for (const remoteAddress of ['127.0.0.1', '::1', '::ffff:127.0.0.1']) {
+      expect(isLocalApiRequest(request({ host: 'localhost:3080' }), remoteAddress)).toBe(true)
+    }
+    // The issue-46 adversary: a non-browser LAN caller forges `Host:
+    // localhost` over plain HTTP; the header passes, the socket peer does not.
+    expect(isLocalApiRequest(request({ host: 'localhost' }), '192.168.1.5')).toBe(false)
+    // The inverse mismatch is refused too: a real loopback socket may not
+    // carry an untrusted authority past the empty-list fence.
+    expect(isLocalApiRequest(request({ host: 'harness.example' }), '127.0.0.1')).toBe(false)
+    // No reported peer fails closed.
+    expect(isLocalApiRequest(request({ host: 'localhost' }), undefined)).toBe(false)
+  })
+
+  it('keeps every browser fence rule in force beneath the pin', () => {
+    // Cross-site markers refuse the request even with a fully local shape.
+    expect(isLocalApiRequest(request({
+      host: 'localhost', 'sec-fetch-site': 'cross-site',
+    }), '127.0.0.1')).toBe(false)
+    expect(isLocalApiRequest(request({
+      host: '127.0.0.1', origin: 'http://evil.example',
+    }), '127.0.0.1')).toBe(false)
   })
 })
