@@ -20,6 +20,8 @@ export {
   HttpFetchProvider,
 } from './provider.ts'
 export type { HttpFetchLimits } from './provider.ts'
+export { createPrivateNetworkPolicy, isLocalNetworkHostname, systemHostResolver } from './private-network.ts'
+export type { BlockedRange, HostResolver, NonPublicRange, PrivateNetworkPolicy, PrivateNetworkPolicyOptions, ResolvedAddress } from './private-network.ts'
 
 /** Default `User-Agent`: an explicit product agent, never a browser disguise. */
 export const DEFAULT_USER_AGENT = 'theopen-harness/0.0.1 (+https://github.com/dustinwloring1988/theopen-harness)'
@@ -44,6 +46,8 @@ export interface Config {
   maxRedirects?: number
   /** `User-Agent` header sent on every request. */
   userAgent?: string
+  /** Permit loopback, private, and otherwise non-public destinations. Defaults to false. */
+  allowPrivateNetworks?: boolean
 }
 
 export const Config: z<Config> = z.object({
@@ -53,6 +57,7 @@ export const Config: z<Config> = z.object({
   timeoutMs: z.number().default(30_000),
   maxRedirects: z.number().default(5),
   userAgent: z.string().default(DEFAULT_USER_AGENT),
+  allowPrivateNetworks: z.boolean().default(false),
 })
 
 /** Complete config after schemastery applies every field default. */
@@ -96,6 +101,7 @@ export function apply(ctx: Context, config: Config): void {
     timeoutMs: resolved.timeoutMs,
     maxRedirects: resolved.maxRedirects,
     userAgent: resolved.userAgent,
+    allowPrivateNetworks: resolved.allowPrivateNetworks,
   }
   ctx.web.registerFetchProvider(new HttpFetchProvider(limits))
 }
