@@ -17,14 +17,14 @@
 包脚本会自行设置 `TOH_SNAPSHOT`（`pnpm run test:snapshot:record`、`pnpm run test:snapshot:refresh`、`pnpm run test:web:refresh`）。直接调用 vitest 时，请按 shell 分别设置——POSIX 环境变量前缀：
 
 ```sh
-TOH_SNAPSHOT=record pnpm exec vitest run --config vitest.snapshot.config.ts -t <scenario-name>
+TOH_SNAPSHOT=record pnpm exec vitest run --config vitest.snapshot.config.ts -t <scenario-name> --update
 ```
 
 PowerShell 不支持环境变量前缀形式；请显式设置并清除该变量：
 
 ```powershell
 $env:TOH_SNAPSHOT = 'record'
-pnpm exec vitest run --config vitest.snapshot.config.ts -t <scenario-name>
+pnpm exec vitest run --config vitest.snapshot.config.ts -t <scenario-name> --update
 Remove-Item Env:TOH_SNAPSHOT
 ```
 

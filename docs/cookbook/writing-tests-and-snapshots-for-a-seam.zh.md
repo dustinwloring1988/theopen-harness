@@ -52,7 +52,7 @@ PowerShell 没有 env-prefix 形式；直接调用 vitest 时请显式设置变�
 
 ```powershell
 $env:TOH_SNAPSHOT = 'record'
-pnpm exec vitest run --config vitest.snapshot.config.ts -t <scenario-name>
+pnpm exec vitest run --config vitest.snapshot.config.ts -t <scenario-name> --update
 Remove-Item Env:TOH_SNAPSHOT
 ```
 

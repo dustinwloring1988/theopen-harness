@@ -6,7 +6,7 @@ Status: implemented
 
 ## 问题
 
-一次文档审计（#67）发现了四组缺口。手工维护的清单在没有任何门禁的情况下发生了漂移：根目录 `AGENTS.md` 记录的两个包组名称已不存在，且遗漏了十六个包组和 `apps/`；[`packages/README.md`](../../../../packages/README.zh.md) 的表格遗漏了生成模块图早已列出的两个组。用户文档重定向到一个只在网站上可解析的 quickstart 路由，GitHub 读者会走进死胡同。术语表只有三条入站链接，而三份文档却在行内重复定义它的术语。Cordis 入门的分发模式表遗漏了 vendor 中的第五种模式（`bail`，见 `vendor/cordis/src/events.ts`）。快照录制命令只有 POSIX 环境变量前缀形式，在本仓库的开发平台 PowerShell 上原样执行必然失败。测试策略承载了规则却没有操作演练。
+一次文档审计（#67）发现了四组缺口。手工维护的清单在没有任何门禁的情况下发生了漂移：根目录 `AGENTS.md` 记录的两个包组名称已不存在，且遗漏了十六个包组和 `apps/`；[`packages/README.zh.md`](../../../../packages/README.zh.md) 的表格遗漏了生成模块图早已列出的两个组。用户文档重定向到一个只在网站上可解析的 quickstart 路由，GitHub 读者会走进死胡同。术语表只有三条入站链接，而三份文档却在行内重复定义它的术语。Cordis 入门的分发模式表遗漏了 vendor 中的第五种模式（`bail`，见 `vendor/cordis/src/events.ts`）。快照录制命令只有 POSIX 环境变量前缀形式，在本仓库的开发平台 PowerShell 上原样执行必然失败。测试策略承载了规则却没有操作演练。
 
 ## 决策
 

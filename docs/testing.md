@@ -17,14 +17,14 @@ How this repo tests, tier by tier, and the rules that keep a green suite meaning
 Package scripts set `TOH_SNAPSHOT` themselves (`pnpm run test:snapshot:record`, `pnpm run test:snapshot:refresh`, `pnpm run test:web:refresh`). When calling vitest directly, set it per shell — POSIX env prefix:
 
 ```sh
-TOH_SNAPSHOT=record pnpm exec vitest run --config vitest.snapshot.config.ts -t <scenario-name>
+TOH_SNAPSHOT=record pnpm exec vitest run --config vitest.snapshot.config.ts -t <scenario-name> --update
 ```
 
 PowerShell does not support the env-prefix form; set and clear the variable explicitly:
 
 ```powershell
 $env:TOH_SNAPSHOT = 'record'
-pnpm exec vitest run --config vitest.snapshot.config.ts -t <scenario-name>
+pnpm exec vitest run --config vitest.snapshot.config.ts -t <scenario-name> --update
 Remove-Item Env:TOH_SNAPSHOT
 ```
 

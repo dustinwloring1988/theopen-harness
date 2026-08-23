@@ -52,7 +52,7 @@ PowerShell has no env-prefix form; set the variable explicitly when calling vite
 
 ```powershell
 $env:TOH_SNAPSHOT = 'record'
-pnpm exec vitest run --config vitest.snapshot.config.ts -t <scenario-name>
+pnpm exec vitest run --config vitest.snapshot.config.ts -t <scenario-name> --update
 Remove-Item Env:TOH_SNAPSHOT
 ```
 
