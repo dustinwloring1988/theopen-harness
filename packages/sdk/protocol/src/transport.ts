@@ -14,7 +14,11 @@ type JsonRpcId = string | number
 type RequestHandler = (method: string, params: Record<string, unknown>) => Promise<unknown>
 type NotificationHandler = (method: string, params: Record<string, unknown>) => void
 
-/** A JSON-RPC error response, preserving the wire `code` and optional `data`. */
+/**
+ * A JSON-RPC error response, preserving the wire `code` and optional `data`.
+ * Handlers throw it to emit a specific error frame; clients receive it from
+ * peer error frames.
+ */
 export class JsonRpcResponseError extends Error {
   /**
    * @param code - the wire error code, or `undefined` when the peer sent none.
@@ -57,7 +61,9 @@ interface PendingRequest {
  * Line-delimited endpoint over caller-owned streams. {@link start} attaches
  * listeners; {@link close} detaches them and rejects pending requests without
  * destroying the streams. Missing request handlers return `-32601`; handler
- * failures return `-32603`. Notifications without a handler are dropped.
+ * failures return `-32603`, except a thrown {@link JsonRpcResponseError}
+ * whose wire code and `data` are written verbatim. Notifications without a
+ * handler are dropped.
  */
 export class JsonRpcLineTransport implements JsonRpcTransportPeer {
   private buffer = ''
@@ -93,8 +99,9 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
 
   /**
    * Install the request handler, replacing any prior handler.
-   * @param handler - resolves to the response `result`; a rejection becomes a
-   * `-32603` error response carrying the message.
+   * @param handler - resolves to the response `result`; a rejection becomes an
+   * error response carrying the message (`-32603`, or the thrown
+   * {@link JsonRpcResponseError}'s own wire `code` and data).
    */
   onRequest(handler: RequestHandler): void {
     this.requestHandler = handler
@@ -233,6 +240,10 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
       const result = await handler(method, params)
       this.write({ jsonrpc: '2.0', id, result })
     } catch (error) {
+      if (error instanceof JsonRpcResponseError && typeof error.code === 'number') {
+        this.writeError(id, error.code, error.message, error.data)
+        return
+      }
       this.writeError(id, -32603, error instanceof Error ? error.message : String(error))
     }
   }
@@ -253,8 +264,10 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
     pending.resolve(frame.result)
   }
 
-  private writeError(id: JsonRpcId, code: number, message: string): void {
-    this.write({ jsonrpc: '2.0', id, error: { code, message } })
+  private writeError(id: JsonRpcId, code: number, message: string, data?: unknown): void {
+    this.write(data === undefined
+      ? { jsonrpc: '2.0', id, error: { code, message } }
+      : { jsonrpc: '2.0', id, error: { code, message, data } })
   }
 
   private write(message: Record<string, unknown>): void {

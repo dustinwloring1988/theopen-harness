@@ -60,6 +60,43 @@ describe('JsonRpcLineTransport', () => {
     b.close()
   })
 
+  it('writes a handler-thrown JsonRpcResponseError back verbatim with its wire code and data', async () => {
+    const { a, b } = transportPair()
+    a.onRequest(async () => {
+      throw new JsonRpcResponseError(-32602, 'invalid params for session/prompt', { issues: [{ path: ['contentBlocks'], message: 'invalid input' }] })
+    })
+    a.start()
+    b.start()
+
+    const failure = await b.request('session/prompt', {}).then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({
+      code: -32602,
+      message: 'invalid params for session/prompt',
+      data: { issues: [{ path: ['contentBlocks'], message: 'invalid input' }] },
+    })
+
+    a.close()
+    b.close()
+  })
+
+  it('maps a thrown JsonRpcResponseError without a wire code to the internal-error fallback', async () => {
+    const { a, b } = transportPair()
+    a.onRequest(async () => {
+      throw new JsonRpcResponseError(undefined, 'no wire code')
+    })
+    a.start()
+    b.start()
+
+    await expect(b.request('explode', {})).rejects.toMatchObject({ code: -32603, message: 'no wire code' })
+
+    a.close()
+    b.close()
+  })
+
   it('rejects immediately on a pre-aborted signal without registering pending state', async () => {
     const { b } = transportPair()
     b.start()

@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-23-sdk-jsonrpc-wire-param-validation.md
+2026-08-23-sdk-jsonrpc-wire-param-validation.md: a81424d23bf7e43b963f72a27cd0d912a77df8d7
+2026-08-23-sdk-jsonrpc-wire-param-validation.zh.md: 4b48f042018edd9a0ad883b367263d4c941edbdf
