@@ -117,14 +117,30 @@ const BOOTSTRAP_NAMES = new Set([
 const BOOTSTRAP_PREFIXES = ['TOH_', 'XDG_', 'DYLD_', 'BASH_FUNC_']
 
 /**
+ * Exact `TOH_*` names a discovered file may set despite the namespace denial:
+ * the web seam's provider selections. They choose among providers the mounted
+ * composition already registered and decide nothing about how this process
+ * launches, where instructions load from, or how the network is reached
+ * ([exception rationale](../../../../.agents/notes/implemented/architecture/2026-08-23-file-settable-provider-selections.md)).
+ */
+const FILE_SETTABLE_TOH_NAMES: ReadonlySet<string> = new Set([
+  'TOH_WEB_SEARCH_PROVIDER',
+  'TOH_WEB_FETCH_PROVIDER',
+])
+
+/**
  * Whether a variable may come only from the inherited process environment
- * because it changes process, runtime, VCS, or network bootstrap.
+ * because it changes process, runtime, VCS, or network bootstrap. The two
+ * {@link FILE_SETTABLE_TOH_NAMES} selections are the namespace's only
+ * file-settable names.
  * @param name - the variable name.
  * @returns true when only the inherited environment may supply it.
  */
 function isBootstrapOnly(name: string): boolean {
   const upper = name.toUpperCase()
-  return BOOTSTRAP_NAMES.has(upper) || BOOTSTRAP_PREFIXES.some(prefix => upper.startsWith(prefix))
+  if (BOOTSTRAP_NAMES.has(upper)) return true
+  if (FILE_SETTABLE_TOH_NAMES.has(upper)) return false
+  return BOOTSTRAP_PREFIXES.some(prefix => upper.startsWith(prefix))
 }
 
 /**
