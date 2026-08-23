@@ -245,6 +245,13 @@ def verify_wheel(
             raise RuntimeError(
                 f"{wheel} has license files {license_files}, expected {expected_license_files}"
             )
+        # PEP 561: without this marker, type checkers ignore the inline
+        # annotations the packages ship.
+        expected_marker = (
+            "theopen_harness/py.typed" if package == "sdk" else "theopen_harness_runtime/py.typed"
+        )
+        if expected_marker not in archive.namelist():
+            raise RuntimeError(f"{wheel} is missing the PEP 561 marker {expected_marker}")
         runtime_files = [
             name for name in archive.namelist() if "/runtime/toh-jsonrpc-agent-pkg-" in name
         ]
