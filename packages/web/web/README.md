@@ -28,7 +28,7 @@ Providers register **capabilities**, not tools. `toh-tool-web` is the only owner
 
 ## Selection
 
-Selection never depends on registration, config, or HMR order. A capability has an explicit provider id (config `searchProvider`/`fetchProvider`, or env `$TOH_WEB_SEARCH_PROVIDER`/`$TOH_WEB_FETCH_PROVIDER` feeding the same fields), or auto-selects when exactly one usable provider is registered. `search()`/`fetch()` resolve the provider at execution time:
+Selection never depends on registration, config, or HMR order. A capability has an explicit provider id (config `searchProvider`/`fetchProvider`, or env `$TOH_WEB_SEARCH_PROVIDER`/`$TOH_WEB_FETCH_PROVIDER` feeding the same fields through the launch-environment snapshot, so project/user `.env` values participate with lower precedence than explicit config), or auto-selects when exactly one usable provider is registered. `search()`/`fetch()` resolve the provider at execution time:
 
 | Situation | Execution |
 |---|---|
