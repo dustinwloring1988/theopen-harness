@@ -923,6 +923,109 @@ describe('HarnessSdkJsonRpcServer', () => {
     expect(disposed).toEqual([1])
   })
 
+  it('keeps shutdown pending while an initialization mount is unresolved', async () => {
+    const disposed: number[] = []
+    const mount = Promise.withResolvers<{ dispose: () => Promise<void> }>()
+    const plugin = vi.fn(() => mount.promise)
+    const server = new HarnessSdkJsonRpcServer(makeAdapterContext(plugin), new FakeTransport())
+
+    const initialization = server.initialize({ cwd: '.', provider: 'deepseek-official', model: 'model' })
+    await vi.waitFor(() => { expect(plugin).toHaveBeenCalledTimes(1) })
+    const shutdownTask = server.shutdown()
+    let shutdownSettled = false
+    void shutdownTask.then(() => { shutdownSettled = true }, () => { shutdownSettled = true })
+
+    // Shutdown must not finish its teardown while the handshake it accepted is
+    // still mounting; otherwise a live provider survives past its resolution.
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(shutdownSettled).toBe(false)
+
+    mount.resolve(adapterFiber(1, disposed))
+    await expect(initialization).rejects.toThrow('SDK server is shutting down')
+    await shutdownTask
+    expect(shutdownSettled).toBe(true)
+    expect(disposed).toEqual([1])
+    expect(plugin).toHaveBeenCalledTimes(1)
+  })
+
+  it('awaits an in-flight superseded disposal before completing shutdown', async () => {
+    const disposed: number[] = []
+    const disposalGate = Promise.withResolvers<'released'>()
+    const firstFiber = { dispose: vi.fn(() => disposalGate.promise) }
+    let mounts = 0
+    const plugin = vi.fn(async () => {
+      mounts += 1
+      return mounts === 1 ? firstFiber : adapterFiber(2, disposed)
+    })
+    const server = new HarnessSdkJsonRpcServer(makeAdapterContext(plugin), new FakeTransport())
+    const params = { cwd: '.', provider: 'deepseek-official', model: 'model' }
+
+    await server.initialize(params)
+    const second = server.initialize(params)
+    await vi.waitFor(() => { expect(firstFiber.dispose).toHaveBeenCalledOnce() })
+
+    const shutdownTask = server.shutdown()
+    let shutdownSettled = false
+    void shutdownTask.then(() => { shutdownSettled = true }, () => { shutdownSettled = true })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    // The sweep cannot observe a fiber that initialization already removed
+    // from llmFiber, so completion waits for the tracked disposal attempt.
+    expect(shutdownSettled).toBe(false)
+
+    disposalGate.resolve('released')
+    await expect(second).rejects.toThrow('SDK server is shutting down')
+    await shutdownTask
+    expect(firstFiber.dispose).toHaveBeenCalledOnce()
+    expect(disposed).toEqual([2])
+  })
+
+  it('retains cleanup ownership when superseded disposal fails so shutdown retries and reports it', async () => {
+    let attempts = 0
+    const failingDispose = vi.fn(async () => {
+      attempts += 1
+      throw new Error(`superseded disposal failed ${attempts}`)
+    })
+    const plugin = vi.fn(async () => ({ dispose: failingDispose }))
+    const server = new HarnessSdkJsonRpcServer(makeAdapterContext(plugin), new FakeTransport())
+    const params = { cwd: '.', provider: 'deepseek-official', model: 'model' }
+
+    await server.initialize(params)
+    await expect(server.initialize(params)).rejects.toThrow('superseded disposal failed 1')
+    // The failed attempt keeps its cleanup owner instead of leaving the live
+    // adapter unreachable for shutdown.
+    expect(failingDispose).toHaveBeenCalledOnce()
+
+    await expect(server.shutdown()).rejects.toThrow('superseded disposal failed 2')
+    expect(failingDispose).toHaveBeenCalledTimes(2)
+    expect(plugin).toHaveBeenCalledTimes(1)
+  })
+
+  it('disposes the server-mounted fallback when a switch selects another registered provider', async () => {
+    const disposed: number[] = []
+    let mounts = 0
+    const plugin = vi.fn(async () => adapterFiber(++mounts, disposed))
+    const ctx = {
+      on: vi.fn(() => () => undefined),
+      agents: { create: vi.fn(), get: () => undefined },
+      get: () => ({ listProviders: () => [{ id: 'other', name: 'Other' }] }),
+      plugin,
+    } as unknown as Context
+    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+
+    await server.initialize({ cwd: '.', provider: 'deepseek-official', model: 'model' })
+    // No owner existed for deepseek-official, so the fallback mounted.
+    expect(plugin).toHaveBeenCalledTimes(1)
+
+    await server.initialize({ cwd: '.', provider: 'other', model: 'model' })
+    // 'other' already has an adapter, so no replacement mounts, but the
+    // obsolete server-mounted fallback must not stay live until shutdown.
+    expect(plugin).toHaveBeenCalledTimes(1)
+    expect(disposed).toEqual([1])
+
+    await server.shutdown()
+    expect(disposed).toEqual([1])
+  })
+
   it('refuses initialize after shutdown without mounting another adapter', async () => {
     const plugin = vi.fn(async () => adapterFiber(1, []))
     const server = new HarnessSdkJsonRpcServer(makeAdapterContext(plugin), new FakeTransport())
