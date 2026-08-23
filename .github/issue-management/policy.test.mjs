@@ -189,6 +189,16 @@ test('does not treat pull request references as Issue associations', () => {
   })
 })
 
+test('reports unresolved reference numbers as validation errors, not crashes', () => {
+  const errors = validatePullRequest({
+    ...reviewedPull(['kind/feature', 'area/web']),
+    references: { all: [46, 1123], resolving: [46], related: [1123] },
+    issues: new Map(),
+  })
+  assert.ok(errors.includes('#46 不是同仓库 Issue'))
+  assert.ok(errors.includes('#1123 不是同仓库 Issue'))
+})
+
 test('allows informational references without cross-object constraints', () => {
   const errors = validatePullRequest({
     isDraft: false,

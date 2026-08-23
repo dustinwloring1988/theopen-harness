@@ -399,7 +399,9 @@ async function api(path, options = {}) {
   if (options.allow404 && response.status === 404) return null
   if (!response.ok) {
     const body = await response.text()
-    throw new Error(`${options.method ?? 'GET'} ${path}: ${response.status} ${body}`)
+    const error = new Error(`${options.method ?? 'GET'} ${path}: ${response.status} ${body}`)
+    error.status = response.status
+    throw error
   }
   if (response.status === 204) return null
   return response.json()
@@ -415,38 +417,30 @@ async function graphql(query, variables) {
   return result.data
 }
 
-async function issueSnapshot(number, status = undefined) {
-  const issue = await api(`/repos/${config.organization}/${config.repository}/issues/${number}`)
-  if (issue.pull_request) return null
-  const values = await api(
-    `/repos/${config.organization}/${config.repository}/issues/${number}/issue-field-values?per_page=100`,
-  )
-  const field = (name) => values.find((value) => value.issue_field_name === name)
-  return {
-    number,
-    nodeId: issue.node_id,
-    title: issue.title,
-    body: issue.body ?? '',
-    assignees: issue.assignees.map((assignee) => assignee.login),
-    labels: issue.labels.map((label) => label.name),
-    type: issue.type?.name ?? null,
-    priority: field(config.priorityField)?.single_select_option?.name ?? null,
-    status: status === undefined ? await projectStatus(number) : status,
-    state: issue.state,
-    stateReason: issue.state_reason ?? null,
+let ownerKindCache = null
+
+// issue-field-values REST 是组织专属端点；用户账号仓库必须改用 Projects v2 GraphQL，
+// 而 GraphQL 的根字段按 owner 类型分为 user(login:) 与 organization(login:)。
+async function repositoryOwnerKind() {
+  if (ownerKindCache === null) {
+    const repository = await api(`/repos/${config.organization}/${config.repository}`)
+    ownerKindCache = repository.owner?.type === 'User' ? 'user' : 'organization'
   }
+  return ownerKindCache
 }
 
 async function projectContext(number, includeStatusActor = false) {
+  const ownerKind = await repositoryOwnerKind()
   const data = await graphql(
     `query(
-      $organization: String!
+      $owner: String!
       $repository: String!
       $number: Int!
       $project: Int!
       $includeStatusActor: Boolean!
+      $priorityField: String!
     ) {
-      organization(login: $organization) {
+      ${ownerKind}(login: $owner) {
         projectV2(number: $project) {
           id
           title
@@ -457,7 +451,7 @@ async function projectContext(number, includeStatusActor = false) {
           }
         }
       }
-      repository(owner: $organization, name: $repository) {
+      repository(owner: $owner, name: $repository) {
         issue(number: $number) {
           id
           timelineItems(last: 100, itemTypes: [PROJECT_V2_ITEM_STATUS_CHANGED_EVENT])
@@ -477,20 +471,24 @@ async function projectContext(number, includeStatusActor = false) {
               fieldValueByName(name: "Status") {
                 ... on ProjectV2ItemFieldSingleSelectValue { name optionId }
               }
+              priority: fieldValueByName(name: $priorityField) {
+                ... on ProjectV2ItemFieldSingleSelectValue { name optionId }
+              }
             }
           }
         }
       }
     }`,
     {
-      organization: config.organization,
+      owner: config.organization,
       repository: config.repository,
       number,
       project: config.projectNumber,
       includeStatusActor,
+      priorityField: config.priorityField,
     },
   )
-  const project = data.organization?.projectV2
+  const project = data[ownerKind]?.projectV2
   const issue = data.repository?.issue
   if (!project || project.title !== config.projectTitle) throw new Error('目标 Project 不存在或标题不匹配')
   if (!issue) throw new Error(`#${number} 不存在`)
@@ -507,9 +505,25 @@ async function projectContext(number, includeStatusActor = false) {
   return { project, issue, statusField, item, statusActor }
 }
 
-async function projectStatus(number) {
+async function issueSnapshot(number) {
+  const issue = await api(`/repos/${config.organization}/${config.repository}/issues/${number}`, {
+    allow404: true,
+  })
+  if (!issue || issue.pull_request) return null
   const context = await projectContext(number)
-  return context.item?.fieldValueByName?.name ?? null
+  return {
+    number,
+    nodeId: issue.node_id,
+    title: issue.title,
+    body: issue.body ?? '',
+    assignees: issue.assignees.map((assignee) => assignee.login),
+    labels: issue.labels.map((label) => label.name),
+    type: issue.type?.name ?? null,
+    priority: context.item?.priority?.name ?? null,
+    status: context.item?.fieldValueByName?.name ?? null,
+    state: issue.state,
+    stateReason: issue.state_reason ?? null,
+  }
 }
 
 async function ensureProjectItem(number) {
@@ -587,12 +601,22 @@ async function upsertAudit(number, errors) {
   }
 }
 
-async function auditIssue(number, extraErrors = [], status = undefined) {
-  const issue = await issueSnapshot(number, status)
+async function auditIssue(number, extraErrors = []) {
+  const issue = await issueSnapshot(number)
   if (!issue) return []
   const errors = [...extraErrors, ...validateIssue(issue)]
   await upsertAudit(number, errors)
   return errors
+}
+
+async function resolveReferenceIssue(number) {
+  try {
+    return await issueSnapshot(number)
+  } catch (error) {
+    if (error.status !== 404) throw error
+    // 已删除或不可读的引用交由 validatePullRequest 报「#N 不是同仓库 Issue」，而非让整个检查崩溃。
+  }
+  return null
 }
 
 async function resolvingReferencesSnapshot(number, pull) {
@@ -602,7 +626,7 @@ async function resolvingReferencesSnapshot(number, pull) {
   })
   const issues = new Map()
   for (const issueNumber of references.all) {
-    const issue = await issueSnapshot(issueNumber, null)
+    const issue = await resolveReferenceIssue(issueNumber)
     if (issue) issues.set(issueNumber, issue)
   }
   return {
