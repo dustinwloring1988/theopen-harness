@@ -145,6 +145,16 @@ function handlerFor(schema: object): () => Promise<void> {
   throw new Error('notification handler not registered')
 }
 
+/** Extract the most recently registered notification handler for one exact SDK schema object. */
+function latestHandlerFor(schema: object): () => Promise<void> {
+  let latest: (() => Promise<void>) | undefined
+  for (const call of mockSetNotificationHandler.mock.calls as unknown[][]) {
+    if (call[0] === schema) latest = call[1] as () => Promise<void>
+  }
+  if (latest === undefined) throw new Error('notification handler not registered')
+  return latest
+}
+
 // ---- Policy resolution ----
 
 describe('resolvePromptsPolicy', () => {
@@ -254,6 +264,34 @@ describe('prompts bridging lifecycle', () => {
     expect(names).toContain('page-two')
   })
 
+  it('drains an empty-string continuation cursor into exactly one more page', async () => {
+    mockListPrompts.mockReset()
+    mockListPrompts
+      .mockResolvedValueOnce({ prompts: [{ name: 'page_one' }], nextCursor: '' })
+      .mockResolvedValueOnce({ prompts: [{ name: 'page_two' }], nextCursor: undefined })
+
+    await apply(ctx, stdioConfig({ prompts: { enabled: true } }))
+
+    const names = await skillNames(ctx)
+    expect(names).toContain('page-one')
+    expect(names).toContain('page-two')
+    expect(mockListPrompts).toHaveBeenCalledTimes(2)
+  })
+
+  it('contains the fetch when a server echoes the same cursor forever', async () => {
+    const { warns } = captureLogs(ctx)
+    mockListPrompts.mockReset()
+    mockListPrompts
+      .mockResolvedValueOnce({ prompts: [{ name: 'page_one' }], nextCursor: '' })
+      .mockResolvedValue({ prompts: [{ name: 'page_two' }], nextCursor: '' })
+
+    await apply(ctx, stdioConfig({ prompts: { enabled: true } }))
+
+    expect(warns.some(line => line.includes('repeated a prompts/list cursor'))).toBe(true)
+    await expect(ctx.skills.list()).resolves.toEqual([])
+    expect(ctx.tools.get('mcp__srv__remote')).toBeDefined()
+  })
+
   it('falls back to a generated description when the server omits one', async () => {
     mockListPrompts.mockResolvedValue(listingPrompts({ name: 'bare_prompt' }))
     await apply(ctx, stdioConfig({ prompts: { enabled: true } }))
@@ -329,6 +367,61 @@ describe('prompts bridging lifecycle', () => {
     await vi.waitFor(async () => {
       await expect(skillNames(ctx)).resolves.toEqual(['revived-prompt'])
     })
+  })
+
+  it('refuses lookups while a reconnecting generation re-lists prompts and recovers after commit', async () => {
+    await apply(ctx, stdioConfig({ prompts: { enabled: true } }))
+    expect(await skillNames(ctx)).toEqual(['code-review'])
+    expect(mockGetPrompt).not.toHaveBeenCalled()
+
+    let releaseList: (() => void) | undefined
+    const listed = new Promise<void>((resolve) => { releaseList = resolve })
+    mockListPrompts.mockImplementationOnce(async () => {
+      await listed
+      return listingPrompts({ name: 'revived_prompt' })
+    })
+
+    // The recovered generation starts its prompt sync; the live generation is
+    // now newer than the still-published catalog.
+    instances[0]!.onclose?.()
+    await vi.waitFor(() => { expect(mockListPrompts).toHaveBeenCalledTimes(2) })
+
+    // The old catalog's raw name must not reach the generation that never
+    // listed it: the lookup fails closed until the new catalog commits.
+    await expect(ctx.skills.get('code-review')).resolves.toBeUndefined()
+    expect(mockGetPrompt).not.toHaveBeenCalled()
+
+    releaseList!()
+    await vi.waitFor(async () => {
+      await expect(skillNames(ctx)).resolves.toEqual(['revived-prompt'])
+    })
+    const definition = await ctx.skills.get('revived-prompt')
+    expect(definition).toBeDefined()
+    expect(mockGetPrompt).toHaveBeenCalledWith({ name: 'revived_prompt' })
+  })
+
+  it('keeps a failed re-sync unloadable until the next good sync commits', async () => {
+    const { warns } = captureLogs(ctx)
+    await apply(ctx, stdioConfig({ prompts: { enabled: true } }))
+    expect(await skillNames(ctx)).toEqual(['code-review'])
+
+    mockListPrompts.mockRejectedValueOnce(new Error('server reset mid-list'))
+    instances[0]!.onclose?.()
+    await vi.waitFor(() => {
+      expect(warns.some(line => line.includes('prompt synchronization failed'))).toBe(true)
+    })
+
+    // The stale catalog stays listed for discovery, but its candidates cannot
+    // load through the newer generation they were never listed by.
+    expect(await skillNames(ctx)).toEqual(['code-review'])
+    await expect(ctx.skills.get('code-review')).resolves.toBeUndefined()
+
+    mockListPrompts.mockResolvedValue(listingPrompts({ name: 'revived_prompt' }))
+    await latestHandlerFor(PromptListChangedNotificationSchema)()
+    await vi.waitFor(async () => {
+      await expect(skillNames(ctx)).resolves.toEqual(['revived-prompt'])
+    })
+    await expect(ctx.skills.get('revived-prompt')).resolves.toBeDefined()
   })
 
   it('empties the catalog when the reconnect budget is exhausted', async () => {

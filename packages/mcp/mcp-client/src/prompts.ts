@@ -176,6 +176,13 @@ export function registerPromptsBridge(ctx: Context, skills: SkillRegistry, opts:
   const providerLabel = promptsProviderName(opts.serverName)
   let invalidate: (() => void) | undefined
   let currentGeneration: Client | undefined
+  /**
+   * The generation whose `prompts/list` produced {@link candidates}; committed
+   * together with them. Lookups resolve only while this equals the live
+   * {@link currentGeneration}, so a candidate's raw name and argument
+   * metadata never reach a generation that did not list them.
+   */
+  let catalogGeneration: Client | undefined
   let candidates: readonly SkillCandidate[] = []
   /** Discovery has completed at least once without a fetch failure. */
   let complete = false
@@ -227,8 +234,14 @@ export function registerPromptsBridge(ctx: Context, skills: SkillRegistry, opts:
     },
     async get(candidate: SkillCandidate, options: SkillLookupOptions): Promise<SkillDefinition | undefined> {
       options.signal?.throwIfAborted()
-      const generation = currentGeneration
-      if (generation === undefined || disposed) return undefined
+      // A candidate's locator and argument metadata describe the listing
+      // generation that produced them. While a reconnect or list_changed
+      // re-sync is in flight, the live generation is already newer than the
+      // published catalog — report unloadable so consumers retry through
+      // invalidation instead of sending this catalog's raw name to another
+      // server state.
+      const generation = catalogGeneration
+      if (generation === undefined || disposed || generation !== currentGeneration) return undefined
       const locator = candidate.locator as PromptLocator
       let result: { messages?: unknown }
       try {
@@ -274,6 +287,7 @@ export function registerPromptsBridge(ctx: Context, skills: SkillRegistry, opts:
         if (candidate !== undefined) next.push(candidate)
       }
       candidates = next
+      catalogGeneration = generation
       complete = true
     } catch (error) {
       // Fetch-phase failure: keep serving the last good candidate set and let
@@ -284,9 +298,15 @@ export function registerPromptsBridge(ctx: Context, skills: SkillRegistry, opts:
     invalidate?.()
   }
 
-  /** Drain uncached `prompts/list` pagination into one flat record list. */
+  /**
+   * Drain uncached `prompts/list` pagination into one flat record list. Only
+   * an absent `nextCursor` ends the chain; a repeated cursor (including a
+   * server that echoes an empty string every page) throws so the containing
+   * sync fails instead of requesting pages forever.
+   */
   async function listAllPrompts(generation: Client): Promise<ListedPrompt[]> {
     const records: ListedPrompt[] = []
+    const seenCursors = new Set<string>()
     let cursor: string | undefined
     do {
       const response = await generation.request(
@@ -294,8 +314,14 @@ export function registerPromptsBridge(ctx: Context, skills: SkillRegistry, opts:
         ListPromptsResultSchema,
       )
       records.push(...response.prompts)
+      if (response.nextCursor !== undefined) {
+        if (seenCursors.has(response.nextCursor)) {
+          throw new Error(`${label}: server repeated a prompts/list cursor — invalid prompt list`)
+        }
+        seenCursors.add(response.nextCursor)
+      }
       cursor = response.nextCursor
-    } while (cursor)
+    } while (cursor !== undefined)
     return records
   }
 
@@ -304,6 +330,7 @@ export function registerPromptsBridge(ctx: Context, skills: SkillRegistry, opts:
     giveUp(): void {
       candidates = []
       currentGeneration = undefined
+      catalogGeneration = undefined
       complete = true
       invalidate?.()
     },
@@ -311,6 +338,7 @@ export function registerPromptsBridge(ctx: Context, skills: SkillRegistry, opts:
       if (disposed) return
       disposed = true
       currentGeneration = undefined
+      catalogGeneration = undefined
       unregister()
     },
   }
