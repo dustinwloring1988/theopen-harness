@@ -44,6 +44,7 @@ jobs:
     # configured (no TOH_ISSUE_APP_CLIENT_ID variable) also skip both steps, so
     # the check stays green while the board automation stays off.
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - name: Check out trusted policy
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1

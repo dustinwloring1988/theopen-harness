@@ -76,6 +76,7 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/master'
     name: serial / linux (self-hosted standby)
     runs-on: [self-hosted, linux, x64, vm-backup]
+    timeout-minutes: 120
     steps:
       # TOH_ARCHIVE_BASE_REF below compares the frozen-archive gate against
       # github.event.before, so full history is required: depth 2 would miss it
@@ -126,6 +127,7 @@ jobs:
     if: false
     name: serial / macos
     runs-on: macos-latest
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v7
 

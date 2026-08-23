@@ -29,6 +29,7 @@ jobs:
   matrix:
     name: Matrix
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     outputs:
       prebuilds: ${{ steps.matrix.outputs.prebuilds }}
     steps:
@@ -41,6 +42,7 @@ jobs:
     name: ${{ matrix.package }}
     needs: matrix
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.matrix.outputs.prebuilds) }}
@@ -83,6 +85,7 @@ jobs:
     name: Pack npm tarballs
     needs: build-prebuilds
     runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 
@@ -142,6 +145,7 @@ jobs:
     if: inputs.publish
     needs: pack
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     environment: npm-publish
     permissions:
       contents: read
