@@ -1,9 +1,13 @@
 /**
  * Rank-ordering conformance between the real SQLite backend and the shared
  * fixture-side comparator: one fixed corpus exercises every tiebreak level
- * (match count, document length, time, session id, sequence), and both scopes
- * must produce the exact ordering `compareSessionSearchCandidates` derives
- * from the exported rank-key definitions.
+ * (match count, document length, time, session id, sequence), including a
+ * non-ASCII session-id pair whose UTF-16 code-unit order differs from the
+ * UTF-8 byte order both backends must share, and both scopes must produce
+ * the exact ordering `compareSessionSearchCandidates` derives from the
+ * exported rank-key definitions. Each scope fetches pages smaller than its
+ * result set and continues through the returned cursors, proving the decoded
+ * offsets preserve the ordering without duplicates or omissions.
  */
 import { describe, expect, it } from 'vitest'
 import { Context } from '@buckeyestudio/cordis'
@@ -13,6 +17,7 @@ import SessionStore, {
   type SessionEvent,
 } from '@buckeyestudio/toh-session'
 import SqliteSessionQueryEngine from '@buckeyestudio/toh-session-query-sqlite'
+import { type SessionSearchCursor } from '@buckeyestudio/toh-session-query'
 import {
   compareSessionSearchCandidates,
   SESSION_SEARCH_EVENT_RANK_KEYS,
@@ -40,6 +45,8 @@ const CORPUS: readonly { id: string; docs: readonly CorpusDoc[] }[] = [
   { id: 'conf-old', docs: [{ text: 'needle ccc ddd', time: 100 }] },
   { id: 'conf-a', docs: [{ text: 'needle same tail', time: 50 }] },
   { id: 'conf-b', docs: [{ text: 'needle same tail', time: 50 }] },
+  { id: '\u{E000}-tie', docs: [{ text: 'needle tie', time: 42 }] },
+  { id: '\u{10000}-tie', docs: [{ text: 'needle tie', time: 42 }] },
   { id: 'conf-long', docs: [{ text: 'needle xxxxxxxxxxxx', time: 10 }] },
 ]
 
@@ -81,10 +88,8 @@ function corpusCandidates(): SessionSearchRankCandidate[] {
 }
 
 describe('SQLite search ordering conforms to the shared rank definition', () => {
-  it('returns session pages in the shared comparator order', async () => {
+  it('returns session pages in the shared comparator order across cursor continuation', async () => {
     const ctx = await seededContext()
-    const page = await ctx.sessionQuery.searchSessions({ query: 'needle' })
-    const actual = page.items.map(hit => `${hit.header.id}#${hit.bestMatch.seq}`)
 
     const expectedBestPerSession = CORPUS.map((entry) => {
       const docs = corpusCandidates().filter(candidate => candidate.sessionId === entry.id)
@@ -95,9 +100,26 @@ describe('SQLite search ordering conforms to the shared rank definition', () => 
     }).sort((a, b) => compareSessionSearchCandidates(a, b, SESSION_SEARCH_RANK_KEYS))
       .map(best => `${best.sessionId}#${best.seq}`)
 
+    const actual: string[] = []
+    let cursor: SessionSearchCursor | undefined
+    let pages = 0
+    do {
+      const page = await ctx.sessionQuery.searchSessions({
+        query: 'needle',
+        limit: 3,
+        ...cursor === undefined ? {} : { cursor },
+      })
+      actual.push(...page.items.map(hit => `${hit.header.id}#${hit.bestMatch.seq}`))
+      cursor = page.nextCursor
+      pages += 1
+    } while (cursor !== undefined)
+    expect(pages).toBeGreaterThan(1)
+
     expect(actual).toEqual([
       'conf-top#0',
       'conf-short#0',
+      '\u{E000}-tie#0',
+      '\u{10000}-tie#0',
       'conf-seqs#1',
       'conf-new#0',
       'conf-old#0',
@@ -106,21 +128,31 @@ describe('SQLite search ordering conforms to the shared rank definition', () => 
       'conf-long#0',
     ])
     expect(actual).toEqual(expectedBestPerSession)
-    expect(page.nextCursor).toBeUndefined()
   })
 
-  it('returns event pages within one session in the shared comparator order', async () => {
+  it('returns event pages across cursor continuation in the shared comparator order', async () => {
     const ctx = await seededContext()
-    const page = await ctx.sessionQuery.searchEvents({
-      sessionId: SessionId('conf-seqs'),
-      query: 'needle',
-    })
-    expect(page.items.map(hit => hit.seq)).toEqual([1, 0])
+    const actual: number[] = []
+    let cursor: SessionSearchCursor | undefined
+    let pages = 0
+    do {
+      const page = await ctx.sessionQuery.searchEvents({
+        sessionId: SessionId('conf-seqs'),
+        query: 'needle',
+        limit: 1,
+        ...cursor === undefined ? {} : { cursor },
+      })
+      actual.push(...page.items.map(hit => hit.seq))
+      cursor = page.nextCursor
+      pages += 1
+    } while (cursor !== undefined)
+    expect(pages).toBe(2)
+    expect(actual).toEqual([1, 0])
 
     const expected = corpusCandidates()
       .filter(candidate => candidate.sessionId === 'conf-seqs')
       .sort((a, b) => compareSessionSearchCandidates(a, b, SESSION_SEARCH_EVENT_RANK_KEYS))
       .map(candidate => candidate.seq)
-    expect(page.items.map(hit => hit.seq)).toEqual(expected)
+    expect(actual).toEqual(expected)
   })
 })

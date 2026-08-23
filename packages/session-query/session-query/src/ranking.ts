@@ -73,11 +73,30 @@ export function sessionSearchRankOrderSql(keys: readonly SessionSearchRankKey[])
   return keys.map(key => `${key.column} ${key.direction}`).join(', ')
 }
 
+/** Shared encoder backing byte-wise comparison of string rank keys. */
+const RANK_KEY_TEXT_ENCODER = new TextEncoder()
+
+/**
+ * Compare two strings by their UTF-8 byte sequences.
+ * @param a - left string.
+ * @param b - right string.
+ * @returns a negative number when `a` sorts before `b`, a positive number when after, and zero when equal.
+ */
+function compareUtf8Bytes(a: string, b: string): number {
+  const left = RANK_KEY_TEXT_ENCODER.encode(a)
+  const right = RANK_KEY_TEXT_ENCODER.encode(b)
+  const shared = Math.min(left.length, right.length)
+  for (let index = 0; index < shared; index += 1) {
+    if (left[index] !== right[index]) return (left[index] as number) - (right[index] as number)
+  }
+  return left.length - right.length
+}
+
 /**
  * Compare two candidates by the ordered rank keys, returning the first
- * differing key's directed comparison. Strings compare in JavaScript
- * relational (UTF-16 code unit) order, the same order SQLite BINARY
- * collation gives the ASCII ids backends mint.
+ * differing key's directed comparison. String keys order as their UTF-8 byte
+ * sequences, the exact order SQLite BINARY collation applies, so fixture and
+ * SQL backends rank non-ASCII session ids identically.
  * @param a - left candidate.
  * @param b - right candidate.
  * @param keys - ordered rank keys to apply.
@@ -92,7 +111,12 @@ export function compareSessionSearchCandidates(
     const left = a[key.field]
     const right = b[key.field]
     if (left === right) continue
-    const ordered = left < right ? -1 : 1
+    let ordered: number
+    if (typeof left === 'string' && typeof right === 'string') {
+      ordered = compareUtf8Bytes(left, right)
+    } else {
+      ordered = left < right ? -1 : 1
+    }
     return key.direction === 'ASC' ? ordered : -ordered
   }
   return 0

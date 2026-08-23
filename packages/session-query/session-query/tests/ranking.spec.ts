@@ -62,6 +62,16 @@ describe('compareSessionSearchCandidates', () => {
     expect(compareSessionSearchCandidates(second, first, SESSION_SEARCH_RANK_KEYS)).toBeGreaterThan(0)
   })
 
+  it('orders tied string keys by UTF-8 bytes, matching SQLite BINARY collation', () => {
+    // UTF-16 code-unit order would rank the U+10000 surrogate pair (0xD800...)
+    // before U+E000; UTF-8 byte order ranks U+E000 (0xEE...) first.
+    const privateUse = candidate({ sessionId: '\u{E000}-tie' })
+    const astral = candidate({ sessionId: '\u{10000}-tie' })
+    expect(compareSessionSearchCandidates(privateUse, astral, SESSION_SEARCH_RANK_KEYS)).toBeLessThan(0)
+    expect(compareSessionSearchCandidates(astral, privateUse, SESSION_SEARCH_RANK_KEYS)).toBeGreaterThan(0)
+    expect(compareSessionSearchCandidates(privateUse, candidate({ sessionId: '\u{E000}-tie' }), SESSION_SEARCH_RANK_KEYS)).toBe(0)
+  })
+
   it('breaks same-session ties by descending sequence', () => {
     const later = candidate({ seq: 8 })
     const earlier = candidate({ seq: 7 })
