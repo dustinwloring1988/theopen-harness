@@ -457,7 +457,9 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
   /**
    * Stop the active run while retaining every Package version. An activation
    * still starting is joined and invalidated instead of answering
-   * `not-running`, so the mount can never outlive the stop.
+   * `not-running`, so the mount can never outlive the stop. Teardown is scoped
+   * to this stop's generation: a run started after the generation was assigned
+   * belongs to its own newer activation and survives untouched.
    * @param agent - Agent whose Session must own the Plugin.
    * @param pluginId - Stable Plugin identity to stop.
    * @returns Success or the reason no run was stopped.
@@ -469,14 +471,21 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     if (plugin.run === undefined && pending === undefined && !this.starting.has(pluginId)) {
       return { ok: false, reason: 'not-running', message: `dynamic plugin "${pluginId}" is not running` }
     }
+    const generation = this.invalidateActivation(pluginId)
     if (pending !== undefined) this.cancelPending(pluginId, `dynamic plugin "${pluginId}" was stopped before approval`)
-    this.invalidateActivation(pluginId)
     await this.joinActivation(pluginId)
-    if (plugin.run !== undefined) await this.retract(plugin)
-    if (plugin.latestRun !== undefined) {
-      plugin.latestRun.status = 'stopped'
-      if (plugin.latestRun.host.status !== 'absent') plugin.latestRun.host = { status: 'stopped', waitingFor: [] }
-      if (plugin.latestRun.client.status !== 'absent') plugin.latestRun.client = { status: 'stopped', waitingFor: [] }
+    // A concurrent stop or undefine owns teardown once it has bumped the
+    // generation past ours; acting anyway would double-dispose.
+    if (!this.activationOwns(plugin, generation)) return { ok: true }
+    const run = plugin.run
+    if (run === undefined) return { ok: true }
+    const attempt = plugin.latestRun
+    const stopped = attempt?.pluginRunId === run.pluginRunId ? attempt : undefined
+    await this.retract(plugin)
+    if (stopped !== undefined) {
+      stopped.status = 'stopped'
+      if (stopped.host.status !== 'absent') stopped.host = { status: 'stopped', waitingFor: [] }
+      if (stopped.client.status !== 'absent') stopped.client = { status: 'stopped', waitingFor: [] }
     }
     return { ok: true }
   }
@@ -1244,8 +1253,16 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     })
   }
 
-  private invalidateActivation(pluginId: CordisDynamicPluginId): void {
-    this.stopGeneration.set(pluginId, (this.stopGeneration.get(pluginId) ?? 0) + 1)
+  /**
+   * Assign the plugin its next stop generation, invalidating activations that
+   * captured an older one.
+   * @param pluginId - Stable Plugin identity whose generation moves.
+   * @returns the newly assigned generation.
+   */
+  private invalidateActivation(pluginId: CordisDynamicPluginId): number {
+    const generation = (this.stopGeneration.get(pluginId) ?? 0) + 1
+    this.stopGeneration.set(pluginId, generation)
+    return generation
   }
 
   private async joinActivation(pluginId: CordisDynamicPluginId): Promise<void> {

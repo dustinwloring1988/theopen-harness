@@ -12,9 +12,9 @@ In `cordis-host-runner`, neither `undefine` nor `stop` consulted the in-flight a
 
 Removal verbs now participate in the same transition protocol new runs already follow (`resolvePlan` refusing while starting, `activate` deduplicating through `starting`):
 
-- Every `stop` and `undefine` bumps a per-plugin stop generation, then joins the in-flight activation promise before tearing anything down.
+- Every `stop` and `undefine` bumps a per-plugin stop generation; `stop` then joins the in-flight activation promise before retracting the active run.
 - `undefine` deletes the registry record before joining, so concurrent verbs observe the removal immediately and an invalidated activation can name removal accurately in its failure.
-- `stop` treats an in-flight activation as stoppable rather than answering `not-running`.
+- `stop` treats an in-flight activation as stoppable rather than answering `not-running`, and scopes teardown to its own generation: a run published after that generation was assigned belongs to its newer activation and survives untouched, so a stop parked inside a slow fiber disposal can neither retract nor mark stopped a run that started meanwhile.
 - `startFresh` captures the generation at entry and re-validates ownership after every await before publication. On loss it drops handlers, disposes the host-half fiber, and returns a failure naming what happened ("removed/stopped during activation") instead of publishing.
 
 The public method set, receipts, and wire shapes are unchanged.
@@ -29,7 +29,7 @@ The public method set, receipts, and wire shapes are unchanged.
 
 ## Verification
 
-`tests/runner.spec.ts` parks a gated host half on `tools/change` (arming observed through the package-tagged console) and races it against `undefine` and against `stop`. Both assert the provided service unwound with the discarded fiber, empty inventory, zero announcements, the accurate failure message, and — for stop — that a subsequent normal run still succeeds. Both tests fail against the pre-fix source. The package suite passes; oxlint and `tsc -b` are clean.
+`tests/runner.spec.ts` parks a gated host half on `tools/change` (arming observed through the package-tagged console) and races it against `undefine` and against `stop`. Both assert the provided service unwound with the discarded fiber, empty inventory, zero announcements, the accurate failure message, and — for stop — that a subsequent normal run still succeeds. A third race parks `stop` inside the old run's async fiber disposal while a second Package of the same plugin runs to completion: the newer run keeps its service, its attempt status, and its handler, and only the old run is retracted. All three fail against the pre-fix source. `tests/loader-composition.spec.ts` boots the runner through a real `cordis.yml` Loader composition with the tool registry and exercises the public run and removal flow end to end. The package suite passes; oxlint and `tsc -b` are clean.
 
 ## Consequences
 

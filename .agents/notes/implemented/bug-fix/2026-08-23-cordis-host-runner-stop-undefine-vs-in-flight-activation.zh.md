@@ -12,9 +12,9 @@ Status: implemented
 
 移除动词现在遵循与新的 run 已有的相同的转换协议（`resolvePlan` 在启动期间拒绝、`activate` 经由 `starting` 去重）：
 
-- 每次 `stop` 与 `undefine` 先递增每插件的停止代数，再拆除任何东西之前先等待进行中的激活承诺。
+- 每次 `stop` 与 `undefine` 先递增每插件的停止代数；`stop` 随后在回退存活 run 之前等待进行中的激活承诺。
 - `undefine` 在等待之前删除注册表记录，因此并发动词立即观察到移除，且被作废的激活能在失败信息中准确指明是移除。
-- `stop` 把进行中的激活视为可停止的对象，而不是回答 `not-running`。
+- `stop` 把进行中的激活视为可停止的对象，而不是回答 `not-running`，并把拆除限定在自己的代数之内：在该代数被赋值之后发布的 run 属于它自己更新的激活，会原样存活，因此停在缓慢 fiber 释放中的 stop 既不能回退、也不能标记为已停止那期间启动的 run。
 - `startFresh` 在进入时捕获代数，并在发布前的每一次 await 之后重新校验归属。失去归属时，它丢弃 handler、释放 host 半 fiber，并返回指明原因的失败（“removed/stopped during activation”），而不是发布。
 
 公开方法集合、回执与 wire 形状均未改变。
@@ -29,7 +29,7 @@ Status: implemented
 
 ## Verification
 
-`tests/runner.spec.ts` 把一个带闸门的 host 半停在 `tools/change` 上（通过包标签 console 观察到就绪），分别与 `undefine` 和 `stop` 竞争。两者都断言被提供的 service 随被丢弃的 fiber 一同回退、inventory 为空、零播报、准确的失败消息，以及——对 stop 而言——随后的正常 run 依然成功。两个测试对修复前源码都会失败。包套件通过；oxlint 与 `tsc -b` 干净。
+`tests/runner.spec.ts` 把一个带闸门的 host 半停在 `tools/change` 上（通过包标签 console 观察到就绪），分别与 `undefine` 和 `stop` 竞争。两者都断言被提供的 service 随被丢弃的 fiber 一同回退、inventory 为空、零播报、准确的失败消息，以及——对 stop 而言——随后的正常 run 依然成功。第三个竞争让 `stop` 停在旧 run 的异步 fiber 释放里，同时同一插件的第二个 Package 跑到完成：新 run 保住自己的 service、尝试状态与 handler，且只有旧 run 被回退。三个测试对修复前源码都会失败。`tests/loader-composition.spec.ts` 经由真实的 `cordis.yml` Loader 组合（含工具注册表）引导本包，并端到端演练公开的 run 与移除流程。包套件通过；oxlint 与 `tsc -b` 干净。
 
 ## Consequences
 

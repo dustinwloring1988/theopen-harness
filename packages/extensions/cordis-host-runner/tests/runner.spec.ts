@@ -528,6 +528,17 @@ describe('removal racing an in-flight activation', () => {
       }
     `
 
+  /** Second package of the same plugin: distinct service and handler names. */
+  const TRIPLER_HOST_CODE = `
+      harness.handle('triple', async (args) => args.value * 3)
+      return {
+        name: 'tripler',
+        apply(ctx) {
+          ctx.provide('dynTripler', { ok: true })
+        },
+      }
+    `
+
   it('leaves nothing mounted when undefine lands while the host half is still starting', async () => {
     const { ctx, runner, gateway } = await setup()
     const { pluginId, packageId } = define(runner, {
@@ -589,6 +600,71 @@ describe('removal racing an in-flight activation', () => {
     expect(gateway.events).toEqual([
       ['cordis/dynamic-package', { pluginId, packageId, pluginRunId: 'run-2', name: 'gated' }],
     ])
+  })
+
+  it('leaves a newer run untouched when it starts while stop is still unwinding the old one', async () => {
+    const { ctx, runner, gateway } = await setup()
+    const slow = define(runner, { sessionId: AGENT_A.id, name: 'slow', purpose: 'p', host: HOST_CODE })
+    const pluginId = slow.pluginId
+    const first = await runner.run(AGENT_A, pluginId, slow.packageId, 'run')
+    if (!first.ok) throw new Error(first.message)
+    expect(ctx.get('dynDoubler')).toEqual({ ok: true })
+
+    // Hold the old run's fiber disposal open, so stop parks inside retract's
+    // discardRun await — the same window a slow real disposal produces.
+    const fiber = runner.snapshot(AGENT_A)[0]?.activeRun?.fiber
+    if (fiber === undefined) throw new Error('no active fiber')
+    let releaseDispose!: () => void
+    const disposalHeld = new Promise<void>((resolve) => { releaseDispose = resolve })
+    const originalDispose = fiber.dispose.bind(fiber)
+    vi.spyOn(fiber, 'dispose').mockImplementation(async () => {
+      await disposalHeld
+      await originalDispose()
+    })
+
+    // A second package on the same plugin: running it must not collide with
+    // the still-disposing first fiber's service or handler names.
+    const next = runner.define({
+      sessionId: AGENT_A.id,
+      plugin: { kind: 'existing', pluginId },
+      name: 'tripler',
+      purpose: 'p',
+      code: { host: TRIPLER_HOST_CODE },
+    })
+
+    // Stop detaches the old run and then parks inside its held disposal.
+    const stopping = runner.stop(AGENT_A, pluginId)
+    await vi.waitFor(() => {
+      expect(runner.inventory()[0]?.activeRun).toBeUndefined()
+    })
+
+    // The newer run publishes inside stop's unwind window and captures the
+    // generation this stop assigned.
+    const second = await runner.run(AGENT_A, pluginId, next.packageId, 'update')
+    if (!second.ok) throw new Error(second.message)
+    expect(second).toMatchObject({ status: 'running', pluginRunId: 'run-2' })
+    expect(ctx.get('dynTripler')).toEqual({ ok: true })
+    expect(runner.inventory()[0]?.latestRun).toMatchObject({ status: 'running' })
+
+    releaseDispose()
+    await expect(stopping).resolves.toEqual({ ok: true })
+
+    // The older stop retracted only its own run: the newer run keeps its
+    // service, attempt status, handler, and retract-free history.
+    expect(ctx.get('dynTripler')).toEqual({ ok: true })
+    expect(runner.inventory()[0]).toMatchObject({
+      currentPackageId: next.packageId,
+      activeRun: { pluginRunId: second.pluginRunId, packageId: next.packageId },
+      latestRun: { status: 'running' },
+    })
+    await expect(runner.invoke(pluginId, second.pluginRunId, 'triple', { value: 2 }))
+      .resolves.toEqual({ ok: true, value: 6 })
+    expect(gateway.events.map(([name, payload]) => [name, (payload as { pluginRunId?: string }).pluginRunId]))
+      .toEqual([
+        ['cordis/dynamic-package', 'run-1'],
+        ['cordis/dynamic-package', 'run-2'],
+        ['cordis/dynamic-retract', 'run-1'],
+      ])
   })
 })
 
