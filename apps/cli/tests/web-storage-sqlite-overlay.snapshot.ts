@@ -41,6 +41,8 @@ describe('web-storage-sqlite overlay assembled snapshots', () => {
       tempDirPrefix: 'web-storage-sqlite-overlay-composition-',
       binScript: BIN_SCRIPT,
       tsconfigPath: TSCONFIG_PATH,
+      // binArgs replaces the default [configPath] argv wholesale.
+      configPath: OVERLAY,
       binArgs: ['web', '--patch', OVERLAY, '--dump-config'],
       env: { NODE_NO_WARNINGS: '1' },
     })
