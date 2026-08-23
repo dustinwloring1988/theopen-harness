@@ -171,7 +171,7 @@ test('separates resolving and informational references', () => {
   )
 })
 
-test('does not treat pull request references as Issue associations', () => {
+test('keeps every parsed reference in `all` while selecting resolvable Issues', () => {
   const references = {
     all: [123, 1180, 1181],
     resolving: [123, 1180],
@@ -183,10 +183,33 @@ test('does not treat pull request references as Issue associations', () => {
   ])
 
   assert.deepEqual(retainIssueReferences(references, issues), {
-    all: [1180, 1181],
+    all: [123, 1180, 1181],
     resolving: [1180],
     related: [1181],
   })
+})
+
+test('reports a missing referenced Issue through the snapshot-to-validation flow', () => {
+  // resolvingReferencesSnapshot resolves each parsed number into the map;
+  // #46 has no Issue behind it, so it must still reach validatePullRequest.
+  const references = parseReferences({
+    body: 'Fixes #46\nRelated to #50',
+    repository: 'dustinwloring1988/toh-test',
+  })
+  const pull = (issues) => ({
+    ...reviewedPull(['kind/feature', 'area/web']),
+    references: retainIssueReferences(references, issues),
+    issues,
+  })
+
+  assert.ok(validatePullRequest(pull(new Map([[50, { priority: null }]]))).includes('#46 不是同仓库 Issue'))
+  assert.deepEqual(
+    validatePullRequest(pull(new Map([
+      [46, { priority: null }],
+      [50, { priority: null }],
+    ]))),
+    [],
+  )
 })
 
 test('reports unresolved reference numbers as validation errors, not crashes', () => {

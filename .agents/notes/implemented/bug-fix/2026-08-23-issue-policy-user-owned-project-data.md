@@ -10,7 +10,7 @@ The Issue policy and lifecycle scripts assumed an organization-owned repository.
 
 ## Decision
 
-`policy.mjs` resolves the owner kind once per process through `GET /repos/{owner}/{repo}` (`owner.type`) and selects the Projects v2 container from it: `user(login:)` for user accounts, `organization(login:)` for organizations, while `repository(owner:)` accepts either login. Status and Priority are read exclusively from the project item's `fieldValueByName` selections, with Priority keyed by the configured `priorityField` name; the org-only REST endpoint is gone. `api()` attaches the HTTP status to its errors, and reference resolution tolerates exactly 404: an unresolvable number stays out of the resolved map and `validatePullRequest` reports the standard `#N 不是同仓库 Issue` error. Every other failure keeps failing loud.
+`policy.mjs` resolves the owner kind once per process through `GET /repos/{owner}/{repo}` (`owner.type`) and selects the Projects v2 container from it: `user(login:)` for user accounts, `organization(login:)` for organizations, while `repository(owner:)` accepts either login. Status and Priority are read exclusively from the project item's `fieldValueByName` selections, with Priority keyed by the configured `priorityField` name; the org-only REST endpoint is gone. `api()` attaches the HTTP status to its errors, and reference resolution tolerates exactly 404: an unresolvable number stays out of the resolved map yet remains in the parsed reference list, so `validatePullRequest` reports the standard `#N 不是同仓库 Issue` error while lifecycle transitions select only resolved Issues. Every other failure keeps failing loud.
 
 ## Alternatives considered
 
@@ -22,8 +22,8 @@ The Issue policy and lifecycle scripts assumed an organization-owned repository.
 
 ## Verification
 
-`pnpm run test:issue-management` passes, including a new test pinning that unresolved reference numbers produce the `#N 不是同仓库 Issue` validation error, and `node --check policy.mjs` passes. The user-container and owner-kind resolution paths run in the repository's own Issue policy and lifecycle workflows.
+`pnpm run test:issue-management` passes, including a new test pinning that unresolved reference numbers produce the `#N 不是同仓库 Issue` validation error through the snapshot-to-validation flow, and `node --check policy.mjs` passes. The user-container and owner-kind resolution paths run in the repository's own Issue policy workflow. The lifecycle script supports the same owner-aware Project access, but its workflow remains blocked until the GitHub App is installed on this repository with Issues and Projects write permission, or `TOH_ISSUE_APP_CLIENT_ID` is cleared so the gated steps keep skipping.
 
 ## Consequences
 
-Issue policy and lifecycle checks work on this personal repository, and organization deployments keep their previous behavior. Priority now reflects the Project board's single-select rather than the retired issue-fields feature, and each referenced Issue costs one shared GraphQL call instead of an extra REST call. Deployments relying on issue-field values diverging from Project values are no longer supported.
+Issue policy checks work on this personal repository and organization deployments keep their previous behavior; lifecycle board automation starts once that App-installation prerequisite is met. Priority now reflects the Project board's single-select rather than the retired issue-fields feature, and each referenced Issue costs one shared GraphQL call instead of an extra REST call. Deployments relying on issue-field values diverging from Project values are no longer supported.

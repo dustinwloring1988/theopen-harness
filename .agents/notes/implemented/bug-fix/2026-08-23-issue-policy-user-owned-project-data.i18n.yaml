@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-23-issue-policy-user-owned-project-data.md
-2026-08-23-issue-policy-user-owned-project-data.md: 5f0c4d4b19945c1e854e7d84738db71ca16577d2
-2026-08-23-issue-policy-user-owned-project-data.zh.md: e73135774bb7e7093dc4b569dc8bbe26c3b9b1db
+2026-08-23-issue-policy-user-owned-project-data.md: c9e63ee05b4d167218af923058f473a22cf4a9a8
+2026-08-23-issue-policy-user-owned-project-data.zh.md: 553965902475b838b14782771a0826a0745ebccd

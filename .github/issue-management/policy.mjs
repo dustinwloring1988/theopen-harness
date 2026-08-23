@@ -267,14 +267,16 @@ export function parseReferences({ body, repository }) {
 }
 
 /**
- * Retain only references that resolve to Issues rather than pull requests.
+ * Keep every parsed reference in `all` so validation can report unresolvable
+ * numbers, and retain only resolvable Issues in `resolving` and `related` for
+ * lifecycle transitions and priority aggregation.
  * @param {{all: number[], resolving: number[], related: number[]}} references Parsed references.
  * @param {Map<number, unknown>} issues Resolved same-repository Issues.
- * @returns {{all: number[], resolving: number[], related: number[]}} Issue-only references.
+ * @returns {{all: number[], resolving: number[], related: number[]}} Full reference list plus Issue-only selections.
  */
 export function retainIssueReferences(references, issues) {
   return {
-    all: references.all.filter((number) => issues.has(number)),
+    all: [...references.all],
     resolving: references.resolving.filter((number) => issues.has(number)),
     related: references.related.filter((number) => issues.has(number)),
   }

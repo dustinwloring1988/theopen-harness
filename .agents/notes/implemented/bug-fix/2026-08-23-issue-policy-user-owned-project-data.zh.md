@@ -10,7 +10,7 @@ Issue policy 与 lifecycle 脚本假设仓库属于组织。它们从 `issue-fie
 
 ## Decision
 
-`policy.mjs` 在每个进程中通过 `GET /repos/{owner}/{repo}`（`owner.type`）解析一次 owner 类型，并据此选择 Projects v2 容器：用户账号用 `user(login:)`，组织用 `organization(login:)`；`repository(owner:)` 对两者都接受。Status 与 Priority 只从 project item 的 `fieldValueByName` 选择中读取，Priority 使用配置的 `priorityField` 名称；组织专属的 REST 端点被完全移除。`api()` 把 HTTP 状态附加到错误上，引用解析只容忍 404：无法解析的编号不会进入已解析映射，由 `validatePullRequest` 报出标准的 `#N 不是同仓库 Issue` 校验错误。其余失败继续大声报错。
+`policy.mjs` 在每个进程中通过 `GET /repos/{owner}/{repo}`（`owner.type`）解析一次 owner 类型，并据此选择 Projects v2 容器：用户账号用 `user(login:)`，组织用 `organization(login:)`；`repository(owner:)` 对两者都接受。Status 与 Priority 只从 project item 的 `fieldValueByName` 选择中读取，Priority 使用配置的 `priorityField` 名称；组织专属的 REST 端点被完全移除。`api()` 把 HTTP 状态附加到错误上，引用解析只容忍 404：无法解析的编号不会进入已解析映射，但会留在解析出的引用列表中，由 `validatePullRequest` 报出标准的 `#N 不是同仓库 Issue` 校验错误，而 lifecycle 只选择已解析的 Issue。其余失败继续大声报错。
 
 ## Alternatives considered
 
@@ -22,8 +22,8 @@ Issue policy 与 lifecycle 脚本假设仓库属于组织。它们从 `issue-fie
 
 ## Verification
 
-`pnpm run test:issue-management` 通过，其中新增测试固定了未解析的引用编号会产生 `#N 不是同仓库 Issue` 校验错误；`node --check policy.mjs` 通过。user 容器与 owner 类型解析路径由仓库自身的 Issue policy 与 lifecycle workflow 实际运行。
+`pnpm run test:issue-management` 通过，其中新增测试在快照到校验的流程中固定了未解析的引用编号会产生 `#N 不是同仓库 Issue` 校验错误；`node --check policy.mjs` 通过。user 容器与 owner 类型解析路径由仓库自身的 Issue policy workflow 实际运行。lifecycle 脚本同样支持 owner 感知的 Project 访问，但其 workflow 保持阻塞，直到 GitHub App 以 Issues 和 Projects 写权限安装到本仓库，或清除 `TOH_ISSUE_APP_CLIENT_ID` 让被门控的步骤继续跳过。
 
 ## Consequences
 
-Issue policy 与 lifecycle 检查在这个个人仓库上可用，组织部署的行为保持不变。Priority 现在反映 Project board 的单选值而非已退役的 issue-fields 功能，每个被引用 Issue 少一次额外 REST 调用、共享一次 GraphQL 调用。依赖 issue-field 值偏离 Project 值的部署不再受支持。
+Issue policy 检查在这个个人仓库上可用，组织部署的行为保持不变；lifecycle board 自动化在满足上述 App 安装前提后即可启用。Priority 现在反映 Project board 的单选值而非已退役的 issue-fields 功能，每个被引用 Issue 少一次额外 REST 调用、共享一次 GraphQL 调用。依赖 issue-field 值偏离 Project 值的部署不再受支持。
