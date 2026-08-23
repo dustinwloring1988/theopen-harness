@@ -1,9 +1,13 @@
 /**
  * One opened JSON unit. The in-memory state is authoritative; every write
- * primitive mutates it and republishes the whole file atomically. Writes are
- * NOT queued here — per the backend contract, write ordering belongs to the
- * caller (the domain layer's write chain); this unit only guarantees that
- * each single call publishes a complete, durable file.
+ * primitive mutates it and republishes the whole file atomically. Publishes
+ * serialize on an in-unit chain and read the state when their slot runs, so
+ * overlapping un-awaited writes publish in call order and a slower earlier
+ * rename can never land over a newer file (completion-order-wins would
+ * silently discard an acknowledged record). Logical write ordering across
+ * calls still belongs to the caller (the domain layer's write chain); this
+ * unit only guarantees that each single call publishes a complete, durable
+ * file that carries every acknowledged write issued before it.
  * @module @buckeyestudio/toh-storage-json/src/unit
  */
 
@@ -44,10 +48,17 @@ export async function openJsonUnit(
   return new JsonKvUnit(descriptor, path, state, onClose)
 }
 
+const noop = (): void => {}
+
 class JsonKvUnit implements KvUnit {
   private closed = false
-  /** In-flight publishes; close() drains them before releasing the unit. */
-  private readonly inFlight = new Set<Promise<void>>()
+  /**
+   * Settled tail of the publish chain: every publish appends one
+   * whole-file replacement behind all earlier ones, and a rejected link is
+   * swallowed here so one failed write cannot poison the chain (the
+   * rejecting caller still observes its own error).
+   */
+  private publishTail: Promise<void> = Promise.resolve()
 
   constructor(
     private readonly descriptor: KvUnitDescriptor,
@@ -108,11 +119,16 @@ class JsonKvUnit implements KvUnit {
 
   async close(): Promise<void> {
     if (this.closed) {
-      await Promise.allSettled(this.inFlight)
+      await this.publishTail
       return
     }
     this.closed = true
-    await Promise.allSettled(this.inFlight)
+    // Draining the tail waits out every queued publish, held or not yet
+    // started; the tail never rejects, so this cannot throw. After the drain
+    // the medium matches memory: the last landed slot serialized the full
+    // state, and any failed publish rolled its caller's mutation back before
+    // the next slot serialized.
+    await this.publishTail
     this.onClose()
   }
 
@@ -131,11 +147,15 @@ class JsonKvUnit implements KvUnit {
   }
 
   private publish(): Promise<void> {
-    const write = writeAtomic(this.path, serialize(this.descriptor.name, this.state))
-    this.inFlight.add(write)
+    // The state is read inside the slot, not at enqueue time: each publish
+    // serializes every mutation acknowledged up to its turn, so the renames
+    // land in queue order and the last one always carries the newest state.
     // Swallow only on the tracking branch: the caller still awaits `write`
     // itself, so rejections stay observed exactly once.
-    write.catch(() => {}).finally(() => this.inFlight.delete(write))
+    const write = this.publishTail.then(() =>
+      writeAtomic(this.path, serialize(this.descriptor.name, this.state)),
+    )
+    this.publishTail = write.then(noop, noop)
     return write
   }
 }

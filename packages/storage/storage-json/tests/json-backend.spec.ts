@@ -1,13 +1,45 @@
-import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
+﻿import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@buckeyestudio/cordis'
 import Storage, { storageBackendServiceKey } from '@buckeyestudio/toh-storage'
 import InvariantRegistry from '@buckeyestudio/toh-invariants'
 import { runKvBackendContract } from '../../storage/tests/contract.ts'
 import { Config, JsonStorageBackend, apply } from '../src/index.ts'
 import * as InvariantCompanion from '../src/invariant.ts'
+
+// The atomic write is the gated hold point inside a publish: the gate arms a
+// one-shot hold on the NEXT call only, so an earlier write can be parked while
+// a later one is issued, reproducing the overlapping-publish interleavings
+// deterministically. Real replacements still run once the hold lifts.
+vi.mock('../src/atomic.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/atomic.ts')>()
+  let holdOnce: Promise<void> | undefined
+  return {
+    ...actual,
+    writeAtomic: async (path: string, data: string) => {
+      const held = holdOnce
+      holdOnce = undefined
+      if (held !== undefined) await held
+      return actual.writeAtomic(path, data)
+    },
+    __setHoldOnce: (next: Promise<void> | undefined) => {
+      holdOnce = next
+    },
+  }
+})
+
+async function setHoldOnce(next: Promise<void> | undefined): Promise<void> {
+  const mocked = await import('../src/atomic.ts') as unknown as {
+    __setHoldOnce: (next: Promise<void> | undefined) => void
+  }
+  mocked.__setHoldOnce(next)
+}
+
+afterEach(async () => {
+  await setHoldOnce(undefined)
+})
 
 const roots: string[] = []
 
@@ -109,6 +141,37 @@ describe('json backend specifics', () => {
     await backend.close()
   })
 
+  it('publishes overlapping un-awaited writes in call order without losing a record', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    const path = join(root, 'shape.json')
+    let release!: () => void
+    await setHoldOnce(new Promise<void>((resolveHold) => { release = resolveHold }))
+    const first = unit.putRecord('t', 'a', { v: 'first' })
+    const second = unit.putRecord('t', 'b', { v: 'second' })
+    // While the first publish holds the medium, the second waits on the
+    // unit's publish chain instead of racing it with its own snapshot: the
+    // file is still absent when the second call has been issued.
+    await expect(readFile(path, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    release()
+    await expect(first).resolves.toBeUndefined()
+    await expect(second).resolves.toBeUndefined()
+    const onDisk = JSON.parse(await readFile(path, 'utf8')) as {
+      tables: Record<string, Record<string, unknown>>
+    }
+    expect(onDisk.tables['t']).toEqual({ a: { v: 'first' }, b: { v: 'second' } })
+    // A re-opened medium observes every acknowledged record.
+    const reopened = new JsonStorageBackend(root)
+    const reopenedUnit = await reopened.kv.open(descriptor)
+    expect(await reopenedUnit.loadAll()).toEqual({
+      tables: { t: { a: { v: 'first' }, b: { v: 'second' } } },
+      global: null,
+    })
+    await reopened.close()
+    await backend.close()
+  })
+
   it('rejects undeclared table and global access as caller errors', async () => {
     const root = await freshRoot()
     const backend = new JsonStorageBackend(root)
@@ -205,6 +268,24 @@ describe('json backend specifics', () => {
     // Disposal releases the reservation: a fresh mount succeeds.
     await fiber.dispose()
     await ctx.plugin(InvariantCompanion)
+  })
+
+  it('close drains queued publishes so the file matches memory', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    let release!: () => void
+    await setHoldOnce(new Promise<void>((resolveHold) => { release = resolveHold }))
+    const writes = [unit.putRecord('t', 'a', { v: 'first' }), unit.putRecord('t', 'b', { v: 'second' })]
+    const closing = unit.close()
+    release()
+    await closing
+    await Promise.all(writes)
+    const onDisk = JSON.parse(await readFile(join(root, 'shape.json'), 'utf8')) as {
+      tables: Record<string, Record<string, unknown>>
+    }
+    expect(onDisk.tables['t']).toEqual({ a: { v: 'first' }, b: { v: 'second' } })
+    await backend.close()
   })
 
   it('close drains in-flight writes and blocks in-flight opens', async () => {

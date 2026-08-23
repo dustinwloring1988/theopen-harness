@@ -6,7 +6,8 @@
  * Windows (libuv maps it to `MoveFileExW(..., MOVEFILE_REPLACE_EXISTING)`),
  * and replacement is the intended semantic here — unlike the session-log
  * backend's link()+unlink() no-clobber protocol, a unit file has exactly one
- * writer per process and last-write-wins is correct. After the rename the
+ * writer per process (the owning unit serializes its publishes), so the
+ * newest snapshot always replaces older ones. After the rename the
  * parent directory is fsynced on POSIX so the new entry is crash-durable.
  * @module @buckeyestudio/toh-storage-json/src/atomic
  */
