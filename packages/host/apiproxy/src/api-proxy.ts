@@ -17,32 +17,22 @@ import type { ImageAttachmentRef } from '@buckeyestudio/toh-attachment'
 import { createUserMessage, freezeMessage, ReasoningEffortId } from '@buckeyestudio/toh-llm'
 import { errorChain } from '@buckeyestudio/toh-llm'
 import type { ContentBlock, MessageSource } from '@buckeyestudio/toh-llm'
-import { isAppendSurfaceEvent, isJsonValue } from '@buckeyestudio/toh-session'
-import type { JsonValue, Session, SessionEvent, SessionEventMap, SessionHeader, SessionId, UserMessage } from '@buckeyestudio/toh-session'
+import type { Session, SessionEvent, SessionHeader, SessionId, UserMessage } from '@buckeyestudio/toh-session'
 import type { SessionPersistence } from '@buckeyestudio/toh-session-persistence'
 import { SessionQueryError, type SessionSearchCursor } from '@buckeyestudio/toh-session-query'
 import { SubagentError } from '@buckeyestudio/toh-subagent'
 import type { SubagentListEntry as CatalogSubagentListEntry } from '@buckeyestudio/toh-subagent'
 import { isUserInvocable } from '@buckeyestudio/toh-skill'
-import type { Workspace, WorkspaceRecord } from '@buckeyestudio/toh-workspace'
+import type { Workspace } from '@buckeyestudio/toh-workspace'
 import {
-  workspaceDomainState, workspaceRecord, WorkspaceId as brandWorkspaceId,
+  workspaceDomainState, WorkspaceId as brandWorkspaceId,
   WorkspaceMoveInvalidError, WorkspaceOrderInvalidError, WorkspaceUnknownSessionError,
 } from '@buckeyestudio/toh-workspace'
-// Type-only: brings the `ctx.tools` Context merge into this program (viewFor reads presenters).
 import {
-  InvalidPresetIdError, PresetExistsError, PresetMountError,
-  PresetNotWritableError, resolveSessionPreset, UnknownPresetError,
+  InvalidPresetIdError, PresetExistsError, PresetNotWritableError, resolveSessionPreset,
+  UnknownPresetError,
 } from '@buckeyestudio/toh-agent-presets'
 import type { PresetBearingSession } from '@buckeyestudio/toh-agent-presets'
-import type {} from '@buckeyestudio/toh-tools'
-import type {
-  ApiProxy, ConfigurableProviderView, CredentialView, GoalRef, HistoryEntry, HostFrame,
-  ModelCatalogFailure, ModelProviderGroup,
-  ModelReasoning, MuxFrame, PromptContentPart, QuestionResponsePayload, SessionListMetadata, SessionProjectionsBlock, SessionSearchItem,
-  QueuedInboxItem, SessionSummary, SettingsNamespaceView, SubagentAddress, JobView, ToolEventView,
-  WorkspaceId, WorkspaceView,
-} from './api/index.ts'
 import {
   DEFAULT_SESSION_LOG_COMPRESSION_LEVEL,
   flushLiveSessionLog,
@@ -84,21 +74,13 @@ import type { SettingsDescriptor, SettingsNamespace, SettingsPathOp } from '@buc
 import { credentialRef } from '@buckeyestudio/toh-credentials'
 // Value edge: the rename impl narrows the title service's validation failure; the import also resolves `ctx.get('sessionTitle')`.
 import { SessionTitleInvalidError } from '@buckeyestudio/toh-session-title'
-import type { CallId } from '@buckeyestudio/toh-llm/brand'
-import type { ScopeKey } from '@buckeyestudio/toh-scope'
-import type { ApprovalOutcome, ApprovalRequestId } from '@buckeyestudio/toh-user-approval'
-// Side-effect type import: resolves the `approval/request` waterfall and
-// `ctx.get('approval')` without a value dependency on the seam (optional composition).
-import type {} from '@buckeyestudio/toh-user-approval'
-import { approvalResponsePayloadSchema } from './api/approvals.schema.ts'
-import { imageLimitsProjectionSchema, sessionListMetadataProjectionSchema } from './api/sessions.schema.ts'
-import { questionResponsePayloadSchema } from './api/questions.schema.ts'
-import type { ClientResponse, RpcError, RpcReceipt, RpcRequest, RpcResponse } from './api/rpc.ts'
-import { RpcId } from './api/rpc.ts'
 import type {
-  AskUserQuestionAnswer, AskUserQuestionItem, AskUserQuestionRequest,
-} from '@buckeyestudio/toh-user-questions'
-import { UserQuestionError } from '@buckeyestudio/toh-user-questions'
+  ApiProxy, ConfigurableProviderView, CredentialView, GoalRef, HostFrame,
+  MuxFrame, PromptContentPart, SessionListMetadata, SessionProjectionsBlock, SessionSearchItem,
+  SessionSummary, SettingsNamespaceView, SubagentAddress, JobView,
+  WorkspaceId,
+} from './api/index.ts'
+import type { RpcError, RpcRequest, RpcResponse } from './api/rpc.ts'
 import { DirectoryPickerError } from '@buckeyestudio/toh-host-directory-picker'
 import {
   ApiRemoteSessionNotFound as SessionNotFound,
@@ -109,10 +91,41 @@ import {
   hasApiRemoteSubagentOwner,
   inspectApiRemoteSession,
 } from '@buckeyestudio/toh-api-remotes'
-import { canOpenNativePath, openNativePath, openNativeTextFile } from './native-path-opener.ts'
+import {
+  applySessionListMetadata,
+  assertJsonArgs,
+  backscanArgs,
+  buildModelCatalog,
+  canOpenPaths,
+  canonicalClientTimeZone,
+  changedWorkspaceView,
+  detachedProjectionsFor,
+  err,
+  frame,
+  FrameQueue,
+  historyPage,
+  isAborted,
+  MESSAGE_TYPES,
+  ok,
+  openPath,
+  openTextFile,
+  presetFailure,
+  presenterScopeFor,
+  projectionsFor,
+  queueItems,
+  sessionBlank,
+  sessionListFields,
+  sessionListMetadata,
+  sessionListUpdatedAt,
+  subscribeSession,
+  viewFor,
+  workspaceView,
+} from './api/proxy-shared.ts'
+import type { ToolCallData } from './api/proxy-shared.ts'
+import { createInteractionsImpl, requestedFrame } from './api/interactions-impl.ts'
+import { imageLimitsProjectionSchema, sessionListMetadataProjectionSchema } from './api/sessions.schema.ts'
 
-/** Page size when history is called without maxMessages. */
-const DEFAULT_MAX_MESSAGES = 50
+export { assertJsonArgs } from './api/proxy-shared.ts'
 
 /** Provider work budget: at most 100 calls and 2,000 inspected hits. */
 const SESSION_SEARCH_PROVIDER_CALL_LIMIT = 100
@@ -121,9 +134,6 @@ const SESSION_SEARCH_PROVIDER_CALL_LIMIT = 100
 const COLD_SUMMARY_BATCH_SIZE = 16
 /** Default maximum artifact size eligible for one cold blankness read. */
 export const DEFAULT_COLD_BLANK_PROBE_MAX_BYTES = 1024
-
-/** Conversation message event types (the pagination counting unit). */
-const MESSAGE_TYPES = new Set(['user/message', 'assistant/message'])
 
 /** Validate one prompt as a batch before publishing any durable image object. */
 async function durablePromptContent(ctx: Context, content: readonly PromptContentPart[]): Promise<ContentBlock[]> {
@@ -191,237 +201,6 @@ function referencedImage(events: readonly SessionEvent[], attachmentId: string):
   return undefined
 }
 
-/** Strict browser-zone profile: UTC or an IANA Area/Location-style identifier. */
-const IANA_TIME_ZONE = /^[A-Za-z][A-Za-z0-9_+.-]*(?:\/[A-Za-z0-9_+.-]+)+$/
-
-/** Validate and canonicalize one browser-supplied IANA zone at the wire boundary. */
-function canonicalClientTimeZone(value: string): string | undefined {
-  if (value.length === 0 || value.trim() !== value
-    || (value !== 'UTC' && !IANA_TIME_ZONE.test(value))) return undefined
-  try {
-    const canonical = new Intl.DateTimeFormat('en-US', { timeZone: value })
-      .resolvedOptions().timeZone
-    /* v8 ignore next -- Intl returns UTC or a canonical IANA Area/Location for accepted input. */
-    if (canonical !== 'UTC' && !IANA_TIME_ZONE.test(canonical)) return undefined
-    return canonical
-  } catch {
-    // Intl rejects unsupported zone names; the RPC maps that parser rejection below.
-    return undefined
-  }
-}
-
-/** Read live abort state across awaits without treating it as synchronously immutable. */
-function isAborted(signal: AbortSignal): boolean {
-  return signal.aborted
-}
-
-/**
- * Message-boundary pagination: count maxMessages append-origin messages
- * backwards from the window tail. Replacement copies never entered the
- * conversation a reader sees — they restate a shadowed range for the model
- * alone — so they consume no quota; the page stays one contiguous raw range,
- * which keeps a compaction's log-only `compaction/summary` record on the same page as its
- * replacement. The cut is the starting seq of the oldest message group (chunks
- * group via sourceEventSeqs — never cut mid-message). The tail page naturally
- * includes the in-progress partial.
- */
-function paginate(
-  events: readonly SessionEvent[],
-  beforeSeq: number | undefined,
-  maxMessages: number,
-): { events: SessionEvent[]; hasMore: boolean } {
-  const window = beforeSeq === undefined ? [...events] : events.filter(event => event.seq < beforeSeq)
-  let count = 0
-  let cut = 0
-  for (let i = window.length - 1; i >= 0; i--) {
-    const event = window[i] as SessionEvent
-    if (!MESSAGE_TYPES.has(event.type) || !isAppendSurfaceEvent(event)) continue
-    count++
-    const sources = (event as { sourceEventSeqs?: number[] }).sourceEventSeqs
-    let groupStart = event.seq
-    if (sources !== undefined) {
-      for (const source of sources) {
-        if (source < groupStart) groupStart = source
-      }
-    }
-    if (count >= maxMessages) {
-      cut = groupStart
-      break
-    }
-  }
-  const page = window.filter(event => event.seq >= cut)
-  return { events: page, hasMore: cut > 0 }
-}
-
-/** Wrap an ok result echoing the request's rpcId. */
-function ok<T>(request: RpcRequest<unknown>, value: T): RpcResponse<T> {
-  return { rpcId: request.rpcId, result: { ok: true, value } }
-}
-
-/**
- * Build the provider/model catalog over every registered route. Shared by the
- * session-scoped `session.models` and host-scoped `llm.models`. Catalog
- * membership stays advisory: an unlisted session selection remains valid for
- * provider dispatch, but is not injected back into the selector after its
- * owning catalog stops advertising it. Per-provider failures ride `failures`
- * without failing the sound groups; groups that advertise nothing are dropped.
- */
-async function buildModelCatalog(ctx: Context): Promise<{
-  groups: ModelProviderGroup[]
-  failures: ModelCatalogFailure[]
-}> {
-  const catalog = await Promise.all(ctx.llm.listProviders().map(async (provider) => {
-    try {
-      const models = await ctx.llm.listModels(provider.id)
-      const entries = await Promise.all(models.map(async (model) => {
-        const resolved = await ctx.llm.resolveModelInfo(provider.id, model.id)
-        const reasoning: ModelReasoning | undefined = resolved.reasoning === undefined
-          ? undefined
-          : {
-            efforts: resolved.reasoning.efforts.map(effort => ({
-              id: effort.id,
-              name: effort.name,
-              ...effort.description === undefined
-                ? {}
-                : { description: effort.description },
-            })),
-            ...resolved.reasoning.defaultEffort === undefined
-              ? {}
-              : { defaultEffort: resolved.reasoning.defaultEffort },
-          }
-        return {
-          id: model.id,
-          name: model.name,
-          ...model.description === undefined ? {} : { description: model.description },
-          ...reasoning === undefined ? {} : { reasoning },
-        }
-      }))
-      const group: ModelProviderGroup = {
-        id: provider.id,
-        name: provider.name,
-        models: entries,
-      }
-      return { kind: 'group' as const, group }
-    } catch (error: unknown) {
-      const failure: ModelCatalogFailure = {
-        id: provider.id,
-        name: provider.name,
-        message: error instanceof Error ? error.message : String(error),
-      }
-      return { kind: 'failure' as const, failure }
-    }
-  }))
-  return {
-    groups: catalog.flatMap(item => item.kind === 'group' ? [item.group] : []).filter(group => group.models.length > 0),
-    failures: catalog.flatMap(item => item.kind === 'failure' ? [item.failure] : []),
-  }
-}
-
-/** Wrap an error result echoing the request's rpcId. */
-function err<T>(request: RpcRequest<unknown>, error: RpcError): RpcResponse<T> {
-  return { rpcId: request.rpcId, result: { ok: false, error } }
-}
-
-/**
- * The RPC refusal a preset failure becomes, or undefined when the failure is
- * about something else.
- *
- * Both the session-create path and the switch path can be handed the same two
- * failures, and a client that has to branch on the code needs them worded the
- * same from either.
- * @param request - the request being answered.
- * @param error - the thrown value.
- * @returns the refusal, or undefined when the caller should keep handling.
- */
-function presetFailure(request: RpcRequest<unknown>, error: unknown): RpcResponse<never> | undefined {
-  if (error instanceof UnknownPresetError) {
-    return err(request, {
-      code: 'agent-preset-not-found',
-      message: error.message,
-      details: { agentPreset: error.presetId, available: [...error.available] },
-    })
-  }
-  if (error instanceof PresetMountError) {
-    return err(request, {
-      code: 'agent-preset-invalid',
-      message: error.message,
-      details: { agentPreset: error.presetId, reason: error.reason },
-    })
-  }
-  return undefined
-}
-
-/** Simple async queue: core callbacks push, the AsyncIterable pulls; abort/return cleans up. */
-class FrameQueue<F> {
-  private buffer: F[] = []
-  private waiter: (() => void) | undefined
-  private done = false
-
-  push(item: F): void {
-    if (this.done) return
-    this.buffer.push(item)
-    this.waiter?.()
-  }
-
-  end(): void {
-    this.done = true
-    this.waiter?.()
-  }
-
-  async *iterate(signal: AbortSignal, cleanup: () => void): AsyncGenerator<F> {
-    const onAbort = (): void => { this.end() }
-    signal.addEventListener('abort', onAbort, { once: true })
-    try {
-      while (true) {
-        while (this.buffer.length > 0) yield this.buffer.shift() as F
-        if (this.done || signal.aborted) return
-        await new Promise<void>((resolve) => { this.waiter = resolve })
-        this.waiter = undefined
-      }
-    } finally {
-      signal.removeEventListener('abort', onAbort)
-      cleanup()
-    }
-  }
-}
-
-/**
- * Server-side frame mint: pure pushes get a fresh rpcId per frame (answerable
- * frames — approval/question requested — mint their stable id in their
- * pending registries instead).
- */
-function frame<F>(payload: F): RpcRequest<F> {
-  return { rpcId: RpcId(randomUUID()), payload }
-}
-
-/**
- * Narrow one allowlisted host event's argument list to the JSON values the
- * wrapper frame carries. A rejected argument is an allowlist mistake (the
- * forwarded path applies no projection), not hostile input, so it throws rather
- * than degrading to a lossy frame. The throw surfaces where the forwarding
- * listener runs, so the emitter's own listener containment logs it and drops
- * that frame — loud in the Host log, not at load or at the emit. Exported for
- * the test that owns this decision: every currently allowlisted event has a
- * statically JSON-safe payload, so a type-legal `ctx.emit` cannot reach the
- * rejection branch.
- * @param event - forwarded host event name, named in the failure.
- * @param args - the emitter's argument list.
- * @returns the same arguments typed as JSON values.
- */
-export function assertJsonArgs(event: string, args: readonly unknown[]): JsonValue[] {
-  for (const [index, arg] of args.entries()) {
-    if (!isJsonValue(arg)) {
-      throw new Error(`forwarded host event "${event}" argument ${index} is not lossless JSON data`)
-    }
-  }
-  return args as JsonValue[]
-}
-
-/** Queue the subscription baseline frame. */
-function subscribeSession(queue: FrameQueue<RpcRequest<MuxFrame>>, session: Session): void {
-  queue.push(frame({ type: 'session/subscribed', sessionId: session.id, lastSeq: session.seq - 1 }))
-}
-
 /**
  * Project registry snapshots onto the wire view, dropping the three internal
  * fields {@link JobView} documents as absent.
@@ -436,59 +215,6 @@ function jobViews(snapshots: readonly JobSnapshot[]): JobView[] {
     startedAt: job.startedAt,
     ...job.finishedAt === undefined ? {} : { finishedAt: job.finishedAt },
   }))
-}
-
-/**
- * Whether the session's conversation has started: no turn has run yet (a
- * turn is one model-loop execution). Standalone plugin events — command
- * lifecycle records, plan/mode, titles, goals — never open a turn, so
- * running `/plan` or `/goal` on a fresh session keeps it blank
- * (list-hidden, reusable).
- */
-function sessionBlank(session: Session): boolean {
-  return !session.events.some(event => event.type === 'turn/start')
-}
-
-/** Advance the Session-list hint projection by one committed event. */
-function applySessionListMetadata(state: SessionListMetadata, event: SessionEvent): SessionListMetadata {
-  const blank = state.blank && event.type !== 'turn/start'
-  const lastPromptAt = event.type === 'user/message' && event.data.source.kind === 'user'
-    ? event.time
-    : state.lastPromptAt
-  return blank === state.blank && lastPromptAt === state.lastPromptAt
-    ? state
-    : { blank, lastPromptAt }
-}
-
-/** Fold exact list metadata for an attached Session. */
-function sessionListMetadata(events: readonly SessionEvent[]): SessionListMetadata {
-  let state: SessionListMetadata = { blank: true, lastPromptAt: null }
-  for (const event of events) state = applySessionListMetadata(state, event)
-  return state
-}
-
-/** Sort by creation or latest human prompt, whichever is newer. */
-function sessionListUpdatedAt(header: SessionHeader, metadata: SessionListMetadata | undefined): number {
-  return Math.max(header.createdAt, metadata?.lastPromptAt ?? 0)
-}
-
-/** Shared Session-header projection for list baselines and creation frames. */
-function sessionListFields(header: SessionHeader, events: readonly SessionEvent[] = []): {
-  parentSessionId?: SessionId
-  origin?: 'subagent'
-  cwd?: string
-  agentPreset?: string
-} {
-  // The preset comes from the log, not the header: a session that switched
-  // while blank ran its turns under the newer composition, and a picker
-  // showing the creation-time value would contradict what the model saw.
-  const agentPreset = resolveSessionPreset({ header, events })
-  return {
-    ...header.parentSession === undefined ? {} : { parentSessionId: header.parentSession },
-    ...header.origin === undefined ? {} : { origin: header.origin },
-    ...header.cwd === undefined ? {} : { cwd: header.cwd },
-    ...agentPreset === undefined ? {} : { agentPreset },
-  }
 }
 
 /** SessionSummary projection for attached (in-memory) sessions. */
@@ -610,165 +336,6 @@ export interface ApiProxyDefaults {
   canOpenPath?: () => boolean
 }
 
-/** The tool/call payload fields the presenter path reads. */
-interface ToolCallData { callId: string; name: string; arguments: string }
-/**
- * One outstanding approval question: the stable server-request id, the frame
- * material replayed to late mux subscribers, and the resolver that settles the
- * answerer's promise back into `ctx.approval`.
- */
-interface PendingApproval {
-  rpcId: RpcId
-  sessionId: SessionId
-  approvalId: ApprovalRequestId
-  toolName: string
-  callId?: CallId
-  reason?: string
-  resolve(outcome: ApprovalOutcome): void
-}
-
-/** Project a pending entry into its answerable mux frame (initial push and mux-open replay share it). */
-function requestedFrame(pending: PendingApproval): RpcRequest<MuxFrame> {
-  return {
-    rpcId: pending.rpcId,
-    payload: {
-      type: 'approval/requested',
-      sessionId: pending.sessionId,
-      approvalId: pending.approvalId,
-      toolName: pending.toolName,
-      ...pending.callId === undefined ? {} : { callId: pending.callId },
-      ...pending.reason === undefined ? {} : { reason: pending.reason },
-    },
-  }
-}
-
-/** One host-owned question wait, addressed by the stable server-request id. */
-interface PendingQuestion {
-  rpcId: RpcId
-  sessionId: SessionId
-  questions: AskUserQuestionItem[]
-  resolve: (answer: AskUserQuestionAnswer) => void
-  reject: (error: UserQuestionError) => void
-  signal?: AbortSignal
-  onAbort?: () => void
-}
-
-/** Validate one answer batch against the exact question request it resolves. */
-function matchesQuestions(payload: QuestionResponsePayload, pending: PendingQuestion): boolean {
-  if (payload.sessionId !== pending.sessionId) return false
-  const answers = payload.answer.answers
-  if (answers.length !== pending.questions.length) return false
-  return answers.every((answer, index) => {
-    const question = pending.questions[index] as AskUserQuestionItem
-    if (answer.id !== question.id) return false
-    if (new Set(answer.selected).size !== answer.selected.length) return false
-    const custom = answer.custom?.trim()
-    if (custom !== undefined && custom === '') return false
-    if (question.multiSelect !== true) {
-      if (custom !== undefined && answer.selected.length > 0) return false
-      if (answer.selected.length > 1) return false
-    }
-    const labels = new Set(question.options?.map(option => option.label) ?? [])
-    return answer.selected.every(label => labels.has(label))
-  })
-}
-
-/**
- * Compute the render intent for a tool/call or tool/result event through the
- * presenters registered at this moment; every other event type gets none. A
- * result's presenter needs its call's parsed args — `argsFor` supplies them
- * (live: the per-session call table; history: an in-page backscan), returning
- * undefined when the pairing is unavailable (e.g. the call fell off the page),
- * which soft-falls to no view. Presenter or JSON.parse throws also soft-fall:
- * the client's documented default (generic JSON card) covers every miss.
- */
-function viewFor(
-  ctx: Context,
-  event: SessionEvent,
-  argsFor: (callId: string) => unknown,
-  // Presenters live with the definitions, and definitions live in the scope
-  // chain: a preset registers its tools into its standing layer. A live agent
-  // is a scope whose chain passes through its preset; a cold read passes the
-  // preset's standing key directly — no agent, no resume. An undefined scope
-  // sees only the global layer, which is the pre-preset deployment shape.
-  scope?: ScopeKey,
-): ToolEventView | undefined {
-  try {
-    if (event.type === 'tool/call') {
-      const { name, arguments: raw } = event.data as ToolCallData
-      const view = ctx.tools.get(name, scope)?.presentCall?.(JSON.parse(raw))
-      return view === undefined ? undefined : { for: 'call', view }
-    }
-    if (event.type === 'tool/result') {
-      const { message, meta } = event.data
-      const [result] = message.content
-      const callId = message.source.callId
-      const call = argsFor(callId) as { name: string; args: unknown } | undefined
-      if (call === undefined) return undefined
-      const view = ctx.tools.get(call.name, scope)?.presentResult?.(call.args, {
-        content: result.content,
-        isError: result.isError === true,
-        ...meta === undefined ? {} : { meta },
-      })
-      return view === undefined ? undefined : { for: 'result', view }
-    }
-  } catch (error: unknown) {
-    // A throwing presenter (or unparseable arguments) must not break delivery;
-    // the event still ships, just without a view.
-    console.error(`api-proxy: presenter failed for ${event.type}, falling back to generic: ${String(error)}`)
-  }
-  return undefined
-}
-
-/**
- * Resolve a tool/result's call pairing by scanning a window of events backwards
- * for the matching tool/call. Used by the history path (the page is the
- * window — a cross-page pairing soft-falls to no view) and by live-path table
- * misses after a reconnect-eviction.
- */
-function backscanArgs(events: readonly SessionEvent[], callId: string): { name: string; args: unknown } | undefined {
-  for (let i = events.length - 1; i >= 0; i--) {
-    const event = events[i] as SessionEvent
-    if (event.type !== 'tool/call') continue
-    const data = event.data as ToolCallData
-    if (data.callId !== callId) continue
-    try {
-      return { name: data.name, args: JSON.parse(data.arguments) }
-    } catch {
-      // Unparseable stored arguments: same soft-fall as a live parse failure.
-      return undefined
-    }
-  }
-  return undefined
-}
-
-/** Render one detached history page through the same presenter path as ordinary history. */
-function historyPage(
-  ctx: Context,
-  events: readonly SessionEvent[],
-  beforeSeq: number | undefined,
-  maxMessages: number | undefined,
-  scope?: ScopeKey,
-): { events: HistoryEntry[]; hasMore: boolean } {
-  const page = paginate(events, beforeSeq, maxMessages ?? DEFAULT_MAX_MESSAGES)
-  return {
-    events: page.events.map((event) => {
-      const view = viewFor(ctx, event, callId => backscanArgs(page.events, callId), scope)
-      return { event, ...view === undefined ? {} : { view } }
-    }),
-    hasMore: page.hasMore,
-  }
-}
-
-/**
- * The projection baseline for one history tail page: the registry's
- * watermark-cache snapshot — one fully synchronous read (no await between the
- * page slice and this), so all values and `asOfSeq` form a single consistent
- * cut and `asOfSeq` equals the window tail event seq. The carrier holds zero
- * domain knowledge (each value passed its unit's own schema inside the
- * registry). An absent registry means the deployment has no projection seam:
- * the whole block is absent and clients treat every key as capability-absent.
- */
 /**
  * Which session a transcript read is served from. An attached session is the
  * live object and keeps appending, so its events and projection baseline are
@@ -778,12 +345,6 @@ function historyPage(
 type HistorySource =
   | { readonly kind: 'attached'; readonly session: Session }
   | { readonly kind: 'detached'; readonly header: SessionHeader; readonly events: SessionEvent[] }
-
-function projectionsFor(ctx: Context, session: Session): SessionProjectionsBlock | undefined {
-  const registry = ctx.get('sessionProjections')
-  if (registry === undefined) return undefined
-  return registry.snapshot(session)
-}
 
 /**
  * The projection baseline of one session.list row, fail-soft: attached
@@ -805,16 +366,6 @@ function listProjectionsFor(ctx: Context, meta: SessionHeader, session: Session 
     ctx.logger.warn(`session.list: projection column for "${meta.id}" failed (serving the row without it): ${String(error)}`)
     return undefined
   }
-}
-
-/** Projection baseline for a detached history tail without Agent activation. */
-function detachedProjectionsFor(
-  ctx: Context,
-  events: readonly SessionEvent[],
-): SessionProjectionsBlock | undefined {
-  const registry = ctx.get('sessionProjections')
-  if (registry === undefined) return undefined
-  return registry.restore({}, events, 0).snapshot
 }
 
 /**
@@ -1013,31 +564,6 @@ function workspaceNotFound<T>(request: RpcRequest<unknown>, workspaceId: string)
   })
 }
 
-/** Wire projection of one workspace entity (the workspace.* value row). */
-function workspaceView(workspace: Workspace): WorkspaceView {
-  return {
-    workspaceId: workspace.id,
-    path: workspace.path,
-    title: workspace.title,
-    sessionIds: [...workspace.sessionIds],
-    createdAt: workspace.createdAt,
-    updatedAt: workspace.updatedAt,
-  }
-}
-
-/** Wire projection of the durable record carried by `domain/changed`. */
-function changedWorkspaceView(workspaceId: string, value: unknown): WorkspaceView {
-  const record: WorkspaceRecord = workspaceRecord.parse(value)
-  return {
-    workspaceId: workspaceId as WorkspaceId,
-    path: record.path,
-    title: record.title,
-    sessionIds: [...record.sessionIds],
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
-  }
-}
-
 /**
  * Implement ApiProxy over a composed host context.
  * @param ctx - a context with the Host spine and Workspace registry mounted.
@@ -1068,8 +594,6 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
   const sessionCreations = new Map<SessionId, Promise<Agent>>()
   /** Serializes path ownership and explicit title checks with Workspace mutations. */
   let workspaceCreationChain = Promise.resolve()
-  const pendingQuestions = new Map<RpcId, PendingQuestion>()
-  const pendingApprovals = new Map<RpcId, PendingApproval>()
   const muxQueues = new Set<FrameQueue<RpcRequest<MuxFrame>>>()
   const imageAdmissionChains = new WeakMap<Agent, Promise<void>>()
 
@@ -1264,30 +788,6 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     })
   })
 
-  /** Project both durable inbox lists, optionally including the splice currently being emitted. */
-  const queueItems = (
-    agent: Agent,
-    splice?: SessionEventMap['agent/inbox/spliced'],
-  ): QueuedInboxItem[] => {
-    const project = (target: 'next-turn' | 'next-step'): readonly UserMessage[] => {
-      const messages = target === 'next-turn' ? agent.inbox.nextTurn : agent.inbox.nextStep
-      return splice?.target === target
-        ? messages.toSpliced(splice.start, splice.removedCount ?? 0, ...splice.inserted)
-        : messages
-    }
-    return [
-      ...project('next-turn').map(message => ({ id: message.id, placement: 'queued' as const, message })),
-      ...project('next-step').map(message => ({
-        id: message.id,
-        // Only user-origin messages are steering; injected context (approval
-        // notices, task completion, attached snapshots) is not a user action
-        // and must not render as a pending steering bubble.
-        placement: message.source.kind === 'user' ? 'steering' as const : 'context' as const,
-        message,
-      })),
-    ]
-  }
-
   ctx.on('session/event', (session, event) => {
     if (event.type !== 'agent/inbox/spliced') return
     const agent = ctx.agents.get(session.id)
@@ -1295,139 +795,9 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     broadcast({ type: 'session/queue', sessionId: session.id, items: queueItems(agent, event.data) })
   })
 
-  /** Remove a wait before settling it: synchronous deletion makes the first claimant win. */
-  function claimQuestion(pending: PendingQuestion, outcome: 'answered' | 'cancelled'): void {
-    pendingQuestions.delete(pending.rpcId)
-    if (pending.signal !== undefined && pending.onAbort !== undefined) {
-      pending.signal.removeEventListener('abort', pending.onAbort)
-    }
-    broadcast({
-      type: 'question/resolved', sessionId: pending.sessionId,
-      questionRpcId: pending.rpcId, outcome,
-    })
-  }
-
-  const disposeProvider = ctx.userQuestions.registerProvider({
-    ask(request: AskUserQuestionRequest): Promise<AskUserQuestionAnswer> {
-      const sessionId = request.agent?.id
-      if (sessionId === undefined) {
-        return Promise.reject(new UserQuestionError(
-          'web user interaction requires an agent-owned session', 'ASK_MISSING_AGENT'))
-      }
-      return new Promise<AskUserQuestionAnswer>((resolve, reject) => {
-        const rpcId = RpcId(randomUUID())
-        const pending: PendingQuestion = {
-          rpcId, sessionId, questions: request.questions, resolve, reject,
-          ...(request.signal === undefined ? {} : { signal: request.signal }),
-        }
-        const onAbort = (): void => {
-          claimQuestion(pending, 'cancelled')
-          reject(new UserQuestionError(
-            'ask_user_question was aborted before the user answered', 'ASK_ABORTED'))
-        }
-        pending.onAbort = onAbort
-        pendingQuestions.set(rpcId, pending)
-        request.signal?.addEventListener('abort', onAbort, { once: true })
-        const envelope: RpcRequest<MuxFrame> = {
-          rpcId,
-          payload: { type: 'question/requested', sessionId, questions: request.questions },
-        }
-        for (const queue of muxQueues) queue.push(envelope)
-      })
-    },
-  })
-  ctx.effect(() => () => {
-    disposeProvider()
-    for (const pending of [...pendingQuestions.values()]) {
-      claimQuestion(pending, 'cancelled')
-      pending.reject(new UserQuestionError(
-        'web user-questions provider was disposed', 'ASK_ABORTED'))
-    }
-  }, 'api-proxy: user-questions provider')
-
-  // --- Approval pending registry ------------------------------------------
-  // The proxy is the approval channel for every agent this host owns: an ask
-  // through `ctx.approval` becomes an answerable server-request on the mux
-  // stream (stable rpcId), settled by POST /api/respond. The entry survives
-  // client disconnects — mux-open replays still-pending requested frames with
-  // the same rpcId (the refresh-recovery baseline) — and withdraws on the
-  // ask's own abort signal (turn cancel), pushing `cancelled` to subscribers.
-  if (ctx.get('approval') !== undefined) {
-    // Teardown parity with the question provider above: a gateway disposed
-    // while approvals are pending settles every entry as 'cancelled' (the
-    // service's fail-closed vocabulary), so no ask promise dangles past the
-    // proxy's lifetime and subscribers see the withdrawal.
-    ctx.effect(() => () => {
-      for (const pending of [...pendingApprovals.values()]) pending.resolve('cancelled')
-    }, 'api-proxy: approval registry teardown')
-    ctx.on('approval/request', (req, next) => {
-      // Dispatch rides a microtask behind the service's own signal check: an
-      // abort landing in that window would register the abort listener AFTER
-      // the signal fired — never invoked, entry pending forever, zombie frame
-      // on every mux replay. Settle synchronously instead of publishing.
-      if (req.signal?.aborted === true) return Promise.resolve<ApprovalOutcome>('cancelled')
-      // The audit pair `approval/asked` is already appended by the service
-      // before dispatch, but dispatch rides a microtask: parallel tool calls
-      // can append several asked events before any answerer runs. THIS
-      // request's event is therefore the newest asked event that is still
-      // undecided, unclaimed by another pending entry, and — when the ask
-      // names a call — carries the same callId.
-      const events = req.agent.session.events
-      const claimed = new Set<ApprovalRequestId>()
-      for (const entry of pendingApprovals.values()) claimed.add(entry.approvalId)
-      const decided = new Set<ApprovalRequestId>()
-      let approvalId: ApprovalRequestId | undefined
-      for (let i = events.length - 1; i >= 0; i -= 1) {
-        const event = events[i] as SessionEvent
-        if (event.type === 'approval/decided') {
-          decided.add(event.data.id)
-        } else if (event.type === 'approval/asked') {
-          if (decided.has(event.data.id) || claimed.has(event.data.id)) continue
-          // Symmetric pairing: a callId-bearing ask only takes its own call's
-          // record, and a callId-less ask only takes a callId-less record —
-          // so neither shape can steal the other's audit id under parallel
-          // asks. (Today every producer — the tool executor — passes callId;
-          // the callId-less arm guards any future non-tool asker.)
-          if ((req.callId ?? null) !== (event.data.callId ?? null)) continue
-          approvalId = event.data.id
-          break
-        }
-      }
-      // No asked event means the request bypassed the service's audit path —
-      // not this channel's question; delegate to the fail-closed default.
-      if (approvalId === undefined) return next()
-      const id = approvalId
-      return new Promise<ApprovalOutcome>((resolve) => {
-        const settle = (outcome: ApprovalOutcome): void => {
-          /* v8 ignore next 3 -- defensive double-settle guard: respond() routes
-             through the pending table (a settled id is not-pending before it can
-             re-settle) and the first settle removes the abort listener, so no
-             reachable path settles twice; kept against future settle callers. */
-          if (!pendingApprovals.delete(pending.rpcId)) return
-          req.signal?.removeEventListener('abort', onAbort)
-          broadcast({ type: 'approval/resolved', sessionId: pending.sessionId, approvalId: id, outcome })
-          // A cancelled ask was already settled by the service's own signal
-          // race, which discards this late resolution; resolving is a no-op
-          // there and keeps this promise from dangling forever.
-          resolve(outcome)
-        }
-        const onAbort = (): void => { settle('cancelled') }
-        const pending: PendingApproval = {
-          rpcId: RpcId(randomUUID()),
-          sessionId: req.agent.session.id,
-          approvalId: id,
-          toolName: req.toolName,
-          ...req.callId === undefined ? {} : { callId: req.callId },
-          ...req.reason === undefined ? {} : { reason: req.reason },
-          resolve: settle,
-        }
-        pendingApprovals.set(pending.rpcId, pending)
-        req.signal?.addEventListener('abort', onAbort, { once: true })
-        const envelope = requestedFrame(pending)
-        for (const queue of muxQueues) queue.push(envelope)
-      })
-    })
-  }
+  // The interaction channel: the question provider, the approval waterfall,
+  // and POST /api/respond route over their shared pending registries.
+  const { respond, pendingQuestions, pendingApprovals } = createInteractionsImpl(ctx, { broadcast, muxQueues })
 
   type SessionReadState = {
     id: SessionId
@@ -1512,47 +882,6 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
     const events = [...source.session.events]
     const projections = includeProjections ? projectionsFor(ctx, source.session) : undefined
     return { events, ...projections === undefined ? {} : { projections } }
-  }
-
-  /**
-   * The registry view scope a transcript's presenters resolve in.
-   *
-   * A live agent is that scope itself (its chain passes through its preset's
-   * standing layer). A cold session resolves its preset from the LOG, and the
-   * preset's STANDING key serves without resuming anything — ensuring the
-   * mount composes plugins but starts no agent, session, or turn. No roster,
-   * no recorded preset, or a preset the roster no longer supplies all fall
-   * back to the global layer: the transcript still serves, with the generic
-   * cards a viewless entry renders.
-   *
-   * Reading the header alone would render a session that switched while blank
-   * through the composition it was CREATED with. Every tool only the newer
-   * preset registers resolves to no presenter there, and the transcript
-   * silently degrades to generic cards for exactly the calls its history is
-   * made of.
-   * @param sessionId - the transcript being read.
-   * @param session - that session's header and log (attached or inspected).
-   * @returns the scope to pass to presenter lookups, or undefined for global.
-   */
-  async function presenterScopeFor(
-    sessionId: SessionId,
-    session: PresetBearingSession,
-  ): Promise<ScopeKey | undefined> {
-    const live = ctx.get('agents')?.get(sessionId)
-    if (live !== undefined) return live
-    const presets = ctx.get('agentPresets')
-    if (presets === undefined) return undefined
-    try {
-      // An unrecorded preset (a log from before the roster existed) renders
-      // through the DEFAULT preset's standing layer: that is the composition
-      // an unnamed session composes today, and presenters are pure display,
-      // so the worst a mismatch produces is the generic card it had anyway.
-      return await presets.standingKeyFor(resolveSessionPreset(session))
-    } catch {
-      // Swallows only the unknown/unusable-preset rejection from the roster:
-      // a deleted or broken preset must degrade this read, never fail it.
-      return undefined
-    }
   }
 
   /** Resolve one requested identity to a live agent, creating or resuming it once. */
@@ -1810,55 +1139,6 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
   /** Missing-service report shared by the settings domain (skills-domain stance). */
   function settingsAbsent(): RpcError {
     return { code: 'internal', message: 'settings service is absent: this deployment does not mount a settings provider (e.g. @buckeyestudio/toh-settings-file) in its composition', details: {} }
-  }
-
-  /** Open one Host-resolved target and map native failures onto the wire vocabulary. */
-  async function openTarget(
-    request: RpcRequest<unknown>, path: string, signal: AbortSignal,
-    open: (path: string, signal: AbortSignal) => Promise<void>,
-  ): Promise<RpcResponse<{ opened: true }>> {
-    try {
-      await open(path, signal)
-      return ok(request, { opened: true as const })
-    } catch (error: unknown) {
-      if (signal.aborted) {
-        return err(request, {
-          code: 'cancelled',
-          message: 'path open was aborted',
-          details: {},
-        })
-      }
-      return err(request, {
-        code: 'internal',
-        message: `path open failed: ${error instanceof Error ? error.message : String(error)}`,
-        details: {},
-      })
-    }
-  }
-
-  /** Open one Host-resolved path with its default application. */
-  function openPath(
-    request: RpcRequest<unknown>, path: string, signal: AbortSignal,
-  ): Promise<RpcResponse<{ opened: true }>> {
-    const open = defaults.openPath
-      ?? ((target: string, openSignal: AbortSignal) => openNativePath(target, openSignal))
-    return openTarget(request, path, signal, open)
-  }
-
-  /** Open one Host-resolved text document in a native editor. */
-  function openTextFile(
-    request: RpcRequest<unknown>, path: string, signal: AbortSignal,
-  ): Promise<RpcResponse<{ opened: true }>> {
-    const open = defaults.openTextFile
-      ?? ((target: string, openSignal: AbortSignal) => openNativeTextFile(target, openSignal))
-    return openTarget(request, path, signal, open)
-  }
-
-  /** Whether this deployment can hand a path to a native opener at all. */
-  function canOpenPaths(): boolean {
-    if (defaults.canOpenPath !== undefined) return defaults.canOpenPath()
-    // An injected opener is by definition usable; otherwise ask the platform.
-    return defaults.openPath !== undefined || canOpenNativePath()
   }
 
   /** Missing-service report shared by the credentials domain. */
@@ -2161,7 +1441,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           // missing every preset-owned key; and an attached session keeps
           // appending, so awaiting between the two reads would pair events cut
           // at N with a baseline folded to N+1.
-          const scope = await presenterScopeFor(sessionId, sourceSession(source))
+          const scope = await presenterScopeFor(ctx, sessionId, sourceSession(source))
           const cut = historyCutOf(source, beforeSeq === undefined)
           const page = historyPage(ctx, cut.events, beforeSeq, maxMessages, scope)
           return ok(request, {
@@ -2835,7 +2115,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           model: selection.model,
           attachedSessions: ctx.agents.list().length,
           home: homedir(),
-          canOpenPath: canOpenPaths(),
+          canOpenPath: canOpenPaths(defaults),
         }))
       },
 
@@ -2907,7 +2187,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       },
 
       async openPath(request, signal) {
-        return openPath(request, request.payload.path, signal)
+        return openPath(defaults, request, request.payload.path, signal)
       },
     },
 
@@ -2977,7 +2257,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             ...preset.broken === undefined ? {} : { broken: preset.broken },
           })),
           authorable: presets.authorable,
-          hasDocument: canOpenPaths(),
+          hasDocument: canOpenPaths(defaults),
         })
       },
 
@@ -3083,8 +2363,8 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
           // directory — no browser payload carries a path in either direction
           // unless the deployment has no opener to hand it to.
           const directory = dirname(preset.path)
-          if (!canOpenPaths()) return ok(request, { opened: false as const, path: directory })
-          return await openPath(request, directory, signal)
+          if (!canOpenPaths(defaults)) return ok(request, { opened: false as const, path: directory })
+          return await openPath(defaults, request, directory, signal)
         } catch (error: unknown) {
           return err(request, presetError(agentPreset, error))
         }
@@ -3141,7 +2421,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         // The scope presenters resolve in — the live agent, else the recorded
         // preset's standing key, else the global layer — so a cold session's
         // '/' popup lists the catalog its composition actually serves.
-        const scope = await presenterScopeFor(sessionId, session)
+        const scope = await presenterScopeFor(ctx, sessionId, session)
         try {
           const skills = (await skillRegistry.list({ cwd, scope })).filter(isUserInvocable)
           return ok(request, {
@@ -3209,7 +2489,7 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             details: {},
           })
         }
-        return openTextFile(request, path, signal)
+        return openTextFile(defaults, request, path, signal)
       },
       update: request => settingsWrite(request, request.payload.ns, 'update', request.payload.patch, request.payload.expectedRevision),
       replace: request => settingsWrite(request, request.payload.ns, 'replace', request.payload.section, request.payload.expectedRevision),
@@ -3592,52 +2872,6 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
       },
     },
 
-    respond(message: ClientResponse): Promise<RpcReceipt> {
-      // Route by the echoed rpcId (the wire correlation): approvals first,
-      // then questions — the two registries share one id space of UUIDs.
-      const approval = pendingApprovals.get(message.rpcId)
-      if (approval !== undefined) {
-        if (!message.result.ok) return Promise.resolve({ accepted: false, reason: 'bad-response' })
-        const parsed = approvalResponsePayloadSchema.safeParse(message.result.value)
-        // The payload's audit correlation must match the entry the rpcId routed
-        // to — a mismatched answer is malformed, not merely late.
-        if (!parsed.success || parsed.data.approvalId !== approval.approvalId || parsed.data.sessionId !== approval.sessionId) {
-          return Promise.resolve({ accepted: false, reason: 'bad-response' })
-        }
-        approval.resolve(parsed.data.outcome)
-        return Promise.resolve({ accepted: true })
-      }
-      const pending = pendingQuestions.get(message.rpcId)
-      if (pending === undefined) return Promise.resolve({ accepted: false, reason: 'not-pending' })
-      if (!message.result.ok) {
-        if (message.result.error.code !== 'cancelled') {
-          return Promise.resolve({ accepted: false, reason: 'bad-response' })
-        }
-        claimQuestion(pending, 'cancelled')
-        pending.reject(new UserQuestionError(
-          'the user cancelled ask_user_question', 'ASK_CANCELLED'))
-        return Promise.resolve({ accepted: true })
-      }
-      const parsed = questionResponsePayloadSchema.safeParse(message.result.value)
-      if (!parsed.success) {
-        return Promise.resolve({ accepted: false, reason: 'bad-response' })
-      }
-      const payload: QuestionResponsePayload = {
-        sessionId: parsed.data.sessionId,
-        answer: {
-          answers: parsed.data.answer.answers.map(answer => ({
-            id: answer.id,
-            selected: answer.selected,
-            ...(answer.custom === undefined ? {} : { custom: answer.custom }),
-          })),
-        },
-      }
-      if (!matchesQuestions(payload, pending)) {
-        return Promise.resolve({ accepted: false, reason: 'bad-response' })
-      }
-      claimQuestion(pending, 'answered')
-      pending.resolve(payload.answer)
-      return Promise.resolve({ accepted: true })
-    },
+    respond,
   }
 }
