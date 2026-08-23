@@ -127,7 +127,7 @@ export class PerplexitySearchProvider implements WebSearchProvider {
       const status = response.status
       let message = `Perplexity API error (HTTP ${status})`
       try {
-        const parsed = await response.json() as PerplexityError
+        const parsed = JSON.parse(await readBounded(response)) as PerplexityError
         const detail = typeof parsed.error === 'string' ? parsed.error : parsed.error?.message ?? parsed.message
         if (detail !== undefined && detail.length > 0) message = detail
       } catch (error: unknown) {
@@ -135,6 +135,10 @@ export class PerplexitySearchProvider implements WebSearchProvider {
         // into a generic HTTP-error message — cancellation is not a provider
         // error (the seam's cancellation contract).
         if (isAbortError(error)) throw new WebError('Perplexity search aborted', 'WEB_ABORTED', { cause: error })
+        // An oversized body is refused outright rather than folded into the
+        // status-line fallback: an endpoint that will not bound its own reply
+        // is exactly the failure the ceiling exists to report.
+        if (error instanceof WebError) throw error
         // Otherwise: the HTTP status is already captured in `message` above; a
         // malformed/non-JSON error body (normal for gateway 5xx/429s) can only
         // cost a richer provider message, never the real error.
@@ -143,10 +147,11 @@ export class PerplexitySearchProvider implements WebSearchProvider {
     }
 
     try {
-      const payload = await response.json() as PerplexityResponse
+      const payload = JSON.parse(await readBounded(response)) as PerplexityResponse
       return mapPerplexityResponse(payload)
     } catch (error: unknown) {
       if (isAbortError(error)) throw new WebError('Perplexity search aborted', 'WEB_ABORTED', { cause: error })
+      if (error instanceof WebError) throw error
       throw new WebError(`Perplexity returned an unprocessable response body: ${String(error)}`, 'WEB_PROVIDER_ERROR', { cause: error })
     }
   }
@@ -163,5 +168,57 @@ function isAbortError(error: unknown): boolean {
 /** True for a request limit that can be sent to Perplexity (a positive whole number). */
 function isPositiveInteger(value: number): boolean {
   return Number.isInteger(value) && value > 0
+}
+
+/**
+ * Endpoint replies larger than this are refused. The endpoint is whatever URL
+ * the user configured, so the ceiling holds on the bytes actually read rather
+ * than on the length the server claims — the same two-stage shape `toh-web-fetch`
+ * uses for its own caller-supplied URLs, except that a truncated search reply is
+ * not parseable, so overflow rejects instead of truncating.
+ */
+const MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+
+/**
+ * Read a reply body, refusing one that outgrows the ceiling. A declared length
+ * is checked first so an honest server is turned away without transferring
+ * anything; the accumulated total is what actually enforces the bound, because
+ * a server that under-declares (or streams) tells us nothing up front.
+ */
+async function readBounded(response: Response): Promise<string> {
+  const oversized = (): WebError =>
+    new WebError(`Perplexity answered with more than ${MAX_RESPONSE_BYTES} bytes`, 'WEB_PROVIDER_ERROR')
+  const declared = Number(response.headers.get('content-length') ?? Number.NaN)
+  if (Number.isFinite(declared) && declared > MAX_RESPONSE_BYTES) {
+    await response.body?.cancel()
+    throw oversized()
+  }
+  /* v8 ignore next -- fetch always exposes a body stream on a Response; the null guard is defensive. */
+  if (response.body === null) return ''
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > MAX_RESPONSE_BYTES) throw oversized()
+      chunks.push(value)
+    }
+  } finally {
+    /* v8 ignore next 4 -- cancel() after a completed or abandoned read settles without rejecting; unobserved best-effort cleanup. */
+    await reader.cancel().catch(() => {
+      // Cancel after a drained read, or after this function walked away from an
+      // oversized one, is cleanup; the reply is already decided either way.
+    })
+  }
+  const body = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    body.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder().decode(body)
 }
 /* jscpd:ignore-end */

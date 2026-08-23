@@ -1260,6 +1260,44 @@ describe('DeepSeekAdapter against a mock server', () => {
     expect(result.finish.failure.message).toMatch(/HTTP 502/)
   })
 
+  it('refuses a streamed error body larger than the ceiling', async () => {
+    const server = await mockServer([{
+      kind: 'http-error',
+      status: 500,
+      body: 'x'.repeat(4 * 1024 * 1024 + 1),
+      contentType: 'text/plain',
+    }])
+    const adapter = adapterOf({ baseURL: server.url })
+    await expect(drain(adapter.stream({
+      provider: 'deepseek-official',
+      model: 'deepseek-v4-flash',
+      messages: [],
+    }))).rejects.toMatchObject({
+      code: 'SERVER',
+      failure: { status: 500 },
+      message: `DeepSeek answered with an error body larger than ${4 * 1024 * 1024} bytes`,
+    })
+  })
+
+  it('refuses an error body whose declared Content-Length exceeds the ceiling without draining it', async () => {
+    const server = await mockServer([{
+      kind: 'http-error',
+      status: 502,
+      body: 'tiny',
+      headers: { 'content-length': String(4 * 1024 * 1024 + 1) },
+    }])
+    const adapter = adapterOf({ baseURL: server.url })
+    await expect(drain(adapter.stream({
+      provider: 'deepseek-official',
+      model: 'deepseek-v4-flash',
+      messages: [],
+    }))).rejects.toMatchObject({
+      code: 'SERVER',
+      failure: { status: 502 },
+      message: `DeepSeek answered with an error body larger than ${4 * 1024 * 1024} bytes`,
+    })
+  })
+
   it('maps unusual statuses to HTTP_<status>', () => {
     expect(httpErrorCode(418)).toBe('HTTP_418')
   })
