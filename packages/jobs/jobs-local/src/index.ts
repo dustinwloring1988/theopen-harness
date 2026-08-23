@@ -14,7 +14,7 @@ import z from '@buckeyestudio/schemastery'
 import type { Agent } from '@buckeyestudio/toh-agent'
 import { AnonymousEntries, ScopedLayers, scopeOf } from '@buckeyestudio/toh-scope'
 import type { ScopeLayer } from '@buckeyestudio/toh-scope'
-import { deadline, timeoutOf } from '@buckeyestudio/toh-timeout'
+import { deadline, MAX_TIMER_DELAY_MS, timeoutOf } from '@buckeyestudio/toh-timeout'
 import { JobRegistry, JobId } from '@buckeyestudio/toh-jobs'
 import type {
   JobDoneListener, JobKind, JobOutcome, JobRead, JobSnapshot, JobStart, JobStatus,
@@ -230,8 +230,10 @@ export class LocalJobRegistry extends JobRegistry {
   async wait(id: JobId, timeoutMs: number, caller?: Agent, signal?: AbortSignal): Promise<JobSnapshot> {
     const job = this.expect(id)
     this.assertAccess(job, caller)
-    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0) {
-      throw new Error(`invalid wait timeout: expected a positive number of milliseconds, got ${JSON.stringify(timeoutMs)}`)
+    if (!Number.isFinite(timeoutMs) || timeoutMs <= 0 || timeoutMs > MAX_TIMER_DELAY_MS) {
+      throw new Error(
+        `invalid wait timeout: expected a positive number of milliseconds no greater than ${MAX_TIMER_DELAY_MS}, got ${JSON.stringify(timeoutMs)}`,
+      )
     }
     if (!isTerminal(job.status)) {
       if (signal?.aborted) throw new Error('wait aborted')

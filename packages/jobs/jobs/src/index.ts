@@ -125,7 +125,8 @@ export abstract class JobRegistry extends Service {
    * snapshot wins so a notice suppressed for this waiter is still delivered.
    * Throws for invalid, unknown, or foreign input.
    * @param id - job to wait for.
-   * @param timeoutMs - positive finite wait bound in milliseconds.
+   * @param timeoutMs - positive finite wait bound in milliseconds, no greater
+   *   than the 2_147_483_647 ms platform timer maximum.
    * @param caller - waiting agent checked against the owner.
    * @param signal - optional cancellation of the wait itself.
    * @returns snapshot at settlement or timeout.

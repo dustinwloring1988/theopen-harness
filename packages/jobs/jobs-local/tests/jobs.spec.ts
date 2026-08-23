@@ -502,6 +502,15 @@ describe('LocalJobRegistry.wait', () => {
     await expect(ctx.jobs.wait(id, Number.NaN)).rejects.toThrow('invalid wait timeout')
   })
 
+  it('rejects a timeout beyond the platform timer bound with the public error', async () => {
+    const ctx = await harness()
+    const id = ctx.jobs.start(producer().spec)
+    await expect(ctx.jobs.wait(id, Number.MAX_SAFE_INTEGER)).rejects.toThrow('invalid wait timeout')
+    // The rejected attempt leaves no waiter registered and the job untouched.
+    expect(waitResolverCount(ctx, id)).toBe(0)
+    expect(ctx.jobs.get(id)).toMatchObject({ status: 'running' })
+  })
+
   it('an aborted signal rejects the wait only — the job stays alive', async () => {
     const ctx = await harness()
     const id = ctx.jobs.start(producer().spec)
