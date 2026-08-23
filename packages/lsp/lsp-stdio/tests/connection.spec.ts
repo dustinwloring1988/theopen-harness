@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest'
 import { fileURLToPath } from 'node:url'
-import { LspConnection } from '@buckeyestudio/toh-lsp-stdio'
+import { encodeMessage, LspConnection } from '@buckeyestudio/toh-lsp-stdio'
 import type { ConnectionWriter } from '@buckeyestudio/toh-lsp-stdio/src/connection.ts'
 import { scrubbedParentEnv } from '@buckeyestudio/toh-subprocess'
 import { spawnSubprocess } from '@buckeyestudio/toh-subprocess-local/src/spawn.ts'
@@ -159,6 +159,15 @@ function connectScript(script: string, maxStderrBytes = 100_000, writer?: Connec
   return conn
 }
 
+/** Write client-initiated frames normally but never settle reply frames, pinning them as undrained writes. */
+function stallingReplyWriter(): ConnectionWriter {
+  return (stdin, message, done) => {
+    const frame = message as { id?: unknown; method?: unknown }
+    if (frame.method === undefined && frame.id !== undefined) return
+    stdin.write(encodeMessage(message), done)
+  }
+}
+
 describe('LspConnection edge behavior', () => {
   it('fails a request when the command cannot be spawned', async () => {
     const conn = new LspConnection({
@@ -248,6 +257,19 @@ describe('LspConnection edge behavior', () => {
       + 'process.stdin.on("data",c=>{b=Buffer.concat([b,c]);const s=b.indexOf("\\r\\n\\r\\n");if(s<0)return;const len=Number(/(\\d+)/.exec(b.toString("ascii",0,s))[1]);const body=JSON.parse(b.toString("utf8",s+4,s+4+len));process.stdout.write(fr(JSON.stringify({jsonrpc:"2.0",id:body.id,result:{ok:true}})));});'
     const conn = connectScript(script)
     await expect(conn.request('initialize', {})).resolves.toEqual({ ok: true })
+  })
+
+  it('fails the connection when a server floods unanswered server-to-client requests', async () => {
+    // Reply frames stall forever in this writer (their write callbacks never run), so every
+    // unanswered server request pins one undrained reply write; past the fixed bound the connection
+    // must fail fatally instead of buffering reply frames without limit.
+    const script = 'const fr=(o)=>{const x=Buffer.from(JSON.stringify({jsonrpc:"2.0",...o}));return Buffer.concat([Buffer.from(`Content-Length: ${x.length}\\r\\n\\r\\n`),x]);};'
+      + 'for (let i = 0; i < 40; i++) process.stdout.write(fr({ id: 10000 + i, method: "workspace/configuration", params: { items: [{}] } }));'
+      + 'setInterval(()=>{}, 1000)'
+    const conn = connectScript(script, 100_000, stallingReplyWriter())
+    await conn.closed
+    expect(conn.failed).toBe(true)
+    await expect(conn.request('initialize', {})).rejects.toThrow(/unanswered server-to-client requests/)
   })
 })
 
