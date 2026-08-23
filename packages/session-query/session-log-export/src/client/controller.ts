@@ -8,13 +8,10 @@ export type SessionLogDownloadStatus = 'downloading' | 'success' | 'error'
 /** Artifact variants one Session's shared download dialog presents. */
 export type SessionLogDownloadFormat = 'zip' | 'markdown'
 
-/** One download request: which artifact to fetch and, for Markdown, its document. */
-export interface SessionLogDownloadRequest {
-  /** Artifact variant; `zip` streams the host endpoint, `markdown` saves a client-built document. */
-  readonly format: SessionLogDownloadFormat
-  /** Complete Markdown document; required by and used only for the markdown format. */
-  readonly document?: string
-}
+/** One download request: the raw ZIP stream, or a client-built Markdown document. */
+export type SessionLogDownloadRequest =
+  | { readonly format: 'zip' }
+  | { readonly format: 'markdown'; readonly document: string }
 
 /** One Session's current download-dialog state. */
 export interface SessionLogDownloadEntry {
@@ -152,7 +149,7 @@ export class SessionLogDownloadController {
   ): Promise<void> {
     this.publish(sessionId, { open: true, status: 'downloading', error: null, format: request.format })
     try {
-      if (request.format === 'markdown') this.saveMarkdown(sessionId, request.document ?? '')
+      if (request.format === 'markdown') this.saveMarkdown(sessionId, request.document)
       else await this.saveZip(sessionId, signal)
       const open = this.store.getSnapshot().bySession[String(sessionId)]?.open ?? true
       this.publish(sessionId, { open, status: 'success', error: null, format: request.format })

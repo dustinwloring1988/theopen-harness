@@ -46,11 +46,10 @@ export function apply(ctx: ClientContext): void {
   })
   ctx.on('command/executed', (sessionId, commandName, result) => {
     if (commandName !== 'export' || result.kind !== 'success') return
-    const document = exportVariantOf(result.text) === 'markdown' ? buildMarkdown(sessionId) : undefined
-    void controller.download(sessionId, {
-      format: document === undefined ? 'zip' : 'markdown',
-      ...(document === undefined ? {} : { document }),
-    })
+    const request: SessionLogDownloadRequest = exportVariantOf(result.text) === 'markdown'
+      ? { format: 'markdown', document: buildMarkdown(sessionId) }
+      : { format: 'zip' }
+    void controller.download(sessionId, request)
   })
   ctx.slots.inject('conversation.session.header.utilities', () => ctx.slots.register({
     name: 'conversation.session.header.utilities',

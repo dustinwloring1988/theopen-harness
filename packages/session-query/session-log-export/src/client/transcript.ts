@@ -298,15 +298,17 @@ function escapeProse(text: string): string {
  * @returns the escaped line.
  */
 function escapeLine(line: string): string {
-  const match = /^ {0,3}(`{3,})/.exec(line)
-  if (match !== null) {
-    const run = match[1] ?? ''
+  const fence = /^( {0,3})(`{3,})/.exec(line)
+  if (fence !== null) {
+    const run = fence[2] ?? ''
     const escapedRun = run.split('').map(() => '\\`').join('')
-    return `${escapedRun}${line.slice(run.length)}`
+    return `${fence[1] ?? ''}${escapedRun}${line.slice(fence[0].length)}`
   }
-  if (/^#(\s|$)/.test(line)) return `\\${line}`
-  if (/^>/.test(line)) return `\\${line}`
-  if (/^(-{3,}|={3,}|\*{3,}|_{3,})\s*$/.test(line)) return `\\${line}`
+  if (/^ {0,3}#{1,6}(\s|$)/.test(line)) return line.replace('#', '\\#')
+  if (/^ {0,3}>/.test(line)) return line.replace('>', '\\>')
+  if (/^ {0,3}(-{3,}|={3,}|\*{3,}|_{3,})\s*$/.test(line)) {
+    return line.replace(/^( {0,3})([-=*_])/, '$1\\$2')
+  }
   return line
 }
 

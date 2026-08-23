@@ -110,6 +110,7 @@ describe('serializeSessionTranscript', () => {
   it('escapes transcript prose against heading, quote, rule, and fence injection', () => {
     const hostile = [
       '# injected heading',
+      '###### deep forged heading',
       '> injected quote',
       '---',
       '```js',
@@ -126,12 +127,37 @@ describe('serializeSessionTranscript', () => {
       '## User',
       '',
       '\\# injected heading',
+      '\\###### deep forged heading',
       '\\> injected quote',
       '\\---',
       '\\`\\`\\`js',
       'code',
       '\\`\\`\\`',
       'plain trailing',
+    ].join('\n'))
+  })
+
+  it('escapes structure preceded by up to three leading spaces without losing the indent', () => {
+    const hostile = [
+      '  ## forged section',
+      '   > forged quote',
+      '   ---',
+      '   ```js',
+      '   code kept',
+    ].join('\n')
+    const document = serializeSessionTranscript({
+      sessionId: 'session-indented' as never,
+      exportedAt: EXPORTED_AT,
+      nodes: [user(hostile)],
+    })
+    expect(document).toContain([
+      '## User',
+      '',
+      '  \\## forged section',
+      '   \\> forged quote',
+      '   \\---',
+      '   \\`\\`\\`js',
+      '   code kept',
     ].join('\n'))
   })
 
