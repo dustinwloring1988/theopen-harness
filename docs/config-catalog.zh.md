@@ -1405,6 +1405,8 @@ export interface StdioConfig {
   failOnStartupError: boolean
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
   reconnect?: ReconnectConfig
+  /** MCP Prompts bridged into the skill registry; omission leaves prompts unbridged. */
+  prompts?: PromptsConfig
 }
 
 /** Config for connecting to an MCP server over Streamable HTTP (SSE). */
@@ -1427,6 +1429,8 @@ export interface StreamableHttpConfig {
   failOnStartupError: boolean
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
   reconnect?: ReconnectConfig
+  /** MCP Prompts bridged into the skill registry; omission leaves prompts unbridged. */
+  prompts?: PromptsConfig
 }
 
 /** Automatic reconnect policy for one MCP server connection. */
@@ -1440,9 +1444,17 @@ export interface ReconnectConfig {
   /** Consecutive failed attempts per outage before giving up for good (default 10). */
   maxAttempts?: number
 }
+
+/** Automatic prompts-bridging policy for one MCP server connection. */
+export interface PromptsConfig {
+  /** Bridge this server's MCP Prompts into the skill registry (default false). */
+  enabled?: boolean
+  /** Advertise bridged prompts to model-facing skill catalogs (default true). */
+  modelInvocable?: boolean
+}
 ```
 
-来源：[`packages/mcp/mcp-client/src/index.ts:98`](../packages/mcp/mcp-client/src/index.ts)
+来源：[`packages/mcp/mcp-client/src/index.ts:110`](../packages/mcp/mcp-client/src/index.ts)
 
 <a id="buckeyestudiotoh-message-feedback"></a>
 

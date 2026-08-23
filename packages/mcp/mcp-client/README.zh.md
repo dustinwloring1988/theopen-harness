@@ -2,7 +2,7 @@
 
 [English](README.md) | 中文
 
-MCP 客户端桥接插件：连接外部 [Model Context Protocol](https://modelcontextprotocol.io/) 服务器，把它们的工具注册到 `ctx.tools`，使模型能够通过服务器限定名称（`mcp__<serverName>__<rawName>`）将其作为原生工具使用。
+MCP 客户端桥接插件：连接外部 [Model Context Protocol](https://modelcontextprotocol.io/) 服务器，把它们的工具注册到 `ctx.tools`，使模型能够通过服务器限定名称（`mcp__<serverName>__<rawName>`）将其作为原生工具使用。设置 `prompts.enabled` 后，同一条连接还会把该服务器的 MCP Prompts 作为 skill provider 候选发布到 `ctx.skills`。
 
 ## 用法
 
@@ -49,6 +49,8 @@ MCP 客户端桥接插件：连接外部 [Model Context Protocol](https://modelc
 | `reconnect.initialDelayMs` | 两者 | 否 | 首次重连延迟（毫秒）；每次连续失败尝试翻倍（默认 500） |
 | `reconnect.maxDelayMs` | 两者 | 否 | 退避上限（毫秒）；同时也是重置尝试预算所需的正常运行时长（默认 30000） |
 | `reconnect.maxAttempts` | 两者 | 否 | 每次中断期间连续失败尝试次数上限，超出后彻底放弃（默认 10） |
+| `prompts.enabled` | 两者 | 否 | 将该服务器的 MCP Prompts 桥接到 skill registry（默认 `false`） |
+| `prompts.modelInvocable` | 两者 | 否 | 让被桥接的提示词出现在面向模型的 skill 目录中（默认 `true`） |
 
 ## 工具命名
 
@@ -59,6 +61,14 @@ MCP 客户端桥接插件：连接外部 [Model Context Protocol](https://modelc
 - 服务器在工具列表中两次列出同一工具名称时，该列表会作为无效工具列表被拒绝。
 - 外部注册抢占该服务器 namespace 时，会回滚整个世代（绝不保留部分集合），并明确报错。
 
+## 提示词即技能
+
+设置 `prompts.enabled` 后，每个已列出的 prompt 都会成为一个 skill 候选：面向模型的技能名称是 prompt 原始名称的 kebab-case slug（`code_review` → `code-review`），服务器描述原样沿用，已声明的参数会被捕获为元数据。provider 以 `mcp:<serverName>` 标签注册，来源类别为 `mcp`；远程 prompt 的优先级低于所有本地根目录，因此 project、user 和 bundled 技能会遮蔽同名 slug，两个服务器暴露相同 slug 时按插件注册顺序确定获胜方，并给落选者输出可见警告。
+
+技能体通过 `prompts/get` 使用原始名称懒加载。加载内容会在开头附加由发现期元数据构建的参数指南，并以角色标签渲染服务器的消息；当连接断开或服务器拒绝读取导致加载失败时，该技能按不可加载上报，而不是抛出错误。同一服务器列表内的 slug 冲突（两个 prompt 规范化为同一个 slug）会使本次抓取失效：先前的候选继续服务，失败以 warn 级别记录，直到服务器发布干净的列表。
+
+Prompt 同步与工具共用同一套监督机制：每个重连世代都会在工具交换之后重新执行 `prompts/list`，`notifications/prompts/list_changed` 会在存活世代上触发重新同步，重连预算耗尽时目录随工具注销一起清空。短暂中断期间，最后正常的候选保持可见，而加载会稳妥地失败。
+
 ## 行为
 
 - 连接时：插件激活会等待 `listTools()`，并在组合开始首个轮次前通过 `ctx.tools.register()` 以公开名称注册每个工具。初始连接、发现或注册失败始终会记录日志；`failOnStartupError` 为 true 时拒绝激活，否则插件仍会激活但不注册工具。
@@ -67,6 +77,7 @@ MCP 客户端桥接插件：连接外部 [Model Context Protocol](https://modelc
 - 规范成功值是 `{ content: JsonValue[], structuredContent? }`；完整的 JSON MCP 块会保留给编程调用方。受支持且已声明的 `outputSchema` 会验证 `structuredContent`；不受支持的 schema 词汇会回退为不受约束的 `JsonValue`。
 - Native／模型渲染会保留 MCP 块顺序。文本类连续块以换行连接；资源链接以文本保留名称和 URI；只有挂载 `ctx.attachments` 且确切调用模型路由明确声明支持图片输入时，受支持的图片才会成为持久核心图片块。整个图片批次会先完成解码与准入，再保存任一成员。格式错误或被拒绝的图片批次、音频、嵌入资源和不受支持的块会成为明确诊断文本，而不会消失。
 - 断开／崩溃时：supervisor 以指数退避（`reconnect.initialDelayMs` 逐次翻倍，上限 `reconnect.maxDelayMs`）重启原始服务器配置，成功后重新执行发现——恢复的世代会替换前一个，因此工具既不会重复也不会泄漏。中断期间最后一个正常世代保持注册；针对它的调用在恢复前会失败。
+- 设置 `prompts.enabled` 后，每次工具世代交换都会在同一序列化队列中跟随一次 `prompts/list` 同步；`notifications/prompts/list_changed` 会在存活世代上触发重新同步，prompt 抓取失败时保留先前候选，并将目录标记为不完整以促使消费方重试。
 - 重连按中断预算控制：连续失败达到 `reconnect.maxAttempts` 次后，该服务器的工具会被注销，重连停止，直到 HMR 重载或重启 Host。连接存活超过 `maxDelayMs` 会重置预算，因此偶尔崩溃的服务器可以无限恢复，而崩溃循环的服务器——即使短暂连接成功——仍会耗尽上限而非永远重启。
 - 重连状态在日志中对用户可见：reconnecting（warn，含尝试次数和延迟）、recovered（info）、最终失败和 disabled-loss（error）。dispose（资源释放）会取消任何待执行的重连。设置 `reconnect.enabled: false` 时，连接丢失后工具保持注册但调用失败，直到重载——即手动恢复行为。
 
@@ -75,6 +86,7 @@ MCP 客户端桥接插件：连接外部 [Model Context Protocol](https://modelc
 | 服务 | 用途 |
 |---|---|
 | `ctx.tools` | 注册／注销 MCP 工具 |
+| `ctx.skills` | `prompts.enabled` 时注册 prompts provider；启用但未挂载 skill registry 时插件在加载期失败 |
 | `ctx.attachments` | 可选；在模型投影前校验并持久保存图片结果批次 |
 | `ctx.llm` | 可选；证明确切调用路由明确支持图片输入 |
 
@@ -108,10 +120,25 @@ MCP 客户端桥接插件：连接外部 [Model Context Protocol](https://modelc
 
 仅追加；新可见内容位于可复用请求前缀之后，不会使现有 KV-cache 条目失效。
 
+### 被桥接的 MCP 提示词
+
+#### 模型看到的内容
+
+设置 `prompts.enabled` 后，每个已列出的 prompt 都会以 kebab-case slug 和服务器描述出现在 skill 目录中；加载时会得到参数指南，其后是服务器渲染的 prompt 消息。重连预算耗尽或插件被 dispose 时目录条目消失，恢复的世代会整体替换候选集合。
+
+#### Token 影响
+
+启用期间，目录摘要随会话前缀的 skill 列表出现；已加载的技能体与其他技能体一样按调用保留。关闭 `prompts.enabled` 会同时移除两者。
+
+#### KV Cache 影响
+
+候选集合与技能体不变时前缀保持稳定；世代交换改变了候选集合时，从发生变化的目录 token 起复用失效。
+
 ## 已知限制与暂缓事项
 
-- **只桥接 MCP 的工具能力**：资源和提示词没有 harness 消费接口，暂缓实现。
-- **启动超时继承自 MCP SDK**：TOH 尚未公开连接／发现超时。每次 initialize 请求或分页 `tools/list` 请求都使用 SDK 默认的 60 秒，因此在初始同步完成期间，无响应的 server 或 cursor chain 可能同时延迟激活与 teardown。
+- **Resources 没有 harness 消费接口**：MCP Resources 尚未桥接；通过现有工具桥接进行有界读取暂缓实现。
+- **Prompts 无法接收调用参数**：skill 接口不携带参数，被桥接 prompt 的已声明参数会作为指南呈现在加载内容中，取值取决于服务器在不做替换的情况下的渲染结果。
+- **启动超时继承自 MCP SDK**：TOH 尚未公开连接／发现超时。每次 initialize 请求或分页 `tools/list`／`prompts/list` 请求都使用 SDK 默认的 60 秒，因此在初始同步完成期间，无响应的 server 或 cursor chain 可能同时延迟激活与 teardown。
 - **重连在传输关闭时触发**：崩溃的 stdio 子进程会触发重连；Streamable HTTP 失败通过每次请求以及 SDK 传输自身的 SSE（Server-Sent Events）流恢复机制暴露，因此不可达的 HTTP 服务器会按调用重试，而非由 supervisor 重新 spawn。
 - **图片是唯一的持久丰富结果桥接**：PNG、JPEG、WebP 和 GIF 可以在确切能力得到证明后进入 Native 上下文。音频和嵌入资源载荷仍只存在于执行局部，并配有明确诊断；资源链接只以文本保留名称和 URI。
 - **不强制执行不受支持的 MCP 输出 schema**：已声明 schema 使用 harness 子集之外的词汇时，`structuredContent` 会回退到 `JsonValue`。

@@ -5800,6 +5800,9 @@ importers:
       '@buckeyestudio/toh-llm':
         specifier: workspace:^
         version: link:../../llm/llm
+      '@buckeyestudio/toh-skill':
+        specifier: workspace:^
+        version: link:../../skill/skill
       '@buckeyestudio/toh-subprocess':
         specifier: workspace:^
         version: link:../../subprocess/subprocess
