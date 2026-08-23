@@ -8,6 +8,7 @@ import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { credentialKey, credentialRef } from '@buckeyestudio/toh-credentials'
+import { withFileLock } from '@buckeyestudio/toh-atomic-write'
 import { LocalCredentialProvider } from '../src/index.ts'
 
 /** Credential documents are seeded owner-only, exactly as the provider creates them. */
@@ -110,6 +111,51 @@ describe('read-modify-write', () => {
     expect(await reread.credentials.resolve(ALPHA)).toEqual({ value: 'waited', source: 'file' })
     expect(await reread.credentials.readRecord(doomed)).toBeUndefined()
     expect(await reread.credentials.readRecord(slowKey)).toEqual({ kind: 'api-key', key: 'slow' })
+  })
+
+  it('folds an unobserved external edit into a write that waits out disposal on the writer lock', async () => {
+    const dir = await tempDir()
+    const path = join(dir, '.credentials.yaml')
+    const ctx = new Context()
+    const fiber = ctx.plugin(LocalCredentialProvider, { path, watch: false })
+    await fiber
+    const service = ctx.credentials
+    const seen: string[] = []
+    ctx.on('credentials/reference-updated', (ref) => { seen.push(ref) })
+
+    // An unrelated holder keeps the cross-process writer lock busy, so the
+    // write below is still waiting on it when disposal begins — past both of
+    // its liveness checks, with the lock acquisition ahead of it.
+    const acquired = Promise.withResolvers<undefined>()
+    let release!: () => void
+    const held = new Promise<void>((resolveHeld) => { release = resolveHeld })
+    const holding = withFileLock(path, async () => {
+      acquired.resolve(undefined)
+      await held
+    }, { waitMs: 30_000 })
+    await acquired.promise
+
+    // The external edit lands while the lock is held and no watcher exists:
+    // only the write's own fold-in under the lock can observe it.
+    await writeCredentials(path, `version: 1\nrefs:\n  ${ALPHA}: initial\n  ${BETA}: external\n`)
+
+    const writing = service.set(ALPHA, 'updated')
+    // The task is parked on the contended lock before disposal starts.
+    await new Promise(resolvePause => setTimeout(resolvePause, 20))
+    const disposal = fiber.dispose()
+    release()
+    await holding
+    await disposal
+
+    // The in-flight write still lands, but against the document as it stands
+    // on disk: skipping the fold would commit from the stale boot snapshot
+    // and revert the external edit durably.
+    await expect(writing).resolves.toBeUndefined()
+    const text = await readFile(path, 'utf8')
+    expect(text).toContain(`${ALPHA}: updated`)
+    expect(text).toContain(`${BETA}: external`)
+    // The fold stays silent after disposal; only the write's own commit speaks.
+    expect(seen).toEqual([ALPHA])
   })
 })
 
