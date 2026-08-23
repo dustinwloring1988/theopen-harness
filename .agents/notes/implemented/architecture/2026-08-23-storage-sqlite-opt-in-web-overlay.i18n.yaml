@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/architecture/2026-08-23-storage-sqlite-opt-in-web-overlay.md
+2026-08-23-storage-sqlite-opt-in-web-overlay.md: ab52a027c750bc48381d0ff93916b017aff1f062
+2026-08-23-storage-sqlite-opt-in-web-overlay.zh.md: b041c40028fbdef86792d3dc76dd02508f72e271

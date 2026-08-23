@@ -229,6 +229,9 @@ importers:
       '@buckeyestudio/toh-skill-filesystem':
         specifier: workspace:^
         version: link:../../packages/skill/skill-filesystem
+      '@buckeyestudio/toh-storage-sqlite':
+        specifier: workspace:^
+        version: link:../../packages/storage/storage-sqlite
       '@buckeyestudio/toh-terminal':
         specifier: workspace:^
         version: link:../../packages/terminal/terminal
