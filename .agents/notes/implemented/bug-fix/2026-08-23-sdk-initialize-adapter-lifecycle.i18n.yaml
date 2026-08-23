@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-23-sdk-initialize-adapter-lifecycle.md
-2026-08-23-sdk-initialize-adapter-lifecycle.md: c3d9d202311907cd412fb4b92c28f5f5a644f755
-2026-08-23-sdk-initialize-adapter-lifecycle.zh.md: 9d53a3da47de4c03fe3edc05eff4ddb337f7cb2f
+2026-08-23-sdk-initialize-adapter-lifecycle.md: 125fcf5d816c778ed51290f679fbc6d838c0fc4b
+2026-08-23-sdk-initialize-adapter-lifecycle.zh.md: 200700155591ca28b325ee57e28c1cad4699e1d9

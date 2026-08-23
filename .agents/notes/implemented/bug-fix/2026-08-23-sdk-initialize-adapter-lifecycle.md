@@ -26,4 +26,4 @@ Package tests pin the lifecycle: two sequential initializes dispose the first mo
 
 ## Consequences
 
-Reconnect-by-reinitialize no longer accumulates adapters, and shutdown completion implies zero live server-mounted fibers even against concurrent handshakes. A slow initialize now delays later ones and shutdown completion instead of interleaving with them, and a handshake that loses to shutdown surfaces as a rejected promise on that request only; the surrounding transport maps it to an ordinary JSON-RPC error response.
+Reconnect-by-reinitialize no longer accumulates adapters, and, when every disposal succeeds, shutdown completion implies zero live server-mounted fibers even against concurrent handshakes; a disposal that fails keeps the fiber stored for `shutdown` to retry, and if that retry fails as well, the fiber can remain live while `shutdown` reports the error. A slow initialize now delays later ones and shutdown completion instead of interleaving with them, and a handshake that loses to shutdown surfaces as a rejected promise on that request only; the surrounding transport maps it to an ordinary JSON-RPC error response.

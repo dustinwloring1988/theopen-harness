@@ -26,4 +26,4 @@ JSON-RPC 的 `initialize` 方法在每次遇到无负责方的 provider 时都�
 
 ## 后果
 
-以重新初始化实现的重连不再累积适配器，即使存在并发握手，shutdown 完成也意味着没有任何存活的由服务器挂载的 fiber。缓慢的 initialize 现在会延迟后续调用和 shutdown 完成而不是与之交错；输给 shutdown 的握手只表现为该请求上被拒绝的 promise，外围传输会把它映射为普通的 JSON-RPC 错误响应。
+以重新初始化实现的重连不再累积适配器；只要每次 dispose 都成功，即使存在并发握手，shutdown 完成也意味着没有任何存活的由服务器挂载的 fiber。失败的 dispose 会把已存储的 fiber 保留下来交给 `shutdown` 重试，如果重试同样失败，fiber 可能仍然存活，而 `shutdown` 会报告该错误。缓慢的 initialize 现在会延迟后续调用和 shutdown 完成而不是与之交错；输给 shutdown 的握手只表现为该请求上被拒绝的 promise，外围传输会把它映射为普通的 JSON-RPC 错误响应。
