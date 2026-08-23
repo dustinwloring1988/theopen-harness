@@ -4895,9 +4895,6 @@ importers:
       '@buckeyestudio/toh-session':
         specifier: workspace:^
         version: link:../../core/session
-      '@buckeyestudio/toh-token-meter':
-        specifier: workspace:^
-        version: link:../../llm/token-meter
 
   packages/hooks/hook-protocol:
     devDependencies:

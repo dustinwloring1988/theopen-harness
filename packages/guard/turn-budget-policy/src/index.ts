@@ -1,10 +1,10 @@
 /**
  * Turn-budget policy guard: bounds how long a single agent turn may run. A
  * serial `agent/turn-stopping` listener folds the session log for the open
- * turn's step count and reads per-turn token spend through `ctx.tokenMeter`;
- * past the soft limit it steers exactly one wrap-up request, past a hard
- * limit it cancels the turn. Configuration and chain semantics live in the
- * package README; rationale lives in the turn-budget-policy Agent Note.
+ * turn's step count and summed request usage; past the soft limit it steers
+ * exactly one wrap-up request, past a hard limit it cancels the turn.
+ * Configuration and chain semantics live in the package README; rationale
+ * lives in the turn-budget-policy Agent Note.
  * @module @buckeyestudio/toh-turn-budget-policy
  */
 
@@ -12,11 +12,8 @@ import type { Context } from '@buckeyestudio/cordis'
 import z from '@buckeyestudio/schemastery'
 import type { Agent, PreStepDecision } from '@buckeyestudio/toh-agent'
 import { createUserMessage } from '@buckeyestudio/toh-llm'
-import type { UserMessage } from '@buckeyestudio/toh-llm'
+import type { TokenUsage, UserMessage } from '@buckeyestudio/toh-llm'
 import type { SessionEvent } from '@buckeyestudio/toh-session'
-// Type-only: the `ctx.tokenMeter` Context merge for the optional service read.
-import type {} from '@buckeyestudio/toh-token-meter'
-import type { TokenMeter } from '@buckeyestudio/toh-token-meter'
 
 export const name = 'turn-budget-policy'
 
@@ -33,9 +30,10 @@ export interface Config {
    */
   maxStepsPerTurn?: number
   /**
-   * Per-turn token spend that hard-cancels the turn, measured as the
-   * `ctx.tokenMeter` total-token delta between the turn's first pre-step and
-   * each stop boundary. Requires the token-meter service to be mounted.
+   * Per-turn token spend that hard-cancels the turn, measured as the sum of
+   * every request's reported usage across the open turn's logged
+   * `assistant/message` records. Requests whose adapter reported no usage
+   * contribute nothing to the sum.
    */
   maxTurnTokens?: number
   /**
@@ -95,10 +93,33 @@ function stepsThisTurn(events: readonly SessionEvent[]): number {
   return steps
 }
 
-/** One agent's live-turn accounting: tracked turn id, token baseline, and the turn last steered. */
+/** Sum one usage record's disjoint provider buckets; reasoning output stays inside `outputTokens`. */
+function usageTokens(usage: TokenUsage): number {
+  return usage.inputTokens
+    + (usage.cacheReadTokens ?? 0)
+    + (usage.cacheWriteTokens ?? 0)
+    + usage.outputTokens
+}
+
+/**
+ * Sum every request's reported usage after the most recent `turn/start`
+ * record, so repeated requests each contribute their full input and output
+ * cost instead of a shared-surface delta.
+ */
+function tokensThisTurn(events: readonly SessionEvent[]): number {
+  let tokens = 0
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    // oxlint-disable-next-line typescript/no-non-null-assertion -- contiguous log indices are in bounds by construction
+    const event = events[index]!
+    if (event.type === 'turn/start') break
+    if (event.type === 'assistant/message' && event.data.usage !== undefined) tokens += usageTokens(event.data.usage)
+  }
+  return tokens
+}
+
+/** One agent's live-turn accounting: tracked turn id and the turn last steered. */
 interface TurnState {
   turn: number
-  baselineTokens: number
   steeredTurn: number
 }
 
@@ -122,29 +143,16 @@ export function apply(ctx: Context, config: Config): void {
         + ' so the advisory precedes the cancel',
     )
   }
-  let meter: TokenMeter | undefined
-  if (maxTurnTokens !== undefined) {
-    meter = ctx.get('tokenMeter')
-    if (meter === undefined) {
-      throw new Error(
-        'turn-budget-policy: `maxTurnTokens` requires the token-meter service (@buckeyestudio/toh-token-meter)',
-      )
-    }
-  }
 
   const states = new WeakMap<Agent, TurnState>()
 
-  // Baseline bookkeeping at each turn boundary: the first pre-step of a turn
-  // snapshots the meter total before that turn spends anything, and resets
-  // the once-per-turn steer latch. Pure delegate: never rewrites the decision.
+  // Turn-boundary bookkeeping: the first pre-step of a turn registers the
+  // tracked turn and resets the once-per-turn steer latch. Pure delegate:
+  // never rewrites the decision.
   ctx.on('agent/pre-step', ({ agent, turn }, next): Promise<PreStepDecision> => {
     const state = states.get(agent)
     if (state === undefined || state.turn !== turn) {
-      states.set(agent, {
-        turn,
-        baselineTokens: meter?.measure(agent.session).totalTokens ?? 0,
-        steeredTurn: 0,
-      })
+      states.set(agent, { turn, steeredTurn: 0 })
     }
     return next()
   })
@@ -155,7 +163,7 @@ export function apply(ctx: Context, config: Config): void {
   // machine observe pending input and run another step.
   ctx.on('agent/turn-stopping', ({ agent, turn }): void => {
     const state = states.get(agent)
-    /* v8 ignore next -- every dispatched stop boundary follows this turn's pre-step baseline */
+    /* v8 ignore next -- every dispatched stop boundary follows this turn's pre-step registration */
     if (state === undefined || state.turn !== turn) return
     const steps = stepsThisTurn(agent.session.events)
     if (maxStepsPerTurn !== undefined && steps >= maxStepsPerTurn) {
@@ -165,14 +173,15 @@ export function apply(ctx: Context, config: Config): void {
       )
       return
     }
-    const measured = meter?.measure(agent.session).totalTokens
-    const spent = measured !== undefined ? measured - state.baselineTokens : undefined
-    if (maxTurnTokens !== undefined && spent !== undefined && spent >= maxTurnTokens) {
-      agent.cancel(
-        { kind: 'hook', reason: `turn budget exceeded: ~${spent} tokens reached maxTurnTokens ${maxTurnTokens}` },
-        { keepInbox: true },
-      )
-      return
+    if (maxTurnTokens !== undefined) {
+      const spent = tokensThisTurn(agent.session.events)
+      if (spent >= maxTurnTokens) {
+        agent.cancel(
+          { kind: 'hook', reason: `turn budget exceeded: ${spent} tokens reached maxTurnTokens ${maxTurnTokens}` },
+          { keepInbox: true },
+        )
+        return
+      }
     }
     if (warnAtSteps !== undefined && steps >= warnAtSteps && state.steeredTurn !== turn) {
       state.steeredTurn = turn

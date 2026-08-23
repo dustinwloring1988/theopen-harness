@@ -1,9 +1,9 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import { Context } from '@buckeyestudio/cordis'
-import { createUserMessage } from '@buckeyestudio/toh-llm'
+import { CallId, createUserMessage } from '@buckeyestudio/toh-llm'
+import type { StreamChunk } from '@buckeyestudio/toh-llm'
 import { SessionId, type SessionEvent } from '@buckeyestudio/toh-session'
 import { defineContentToolFixture } from '@buckeyestudio/toh-tools'
-import TokenMeter from '@buckeyestudio/toh-token-meter'
 import type { Agent } from '@buckeyestudio/toh-agent'
 import { agentEvents } from '@buckeyestudio/toh-agent'
 import AgentLoop from '@buckeyestudio/toh-agent-loop'
@@ -14,17 +14,17 @@ import { MockAdapter, textResponse, toolCallResponse } from '../../../core/agent
 
 /**
  * Behavior suite for the turn-budget policy: hard step/token limits cancel
- * with a hook cause at an otherwise-completing stop boundary, the soft limit
+ * with a hook cause at an otherwise-completing stop boundary, the token limit
+ * sums every request's reported usage across the open turn, the soft limit
  * steers exactly one wrap-up request per turn, state resets per turn, and
  * configuration fails loud — all driven through a real agent loop against a
  * scripted mock adapter (no network).
  */
 
 /** Boot the core spine + the policy; the caller registers adapters and extra listeners. */
-async function harness(config: Config = {}, options: { tokenMeter?: boolean } = {}): Promise<Context> {
+async function harness(config: Config = {}): Promise<Context> {
   const ctx = new Context()
   await mountAgentLoopTestDependencies(ctx)
-  if (options.tokenMeter) await ctx.plugin(TokenMeter)
   await ctx.plugin(AgentLoop, { agents: [] })
   await ctx.plugin(TurnBudgetPolicy, config)
   ctx.tools.register(defineContentToolFixture({ name: 'probe', description: 'p', parameters: {}, async execute() { return [{ type: 'text', text: 'ok' }] } }))
@@ -89,8 +89,8 @@ describe('hard limits cancel the turn', () => {
     expect(notices(agent)).toHaveLength(0)
   })
 
-  it('keeps running below the token limit and completes normally (real meter)', async () => {
-    const ctx = await harness({ maxTurnTokens: 1_000_000 }, { tokenMeter: true })
+  it('keeps running below the token limit and completes normally', async () => {
+    const ctx = await harness({ maxTurnTokens: 1_000_000 })
     const adapter = new MockAdapter([
       toolCallResponse('c1', 'probe', {}),
       toolCallResponse('c2', 'probe', {}),
@@ -101,34 +101,61 @@ describe('hard limits cancel the turn', () => {
     expect(turnEnds(agent)).toEqual([{ turn: 1, reason: { kind: 'completed' } }])
   })
 
-  it('cancels on the token limit measured through ctx.tokenMeter (mocked meter)', async () => {
-    const ctx = await harness({ maxTurnTokens: 100 }, { tokenMeter: true })
-    // The pre-step baseline reads first (0); the closing attempt reads a
-    // total whose delta over that baseline crosses the 100-token limit.
-    const reads = [0, 150]
-    vi.spyOn(ctx.tokenMeter, 'measure').mockImplementation(() => {
-      const totalTokens = reads.shift() ?? 150
-      return {
-        logRevision: 0,
-        baseline: { kind: 'none', tokens: 0 },
-        surfaceDeltaTokens: totalTokens,
-        totalTokens,
-        surfaceTokens: totalTokens,
-        nodes: [],
-      }
-    })
+  it('sums every request across multiple steps and cancels at the closing attempt that crosses the limit', async () => {
+    const ctx = await harness({ maxTurnTokens: 40 })
+    // Each request reports disjoint input+output usage (15 + 15 + 24), so the
+    // cumulative spend crosses 40 exactly at the third closing attempt; a
+    // shared-surface delta would see only the accumulated outputs (24).
     const adapter = new MockAdapter([
       toolCallResponse('c1', 'probe', {}),
       toolCallResponse('c2', 'probe', {}),
       textResponse('trying to stop'),
+      textResponse('must not run'),
     ])
     const agent = await run(ctx, adapter)
 
-    const ends = turnEnds(agent)
-    expect(ends).toHaveLength(1)
-    const reason = ends[0]?.reason
-    if (reason?.kind !== 'aborted' || reason.reason.kind !== 'hook') throw new Error('expected a hook-cancelled turn end')
-    expect(reason.reason.reason).toContain('maxTurnTokens 100')
+    expect(notices(agent)).toHaveLength(0)
+    expect([...agent.session.events].filter(e => e.type === 'step/start')).toHaveLength(3)
+    expect(turnEnds(agent)).toEqual([{
+      turn: 1,
+      reason: { kind: 'aborted', reason: { kind: 'hook', reason: 'turn budget exceeded: 54 tokens reached maxTurnTokens 40' } },
+    }])
+  })
+
+  it('cancels on the first closing attempt when a single request reaches the limit exactly', async () => {
+    const ctx = await harness({ maxTurnTokens: 14 })
+    const adapter = new MockAdapter([
+      textResponse('stop'),
+      textResponse('must not run'),
+    ])
+    const agent = await run(ctx, adapter)
+
+    expect(turnEnds(agent)).toEqual([{
+      turn: 1,
+      reason: { kind: 'aborted', reason: { kind: 'hook', reason: 'turn budget exceeded: 14 tokens reached maxTurnTokens 14' } },
+    }])
+    expect([...agent.session.events].filter(e => e.type === 'step/start')).toHaveLength(1)
+  })
+
+  it('skips requests without provider-reported usage and cancels on the reported ones', async () => {
+    const ctx = await harness({ maxTurnTokens: 10 })
+    const adapter = new MockAdapter([
+      [
+        { type: 'block-start', index: 0, blockType: 'tool-call' },
+        { type: 'tool-call-delta', index: 0, id: CallId('n1'), name: 'probe', argumentsDelta: '{}' },
+        { type: 'block-end', index: 0, block: { type: 'tool-call', id: CallId('n1'), name: 'probe', arguments: '{}' } },
+        { type: 'finish', reason: { kind: 'tool-calls' } },
+      ] satisfies StreamChunk[],
+      textResponse('closing attempt'),
+      textResponse('must not run'),
+    ])
+    const agent = await run(ctx, adapter)
+
+    expect(turnEnds(agent)).toEqual([{
+      turn: 1,
+      reason: { kind: 'aborted', reason: { kind: 'hook', reason: 'turn budget exceeded: 25 tokens reached maxTurnTokens 10' } },
+    }])
+    expect([...agent.session.events].filter(e => e.type === 'step/start')).toHaveLength(2)
   })
 })
 
@@ -147,6 +174,20 @@ describe('soft limit steers once before the hard limit', () => {
     expect(found).toHaveLength(1)
     expect(found[0]).toContain('has already run 3 steps')
     expect(found[0]).toContain('Wrap the turn up now')
+    expect(turnEnds(agent)).toEqual([{ turn: 1, reason: { kind: 'completed' } }])
+  })
+
+  it('steers unchanged when a token limit is configured but never reached', async () => {
+    const ctx = await harness({ warnAtSteps: 3, maxStepsPerTurn: 6, maxTurnTokens: 1_000_000 })
+    const adapter = new MockAdapter([
+      toolCallResponse('c1', 'probe', {}),
+      toolCallResponse('c2', 'probe', {}),
+      textResponse('not done yet'),
+      textResponse('wrapped up'),
+    ])
+    const agent = await run(ctx, adapter)
+
+    expect(notices(agent)).toHaveLength(1)
     expect(turnEnds(agent)).toEqual([{ turn: 1, reason: { kind: 'completed' } }])
   })
 
@@ -238,10 +279,9 @@ describe('stop-boundary state guard', () => {
 })
 
 describe('config validation fails loud', () => {
-  async function spine(options: { tokenMeter?: boolean } = {}): Promise<Context> {
+  async function spine(): Promise<Context> {
     const ctx = new Context()
     await mountAgentLoopTestDependencies(ctx)
-    if (options.tokenMeter) await ctx.plugin(TokenMeter)
     await ctx.plugin(AgentLoop, { agents: [] })
     return ctx
   }
@@ -256,7 +296,7 @@ describe('config validation fails loud', () => {
     await expect(ctx.plugin(TurnBudgetPolicy, { maxStepsPerTurn: 2.5 })).rejects.toThrow(/maxStepsPerTurn.*integer >= 1/s)
     const ctx2 = await spine()
     await expect(ctx2.plugin(TurnBudgetPolicy, { maxTurnTokens: 0 })).rejects.toThrow(/maxTurnTokens.*integer >= 1/s)
-    const ctx3 = await spine({ tokenMeter: true })
+    const ctx3 = await spine()
     await expect(ctx3.plugin(TurnBudgetPolicy, { warnAtSteps: -1 })).rejects.toThrow(/warnAtSteps.*integer >= 1/s)
   })
 
@@ -267,13 +307,8 @@ describe('config validation fails loud', () => {
     await expect(ctx2.plugin(TurnBudgetPolicy, { warnAtSteps: 5, maxStepsPerTurn: 4 })).rejects.toThrow(/must stay below maxStepsPerTurn 4/)
   })
 
-  it('rejects maxTurnTokens without the token-meter service', async () => {
+  it('accepts a valid config without any optional services', async () => {
     const ctx = await spine()
-    await expect(ctx.plugin(TurnBudgetPolicy, { maxTurnTokens: 100 })).rejects.toThrow(/requires the token-meter service/)
-  })
-
-  it('accepts a valid config with the token-meter mounted', async () => {
-    const ctx = await spine({ tokenMeter: true })
     await expect(ctx.plugin(TurnBudgetPolicy, { maxTurnTokens: 100, warnAtSteps: 2, maxStepsPerTurn: 4 })).resolves.toBeDefined()
   })
 })

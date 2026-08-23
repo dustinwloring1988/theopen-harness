@@ -15,17 +15,17 @@ A runaway-turn budget policy, not a loop change: it rides exactly the documented
     maxTurnTokens: 200000  # hard: cancel when per-turn token spend reaches this
 ```
 
-Configuration fails loud at plugin load: an empty config throws, every present value must be an integer >= 1, `warnAtSteps` must stay strictly below `maxStepsPerTurn` when both are set (the advisory must precede the cancel), and `maxTurnTokens` requires the token-meter service (`@buckeyestudio/toh-token-meter`) to be mounted. There are no defaults: every limit is a deployment choice, which is why the shipped bundle row is disabled by default. Per-agent overrides mount the plugin on the agent's scoped context with different limits — each registration owns its listeners and never observes another agent's.
+Configuration fails loud at plugin load: an empty config throws, every present value must be an integer >= 1, and `warnAtSteps` must stay strictly below `maxStepsPerTurn` when both are set (the advisory must precede the cancel). There are no defaults: every limit is a deployment choice, which is why the shipped bundle row is disabled by default. Per-agent overrides mount the plugin on the agent's scoped context with different limits — each registration owns its listeners and never observes another agent's.
 
 ## Enforcement point
 
 `agent/turn-stopping` runs before an *otherwise completed* turn closes: the model made no live tool calls and no fresh steering waits. A turn whose steps all end in further tool calls never attempts to close, and therefore never reaches the boundary mid-run; enforcement lands on every closing attempt, which is where a runaway turn actually ends up — either the model finally tries to stop, or a Stop-hook bridge keeps forcing continuations through the same boundary. Bounding the closing attempts bounds the turn; the residual gap (a model that streams tool calls forever without ever attempting to close) is a known limitation.
 
 - **Step counting folds the session log.** At each closing attempt the listener counts logged `step/start` records since the most recent `turn/start`, so the count reflects exactly what the durable log shows for the open turn — including steps forced by earlier steering.
-- **Token spend reads `ctx.tokenMeter`.** The first `agent/pre-step` of a turn snapshots `measure(session).totalTokens` before that turn spends anything; each closing attempt compares the current total against that baseline. The meter prices provider usage against the full heuristic anchor, so the delta is conservative in both directions.
+- **Token spend sums each request's reported usage.** At each closing attempt the listener folds the open turn's logged `assistant/message` records and adds up every request's disjoint usage buckets (`inputTokens` plus cache-read, cache-write, and output), so repeated requests each contribute their full input and output cost rather than a shared-surface delta.
 - **Hard limit → cancel.** `agent.cancel({ kind: 'hook', reason }, { keepInbox: true })` aborts the active turn while preserving queued and steering inbox items; the durable `turn/end` records reason `aborted`/`hook` with the observed numbers in the reason string.
 - **Soft limit → one steer per turn.** Past `warnAtSteps`, the policy calls `agent.steer(...)` once per turn; the machine re-reads its inbox and runs another step. A latch keyed by turn id guarantees the second closing attempt is never steered again — if the model spent its chance on another tool call, the next closing attempt meets the hard limit.
-- **Per-turn reset.** State is keyed by live agent object and turn number: a follow-up turn starts from zero steps, a fresh token baseline, and a cleared steer latch. A cancelled turn does not poison the next one.
+- **Per-turn reset.** State is keyed by live agent object and turn number: a follow-up turn starts from zero steps and a cleared steer latch. A cancelled turn does not poison the next one.
 
 ## Reminder delivery
 
@@ -56,6 +56,6 @@ Append-only; newly visible content follows the reusable request prefix and does 
 ## Known Limitations and Deferred Work
 
 - **Closing attempts only** — a turn that never stops streaming tool calls never reaches `agent/turn-stopping`, so neither arm can fire until the model attempts to close; bounding those mid-run turns would require a loop change, which this policy deliberately avoids.
-- **Token spend is heuristic-anchored** — sessions without provider usage reports price through the meter's estimator, so `maxTurnTokens` deltas can drift from exact billing in either direction.
+- **Unreported usage is invisible** — a request whose adapter reports no `usage` contributes nothing to `maxTurnTokens`, so a turn served entirely by such providers never trips the token arm (the step arm still bounds it).
 - **No wall-clock limit** — a slow (as opposed to looping) model is out of scope; timeouts belong to the request/tool layers.
 - **Advisory is skippable** — the wrap-up steer is a request, not a veto; a model may ignore it once, which is exactly what the hard limit then enforces.

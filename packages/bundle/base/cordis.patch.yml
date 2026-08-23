@@ -397,8 +397,7 @@
     # one wrap-up request per turn, and past a hard step or token limit it
     # cancels the turn with a hook cause. Opt-in: every limit is a deployment
     # choice with no supported default, and an enabled row without any limit
-    # fails loud at load. `maxTurnTokens` additionally requires the token-meter
-    # service above. Enable it in a later patch layer with explicit limits.
+    # fails loud at load. Enable it in a later patch layer with explicit limits.
     - id: turn-budget-policy
       name: '@buckeyestudio/toh-turn-budget-policy'
       disabled: true

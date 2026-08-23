@@ -3012,9 +3012,10 @@ export interface Config {
    */
   maxStepsPerTurn?: number
   /**
-   * Per-turn token spend that hard-cancels the turn, measured as the
-   * `ctx.tokenMeter` total-token delta between the turn's first pre-step and
-   * each stop boundary. Requires the token-meter service to be mounted.
+   * Per-turn token spend that hard-cancels the turn, measured as the sum of
+   * every request's reported usage across the open turn's logged
+   * `assistant/message` records. Requests whose adapter reported no usage
+   * contribute nothing to the sum.
    */
   maxTurnTokens?: number
   /**
@@ -3026,7 +3027,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/guard/turn-budget-policy/src/index.ts:28`](../packages/guard/turn-budget-policy/src/index.ts)
+Source: [`packages/guard/turn-budget-policy/src/index.ts:25`](../packages/guard/turn-budget-policy/src/index.ts)
 
 <a id="buckeyestudiotoh-typert-loader"></a>
 

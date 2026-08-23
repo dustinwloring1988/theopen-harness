@@ -855,7 +855,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/host/frontend-static/src/index.ts:28`](../packages/host/frontend-static/src/index.ts)
+来源：[`packages/host/frontend-static/src/index.ts:25`](../packages/host/frontend-static/src/index.ts)
 
 <a id="buckeyestudiotoh-host-webserver"></a>
 
@@ -1626,7 +1626,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/guard/repeat-tool-reminder/src/index.ts:28`](../packages/guard/repeat-tool-reminder/src/index.ts)
+来源：[`packages/guard/repeat-tool-reminder/src/index.ts:25`](../packages/guard/repeat-tool-reminder/src/index.ts)
 
 <a id="buckeyestudiotoh-sandbox-local"></a>
 
@@ -3014,9 +3014,10 @@ export interface Config {
    */
   maxStepsPerTurn?: number
   /**
-   * Per-turn token spend that hard-cancels the turn, measured as the
-   * `ctx.tokenMeter` total-token delta between the turn's first pre-step and
-   * each stop boundary. Requires the token-meter service to be mounted.
+   * Per-turn token spend that hard-cancels the turn, measured as the sum of
+   * every request's reported usage across the open turn's logged
+   * `assistant/message` records. Requests whose adapter reported no usage
+   * contribute nothing to the sum.
    */
   maxTurnTokens?: number
   /**
@@ -3028,7 +3029,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/guard/turn-budget-policy/src/index.ts:28`](../packages/guard/turn-budget-policy/src/index.ts)
+来源：[`packages/guard/turn-budget-policy/src/index.ts:25`](../packages/guard/turn-budget-policy/src/index.ts)
 
 <a id="buckeyestudiotoh-typert-loader"></a>
 
