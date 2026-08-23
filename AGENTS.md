@@ -11,41 +11,57 @@ TheOpen Harness is a plugin-based agent harness on vendored Cordis: **everything
 ```
 vendor/      Vendored Cordis source — manifest + sync procedure in vendor/README.md
 packages/    @buckeyestudio/toh-<pkg> workspaces at packages/<group>/<pkg>/
-  core/        product API spine: session, system-prompt, tools, agent, agent-loop
-  api/         Remote BFF assembly and Typert RPC gateway
-  typert/      type graph generator, loader, and runtime registry
-  llm/         LLM capability: Service Definition/Consumer + DeepSeek providers
-  e2b/         E2B POC: sandbox + FS/subprocess adapters
+  core/         product API spine: session, system-prompt, tools, agent, agent-loop
+  api/          Remote BFF assembly and Typert RPC gateway
+  typert/       type graph generator, loader, and runtime registry
+  llm/          LLM capability: Service Definition/Consumer + DeepSeek providers
+  e2b/          E2B POC: sandbox + FS/subprocess adapters
   shell/        bash capability: Service Definition + local/pwsh providers + shell Consumers
-  subprocess/  subprocess capability + local process-tree provider
-  terminal/         persistent sessions
-  fs/          filesystem capability + policy
-  lsp/         language-server capability
-  skill/       skill provider registry + local impl + catalog/loader tool
-  web/         web capability: Service Definition + search/fetch providers + tool Consumer
-  compaction/     compaction capability + basic provider
-  context/     request-context plugins
-  subagent/    subagent capability: Service Definition + providers + delegation Consumers
-  bundle/      installable toh --profile patch-layer bundles
-  workflow/    workflow capability + worker-thread provider + tool Consumer
-  todo/        todo_write tool
-  plan/        plan mode as logged state
-  preset/      per-session agent composition from preset cordis.yml files
-  guard/       loop-hygiene + tool-timeout plugins
-  self-modification/  the agent inspects/mounts its own plugins
-  hooks/       Claude Code/Codex hook bridges + wire-protocol library
-  session/     durable session data: persistence, projection, titles, telemetry
-  identity/    anonymous identity
-  settings/    user-settings capability + file provider
-  credentials/ credential/authorization capabilities + env/.env provider
-  acp/         automation-only Agent Client Protocol server
-  interaction/ approval/interaction capabilities, permission, commands, ask-user
-  boot/        shared app-bin glue
-  sdk/         JSON-RPC protocol, server, and TypeScript client
-  examples/    demo bundles (agent-spine + CLI/ACP/JSON-RPC bins)
+  subprocess/   subprocess capability + local process-tree provider
+  terminal/     persistent PTY sessions
+  fs/           filesystem capability + policy
+  lsp/          language-server capability
+  code-runtime/ code-execution capability + worker-thread/python providers + Code Mode Consumer
+  sandbox/      process-confinement seam; bwrap/Landlock/Seatbelt/Windows-ACL backends
+  skill/        skill provider registry + local impl + catalog/loader tool
+  web/          web capability: Service Definition + search/fetch providers + tool Consumer
+  mcp/          MCP client bridge registering external server tools on ctx.tools
+  compaction/   compaction capability + basic provider
+  context/      request-context plugins
+  subagent/     subagent capability: Service Definition + providers + delegation Consumers
+  bundle/       installable toh --profile patch-layer bundles
+  workflow/     workflow capability + worker-thread provider + tool Consumer
+  todo/         todo_write tool
+  plan/         plan mode as logged state
+  preset/       per-session agent composition from preset cordis.yml files
+  goal/         same-session goals: state, tools, command, round driver
+  jobs/         background-job runtime + model-facing job_* control tools
+  schedule/     session-local scheduled follow-ups
+  feedback/     human feedback: message ratings + slash command
+  attachment/   durable attachment storage + local content-addressed backend
+  guard/        loop-hygiene + tool-timeout plugins
+  extensions/   the agent inspects/mounts its own plugins
+  hooks/        Claude Code/Codex hook bridges + wire-protocol library
+  session/      durable session data: persistence, projection, titles, telemetry
+  session-query/  session retrieval: reads, traces, filters, search
+  identity/     anonymous identity
+  settings/     user-settings capability + file provider
+  credentials/  credential/authorization capabilities + env/.env provider
+  spill/        oversized tool-result storage + spill policy
+  storage/      non-session storage hub + backends + domain form
+  workspace/    workspace entity registry
+  acp/          automation-only Agent Client Protocol server
+  interaction/  approval/interaction capabilities, permission, commands, ask-user
+  boot/         shared app-bin glue
+  sdk/          JSON-RPC protocol, server, and TypeScript client
+  host/         Web-GUI host half: API gateway, HTTP routes, static frontend, directory picker
+  client/       Web-GUI browser half: boot kernel, modules, and ui-* plugins
+  examples/     demo bundles (agent-spine + CLI/ACP/JSON-RPC bins)
   experimental/ private prototypes excluded from official releases
-  support/     dev/test infrastructure
-  util/        zero-dependency utilities
+  test-support/ dev/test infrastructure
+  runtime-diagnostics/  package-owned runtime-invariant registry service
+  util/         zero-dependency utilities
+apps/        shipped app bins: cli (the toh launcher), web (frontend dist), desktop (Electron shell)
 python/      Python SDK and bundled runtime (see python/README.md)
 native/      @buckeyestudio/node-addon-landlock-run source of record (see native/README.md)
 examples/    Runnable cordis.yml leaves over packages/examples bundles (see examples/AGENTS.md)

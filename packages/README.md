@@ -34,6 +34,7 @@ Groups hold `packages/<group>/<pkg>/`; names stay `@buckeyestudio/toh-<pkg>`. **
 | [`experimental/`](experimental/README.md) | Private prototypes and internal-only plugins | Unreleased |
 | [`workflow/`](workflow/README.md) | Workflow seam, worker-thread engine, and model-facing `workflow`/`ralph` tools | Product — stable API |
 | [`web/`](web/README.md) | Web capability family: seam, search/fetch provider impls, and the model-facing web tools | Product — stable API |
+| [`mcp/`](mcp/README.md) | MCP client bridge: connects to MCP servers and registers their tools on `ctx.tools` | Product — stable API |
 | [`attachment/`](attachment/README.md) | Durable attachment identity, validation, local content-addressed storage | Product — stable API |
 | [`spill/`](spill/README.md) | Spill capability family: storage seam, local impl, tool-result spill policy | Product — stable API |
 | [`todo/`](todo/README.md) | The model-facing `todo_write` tool | Product — stable API |
@@ -57,6 +58,7 @@ Groups hold `packages/<group>/<pkg>/`; names stay `@buckeyestudio/toh-<pkg>`. **
 | [`client/`](client/README.md) | Web-GUI browser half: shell, wire, object services, slots, `ui-*` plugins | Product — stable API |
 | [`examples/`](examples/README.md) | Demo bundles (agent-spine + CLI/ACP/JSON-RPC bins) leaves load | Support — example infra |
 | [`test-support/`](test-support/README.md) | Support infrastructure (testkits, invariants, replay, Loader smokes) | Support — lower compatibility expectations |
+| [`runtime-diagnostics/`](runtime-diagnostics/README.md) | Package-owned runtime-invariant registry service (`ctx.invariants`) | Support — stable diagnostics |
 | [`util/`](util/README.md) | Low-level zero-dependency utilities shared across groups (`Branded<B>`, Harness home/path helpers, timeout, retention) | Support — small, stable, harness-dep-free |
 
 New packages join existing groups; new groups update their README and this table.
