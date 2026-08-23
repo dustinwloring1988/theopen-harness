@@ -53,15 +53,35 @@ interface PendingRequest {
   reject: (error: Error) => void
 }
 
+/** Default cap on one unterminated frame before the peer connection fails: 16 MiB. */
+export const DEFAULT_MAX_FRAME_BYTES = 16 * 1024 * 1024
+
+/** Construction options for {@link JsonRpcLineTransport}. */
+export interface JsonRpcLineTransportOptions {
+  /**
+   * Maximum bytes retained while waiting for a frame's `\n`. A peer that
+   * exceeds it without a newline has every pending request rejected with
+   * `JsonRpcResponseError` code `-32700` and its input stream destroyed.
+   * @default {@link DEFAULT_MAX_FRAME_BYTES}
+   */
+  maxFrameBytes?: number
+}
+
 /**
  * Line-delimited endpoint over caller-owned streams. {@link start} attaches
  * listeners; {@link close} detaches them and rejects pending requests without
  * destroying the streams. Missing request handlers return `-32601`; handler
- * failures return `-32603`. Notifications without a handler are dropped.
+ * failures return `-32603`. Notifications without a handler are dropped. An
+ * unterminated frame past `maxFrameBytes` (default {@link DEFAULT_MAX_FRAME_BYTES})
+ * drops the buffered bytes, destroys the input stream, and rejects every
+ * pending request with `-32700`.
  */
 export class JsonRpcLineTransport implements JsonRpcTransportPeer {
   private buffer = ''
+  /** UTF-8 byte length of `buffer`'s undrained input, tracked across chunk boundaries. */
+  private bufferedBytes = 0
   private readonly decoder = new StringDecoder('utf8')
+  private readonly maxFrameBytes: number
   private started = false
   private requestHandler: RequestHandler | undefined
   private notificationHandler: NotificationHandler | undefined
@@ -70,7 +90,14 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
   constructor(
     private readonly input: Readable,
     private readonly output: Writable,
-  ) {}
+    options: JsonRpcLineTransportOptions = {},
+  ) {
+    const { maxFrameBytes = DEFAULT_MAX_FRAME_BYTES } = options
+    if (!Number.isSafeInteger(maxFrameBytes) || maxFrameBytes <= 0) {
+      throw new TypeError('maxFrameBytes must be a positive safe integer')
+    }
+    this.maxFrameBytes = maxFrameBytes
+  }
 
   /** Attach the input listeners and begin reading frames. Idempotent. */
   start(): void {
@@ -173,14 +200,20 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
   }
 
   private readonly onData = (chunk: Buffer | string): void => {
-    this.buffer += typeof chunk === 'string' ? chunk : this.decoder.write(chunk)
+    const text = typeof chunk === 'string' ? chunk : this.decoder.write(chunk)
+    this.buffer += text
+    this.bufferedBytes += typeof chunk === 'string' ? Buffer.byteLength(text) : chunk.length
     this.drainLines()
+    if (!this.buffer.includes('\n') && this.bufferedBytes > this.maxFrameBytes) {
+      this.failOversizedFrame()
+    }
   }
 
   private drainLines(): void {
     for (;;) {
       const newline = this.buffer.indexOf('\n')
       if (newline < 0) break
+      this.bufferedBytes -= Buffer.byteLength(this.buffer.slice(0, newline + 1))
       const line = this.buffer.slice(0, newline).trim()
       this.buffer = this.buffer.slice(newline + 1)
       if (!line) continue
@@ -188,12 +221,30 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
     }
   }
 
+  /**
+   * Drop the oversized frame and destroy the input stream; the stream error
+   * rejects every pending request. The peer cannot resume mid-frame delivery,
+   * so the connection is unusable, and retaining more input risks unbounded
+   * memory growth.
+   */
+  private failOversizedFrame(): void {
+    const error = new JsonRpcResponseError(
+      -32700,
+      `JSON-RPC frame exceeded ${this.maxFrameBytes} bytes before a newline`,
+    )
+    this.buffer = ''
+    this.bufferedBytes = 0
+    this.input.destroy(error)
+  }
+
   private readonly onInputError = (error: Error): void => {
     this.failPending(error)
   }
 
   private readonly onInputEnd = (): void => {
-    this.buffer += this.decoder.end()
+    const tail = this.decoder.end()
+    this.buffer += tail
+    this.bufferedBytes += Buffer.byteLength(tail)
     this.drainLines()
     this.failPending(new Error('JSON-RPC input closed'))
   }

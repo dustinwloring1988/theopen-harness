@@ -1,7 +1,7 @@
 import { once } from 'node:events'
 import { PassThrough, Writable } from 'node:stream'
 import { describe, expect, it } from 'vitest'
-import { JsonRpcLineTransport, JsonRpcResponseError } from '../src/index.ts'
+import { DEFAULT_MAX_FRAME_BYTES, JsonRpcLineTransport, JsonRpcResponseError } from '../src/index.ts'
 
 function transportPair() {
   const aToB = new PassThrough()
@@ -303,5 +303,108 @@ describe('JsonRpcLineTransport', () => {
     await new Promise(resolve => setTimeout(resolve, 10))
 
     b.close()
+  })
+
+  it('defaults the frame cap to 16 MiB', () => {
+    expect(DEFAULT_MAX_FRAME_BYTES).toBe(16 * 1024 * 1024)
+  })
+
+  it('rejects invalid maxFrameBytes values at construction', () => {
+    const input = new PassThrough()
+    for (const maxFrameBytes of [0, -1, 1.5, Number.NaN]) {
+      expect(() => new JsonRpcLineTransport(input, new PassThrough(), { maxFrameBytes }),
+        `maxFrameBytes ${String(maxFrameBytes)}`).toThrow(TypeError)
+      expect(() => new JsonRpcLineTransport(input, new PassThrough(), { maxFrameBytes }),
+        `maxFrameBytes ${String(maxFrameBytes)}`).toThrow('maxFrameBytes must be a positive safe integer')
+    }
+  })
+
+  it('fails pending requests and stops buffering when an unterminated frame exceeds the cap', async () => {
+    const input = new PassThrough()
+    const output = new PassThrough()
+    const transport = new JsonRpcLineTransport(input, output, { maxFrameBytes: 64 })
+    transport.start()
+
+    const pending = transport.request('never-replies', {})
+    input.write('x'.repeat(40))
+    input.write('y'.repeat(40))
+
+    const failure = await pending.then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({ code: -32700, message: 'JSON-RPC frame exceeded 64 bytes before a newline' })
+    expect(input.destroyed).toBe(true)
+
+    const internals = transport as unknown as { buffer: string }
+    expect(internals.buffer).toBe('')
+    input.write('z'.repeat(100))
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(internals.buffer).toBe('')
+
+    transport.close()
+  })
+
+  it('delivers frames under the cap and keeps the stream usable across complete lines larger than the cap', async () => {
+    const input = new PassThrough()
+    const output = new PassThrough()
+    const notifications: Record<string, unknown>[] = []
+    const transport = new JsonRpcLineTransport(input, output, { maxFrameBytes: 16 })
+    transport.onNotification((method, params) => { notifications.push({ method, params }) })
+    transport.start()
+
+    input.write('{"jsonrpc":"2.0","method":"tick"}\n')
+    // Two complete lines whose combined buffered total exceeds the cap stay
+    // valid: the cap bounds one unterminated frame, not the drain backlog.
+    input.write(`${'x'.repeat(20)}\n`)
+    input.write('{"jsonrpc":"2.0","method":"tock"}\n')
+    await new Promise(resolve => setTimeout(resolve, 10))
+
+    expect(notifications.map(notification => notification.method)).toEqual(['tick', 'tock'])
+    expect((transport as unknown as { buffer: string }).buffer).toBe('')
+    transport.close()
+  })
+
+  it('keeps buffering at exactly the cap and overflows only past it', async () => {
+    const input = new PassThrough()
+    const output = new PassThrough()
+    const transport = new JsonRpcLineTransport(input, output, { maxFrameBytes: 8 })
+    transport.start()
+
+    const settled: string[] = []
+    const pending = transport.request('never-replies', {})
+    pending.then(
+      () => { settled.push('resolved') },
+      (error: unknown) => { settled.push(String(error)) },
+    )
+
+    input.write('a'.repeat(8))
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(settled).toEqual([])
+    expect((transport as unknown as { buffer: string }).buffer).toBe('a'.repeat(8))
+
+    // Completing the frame exactly at the cap delivers it normally.
+    input.write('\n')
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(settled).toEqual([])
+
+    const overflowing = transport.request('never-replies-2', {})
+    input.write('b'.repeat(9))
+    await expect(overflowing).rejects.toMatchObject({ code: -32700 })
+    transport.close()
+  })
+
+  it('measures the frame cap in UTF-8 bytes, not characters', async () => {
+    const input = new PassThrough()
+    const output = new PassThrough()
+    const transport = new JsonRpcLineTransport(input, output, { maxFrameBytes: 5 })
+    transport.start()
+
+    const pending = transport.request('never-replies', {})
+    // '你好' is 6 UTF-8 bytes but only 2 string characters.
+    input.write(Buffer.from('你好'))
+    await expect(pending).rejects.toMatchObject({ code: -32700 })
+    transport.close()
   })
 })
