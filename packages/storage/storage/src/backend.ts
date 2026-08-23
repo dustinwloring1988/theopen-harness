@@ -56,11 +56,12 @@ export interface KvUnitDescriptor {
 
 /**
  * One opened unit. Values are opaque JSON to this layer: no schema, no
- * events, no domain meaning. The unit does NOT serialize concurrent writes —
- * write ordering is the caller's responsibility (the domain layer runs one
- * write chain per unit); the unit only guarantees that each single call is
- * atomic on the medium and durable once resolved (a crash after resolution
- * followed by a re-open observes the write). Any call after {@link close}
+ * events, no domain meaning. Write ordering across calls is the caller's
+ * responsibility (the domain layer runs one write chain per unit); a unit may
+ * additionally serialize overlapping calls' publication so a resolved write
+ * is never superseded by an older one. Each single call is atomic on the
+ * medium and durable once resolved (a crash after resolution followed by a
+ * re-open observes the write). Any call after {@link close}
  * rejects with `closed`.
  */
 export interface KvUnit {

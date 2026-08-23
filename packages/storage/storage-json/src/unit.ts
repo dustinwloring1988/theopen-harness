@@ -1,9 +1,12 @@
 /**
  * One opened JSON unit. The in-memory state is authoritative; every write
- * primitive mutates it and republishes the whole file atomically. Writes are
- * NOT queued here — per the backend contract, write ordering belongs to the
- * caller (the domain layer's write chain); this unit only guarantees that
- * each single call publishes a complete, durable file.
+ * primitive mutates it synchronously and republishes the whole file atomically.
+ * Publications chain onto one per-unit queue and snapshot the state current at
+ * their slot: overlapping calls stage independent temp files whose renames
+ * complete in arbitrary order, so unchained publications let an older snapshot
+ * rename last and discard an already-resolved newer write. Ordering across
+ * separately awaited calls remains the caller's responsibility (the domain
+ * layer's write chain).
  * @module @buckeyestudio/toh-storage-json/src/unit
  */
 
@@ -46,8 +49,8 @@ export async function openJsonUnit(
 
 class JsonKvUnit implements KvUnit {
   private closed = false
-  /** In-flight publishes; close() drains them before releasing the unit. */
-  private readonly inFlight = new Set<Promise<void>>()
+  /** Publish-chain tail; every link settles, so one failure cannot poison the chain. */
+  private tail: Promise<void> = Promise.resolve()
 
   constructor(
     private readonly descriptor: KvUnitDescriptor,
@@ -74,11 +77,15 @@ class JsonKvUnit implements KvUnit {
     records.set(key, value)
     // Roll back on a failed publish: memory is authoritative, so a rejected
     // write must not survive in memory (or ride along with the next publish).
-    await this.publish().catch((error: unknown) => {
-      if (hadKey) records.set(key, previous)
-      else records.delete(key)
-      throw error
-    })
+    // The rollback runs inside the chain slot so the next publish never
+    // snapshots the rejected mutation.
+    return this.enqueuePublish(() =>
+      writeAtomic(this.path, serialize(this.descriptor.name, this.state)).catch((error: unknown) => {
+        if (hadKey) records.set(key, previous)
+        else records.delete(key)
+        throw error
+      }),
+    )
   }
 
   async deleteRecord(table: string, key: string): Promise<void> {
@@ -87,10 +94,12 @@ class JsonKvUnit implements KvUnit {
     if (!records.has(key)) return
     const previous = records.get(key)
     records.delete(key)
-    await this.publish().catch((error: unknown) => {
-      records.set(key, previous)
-      throw error
-    })
+    return this.enqueuePublish(() =>
+      writeAtomic(this.path, serialize(this.descriptor.name, this.state)).catch((error: unknown) => {
+        records.set(key, previous)
+        throw error
+      }),
+    )
   }
 
   async setGlobal(value: unknown): Promise<void> {
@@ -100,19 +109,21 @@ class JsonKvUnit implements KvUnit {
     }
     const previous = this.state.global
     this.state.global = value
-    await this.publish().catch((error: unknown) => {
-      this.state.global = previous
-      throw error
-    })
+    return this.enqueuePublish(() =>
+      writeAtomic(this.path, serialize(this.descriptor.name, this.state)).catch((error: unknown) => {
+        this.state.global = previous
+        throw error
+      }),
+    )
   }
 
   async close(): Promise<void> {
     if (this.closed) {
-      await Promise.allSettled(this.inFlight)
+      await this.tail
       return
     }
     this.closed = true
-    await Promise.allSettled(this.inFlight)
+    await this.tail
     this.onClose()
   }
 
@@ -130,12 +141,10 @@ class JsonKvUnit implements KvUnit {
     return records
   }
 
-  private publish(): Promise<void> {
-    const write = writeAtomic(this.path, serialize(this.descriptor.name, this.state))
-    this.inFlight.add(write)
-    // Swallow only on the tracking branch: the caller still awaits `write`
-    // itself, so rejections stay observed exactly once.
-    write.catch(() => {}).finally(() => this.inFlight.delete(write))
+  /** Chain one publish behind the previous one; rejections stay observed exactly once by the caller's returned promise. */
+  private enqueuePublish(publish: () => Promise<void>): Promise<void> {
+    const write = this.tail.then(publish)
+    this.tail = write.then(() => undefined, () => undefined)
     return write
   }
 }

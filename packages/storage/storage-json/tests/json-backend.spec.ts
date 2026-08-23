@@ -225,4 +225,54 @@ describe('json backend specifics', () => {
     await expect(opening.then(u => u.putRecord('t', 'x', {}))).rejects.toMatchObject({ code: 'closed' })
     await closing
   })
+
+  it('serializes overlapping publishes so the newest acknowledged write reaches disk', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    // Overlapping un-awaited writes stage independent temp files; renames must
+    // not complete out of call order and strand a stale snapshot.
+    const pending: Promise<void>[] = []
+    for (let index = 0; index < 24; index += 1) {
+      pending.push(unit.putRecord('t', 'shared', { v: index }))
+    }
+    await Promise.all(pending)
+    const onDisk = JSON.parse(await readFile(join(root, 'shape.json'), 'utf8')) as {
+      tables: Record<string, Record<string, unknown>>
+    }
+    expect(onDisk.tables['t']?.['shared']).toEqual({ v: 23 })
+    await backend.close()
+  })
+
+  it('keeps both records when a second put overlaps an unresolved first', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    const first = unit.putRecord('t', 'a', { v: 'first' })
+    const second = unit.putRecord('t', 'b', { v: 'second' })
+    await Promise.all([first, second])
+    const onDisk = JSON.parse(await readFile(join(root, 'shape.json'), 'utf8')) as {
+      tables: Record<string, Record<string, unknown>>
+    }
+    expect(onDisk.tables['t']).toEqual({ a: { v: 'first' }, b: { v: 'second' } })
+    await backend.close()
+  })
+
+  it('publishes sequential writes in call order with each resolution durable', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    const path = join(root, 'shape.json')
+    const readShared = async (): Promise<unknown> => {
+      const onDisk = JSON.parse(await readFile(path, 'utf8')) as {
+        tables: Record<string, Record<string, unknown>>
+      }
+      return onDisk.tables['t']?.['k']
+    }
+    await unit.putRecord('t', 'k', { v: 1 })
+    expect(await readShared()).toEqual({ v: 1 })
+    await unit.putRecord('t', 'k', { v: 2 })
+    expect(await readShared()).toEqual({ v: 2 })
+    await backend.close()
+  })
 })
