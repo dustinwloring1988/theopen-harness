@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-23-turn-notifications.md
-2026-08-23-turn-notifications.md: f9310286901ab71a12737af241084fea1488def2
-2026-08-23-turn-notifications.zh.md: 26395e9e974f2792efc1461b4fb80c030ba6e572
+2026-08-23-turn-notifications.md: a26334b4138d082d17adcdae613e4d0ae05f6376
+2026-08-23-turn-notifications.zh.md: f60b1cf8e7070af02a1d110b51c6e3267a63368d

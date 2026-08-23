@@ -40,15 +40,20 @@ describe('shouldNotify', () => {
 
 describe('shouldRequestPermission', () => {
   it('asks once per page on a qualifying event while unanswered', () => {
-    expect(shouldRequestPermission('ask', 'default')).toBe(true)
-    expect(shouldRequestPermission('on', 'default')).toBe(true)
+    expect(shouldRequestPermission('ask', 'default', false)).toBe(true)
+    expect(shouldRequestPermission('on', 'default', false)).toBe(true)
+  })
+
+  it('never asks twice per page, even while the state stays default', () => {
+    expect(shouldRequestPermission('ask', 'default', true)).toBe(false)
+    expect(shouldRequestPermission('on', 'default', true)).toBe(false)
   })
 
   it('never asks when answered, disabled, or unsupported', () => {
-    expect(shouldRequestPermission('ask', 'granted')).toBe(false)
-    expect(shouldRequestPermission('ask', 'denied')).toBe(false)
-    expect(shouldRequestPermission('ask', 'unsupported')).toBe(false)
-    expect(shouldRequestPermission('off', 'default')).toBe(false)
+    expect(shouldRequestPermission('ask', 'granted', false)).toBe(false)
+    expect(shouldRequestPermission('ask', 'denied', false)).toBe(false)
+    expect(shouldRequestPermission('ask', 'unsupported', false)).toBe(false)
+    expect(shouldRequestPermission('off', 'default', false)).toBe(false)
   })
 })
 

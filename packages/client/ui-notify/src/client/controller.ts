@@ -70,9 +70,10 @@ interface SessionFacts {
  * while the state stands, so snapshot replays cannot re-fire an already-raised
  * toast. Three guards keep the edges honest:
  *
- * - The first pass only records standing facts (the SessionManager reminder
- *   precedent): a page that boots into an already-blocked or already-finished
- *   world neither notifies nor prompts at load.
+ * - The first ready snapshot only records standing facts (the
+ *   SessionManager reminder precedent): a page that boots into an
+ *   already-blocked or already-finished world neither notifies nor prompts at
+ *   load, and the pre-baseline `pending` phase publishes no edges either.
  * - A key disarms only after its fact has been absent for two consecutive
  *   passes, so a reconnect generation — which clears and replays the same
  *   pending interactions — cannot manufacture a phantom repeat.
@@ -90,6 +91,8 @@ export class NotifyController {
   readonly #missing = new Map<string, number>()
   /** Whether the first (recording-only) pass has run since start(). */
   #primed = false
+  /** Whether this page already ran the permission request; it never re-asks. */
+  #permissionAsked = false
   /** Serializes passes so async permission handshakes cannot interleave. */
   #chain: Promise<void> = Promise.resolve()
   /** The stable stop handle handed out by start(). */
@@ -123,6 +126,7 @@ export class NotifyController {
       this.#armed.clear()
       this.#missing.clear()
       this.#primed = false
+      this.#permissionAsked = false
     }
     return this.#stop
   }
@@ -136,9 +140,13 @@ export class NotifyController {
 
   async #runOnce(): Promise<void> {
     const snapshot = this.#list.getSnapshot()
+    // The list publishes an empty `pending` phase before the first successful
+    // pull; priming there would arm nothing and then treat the ready baseline
+    // as new events. Wait for the first ready snapshot and prime from it.
+    if (!this.#primed && snapshot.phase !== 'ready') return
     const standing = new Set<string>()
     for (const summary of Object.values(snapshot.byId)) {
-      for (const key of keysOf(summary.id, factsOf(summary))) standing.add(key)
+      for (const { key } of keysOf(summary.id, factsOf(summary))) standing.add(key)
     }
     if (!this.#primed) {
       this.#primed = true
@@ -146,25 +154,24 @@ export class NotifyController {
       return
     }
     // Candidates first: keys standing now but not armed, i.e. genuinely new
-    // arcs relative to everything this page has already observed.
+    // arcs relative to everything this page has already observed. Each key
+    // carries its own kind so a summary reporting both facts labels the
+    // pending candidate as approval-required, not as turn-completed.
     const candidates: { key: string; kind: NotifyEventKind; body: string }[] = []
     for (const summary of Object.values(snapshot.byId)) {
-      const facts = factsOf(summary)
-      for (const key of keysOf(summary.id, facts)) {
+      for (const { key, kind } of keysOf(summary.id, factsOf(summary))) {
         if (!this.#armed.has(key)) {
-          candidates.push({
-            key,
-            kind: facts.completed ? 'turn-completed' : 'approval-required',
-            body: summary.displayTitle,
-          })
+          candidates.push({ key, kind, body: summary.displayTitle })
         }
       }
     }
     let mode = this.#settings().mode
     let permission = this.#ports.permission()
-    // A pass carrying a genuinely new event asks once while unanswered —
-    // never at load, because the priming pass produces no candidates.
-    if (candidates.length > 0 && shouldRequestPermission(mode, permission)) {
+    // A pass carrying a genuinely new event triggers the single per-page
+    // permission attempt — never at load: priming waits for the first ready
+    // snapshot and produces no candidates.
+    if (candidates.length > 0 && shouldRequestPermission(mode, permission, this.#permissionAsked)) {
+      this.#permissionAsked = true
       permission = await this.#ports.requestPermission()
       mode = this.#settings().mode
     }
@@ -218,9 +225,17 @@ function factsOf(summary: SessionSummary): SessionFacts {
   }
 }
 
-function keysOf(id: SessionId, facts: SessionFacts): string[] {
-  const keys: string[] = []
-  if (facts.pending !== undefined) keys.push(`${id}:pending:${facts.pending}`)
-  if (facts.completed) keys.push(`${id}:completed`)
+/** One dedupe key plus the notification kind that key announces. */
+interface KeyedFact {
+  key: string
+  kind: NotifyEventKind
+}
+
+function keysOf(id: SessionId, facts: SessionFacts): KeyedFact[] {
+  const keys: KeyedFact[] = []
+  if (facts.pending !== undefined) {
+    keys.push({ key: `${id}:pending:${facts.pending}`, kind: 'approval-required' })
+  }
+  if (facts.completed) keys.push({ key: `${id}:completed`, kind: 'turn-completed' })
   return keys
 }

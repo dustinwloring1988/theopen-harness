@@ -135,6 +135,83 @@ describe('NotifyController', () => {
     ])
   })
 
+  it('labels each candidate by its own fact when one summary carries both', async () => {
+    const b = bench('on')
+    b.publish(list([summary('a')]))
+    await b.controller.pass()
+
+    // Both facts standing on one summary: the pending key must announce the
+    // approval title, the completed key the completion title.
+    b.publish(list([summary('a', { pendingInteraction: 'approval', completed: true })]))
+    await b.controller.pass()
+    expect(b.raised()).toEqual([
+      { kind: 'approval-required', title: 'notify.approval.title', body: 'Session a', tag: `${sid('a')}:pending:approval` },
+      { kind: 'turn-completed', title: 'notify.completed.title', body: 'Session a', tag: `${sid('a')}:completed` },
+    ])
+  })
+
+  it('primes from the first ready snapshot, never from the pending phase', async () => {
+    const source = listSource({ ...list([]), phase: 'pending' })
+    const focused = false
+    const permission: ReturnType<NotifyPorts['permission']> = 'granted'
+    const raised: { kind: string; tag: string }[] = []
+    const controller = new NotifyController(
+      source.list,
+      () => ({ mode: 'on', quietFrom: '', quietTo: '' }),
+      () => ({ completed: 'notify.completed.title', approval: 'notify.approval.title' }),
+      {
+        focused: () => focused,
+        permission: () => permission,
+        requestPermission: () => Promise.resolve(permission),
+        nowMinutes: () => 12 * 60,
+        raise: (n) => { raised.push({ kind: n.kind, tag: n.tag }) },
+      },
+    )
+
+    // A pre-baseline publish arms nothing and raises nothing.
+    source.publish({ ...list([]), phase: 'pending' })
+    await controller.pass()
+
+    // The ready baseline carrying standing facts primes silently.
+    source.publish(list([summary('booted', { completed: true })]))
+    await controller.pass()
+    expect(raised).toEqual([])
+
+    // A genuinely new arc afterwards still notifies.
+    source.publish(list([
+      summary('booted', { completed: true }),
+      summary('fresh', { completed: true }),
+    ]))
+    await controller.pass()
+    expect(raised).toEqual([{ kind: 'turn-completed', tag: `${sid('fresh')}:completed` }])
+  })
+
+  it('asks at most once per page even when an answer stays default', async () => {
+    const source = listSource(list([]))
+    const requestPermission = vi.fn(() => Promise.resolve('default' as const))
+    const controller = new NotifyController(
+      source.list,
+      () => ({ mode: 'ask', quietFrom: '', quietTo: '' }),
+      () => ({ completed: 'c', approval: 'a' }),
+      {
+        focused: () => false,
+        permission: () => 'default',
+        requestPermission,
+        nowMinutes: () => 0,
+        raise: () => {},
+      },
+    )
+    await controller.pass()
+    source.publish(list([summary('a', { completed: true })]))
+    await controller.pass()
+    expect(requestPermission).toHaveBeenCalledTimes(1)
+
+    // The next event must not re-prompt the unanswered page.
+    source.publish(list([summary('a', { completed: true }), summary('b', { completed: true })]))
+    await controller.pass()
+    expect(requestPermission).toHaveBeenCalledTimes(1)
+  })
+
   it('re-notifies only after the interaction has been gone for two passes', async () => {
     const b = bench('on')
     b.publish(list([summary('a')]))

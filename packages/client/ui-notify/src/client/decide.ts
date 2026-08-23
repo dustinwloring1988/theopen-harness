@@ -64,13 +64,16 @@ export function shouldNotify(gate: NotifyGate): boolean {
  * fresh page stays silent until the harness actually has something to say.
  * @param mode - the durable mode.
  * @param permission - the current permission state.
+ * @param attempted - whether this page already ran the permission request;
+ * an unanswered result still counts, so later events never re-prompt.
  * @returns whether to call {@link requestPermission} before deciding again.
  */
 export function shouldRequestPermission(
   mode: NotifyMode,
   permission: NotifyPermissionState,
+  attempted: boolean,
 ): boolean {
-  return mode !== 'off' && permission === 'default'
+  return !attempted && mode !== 'off' && permission === 'default'
 }
 
 /** Minutes since midnight parsed from one "HH:MM" string. */
