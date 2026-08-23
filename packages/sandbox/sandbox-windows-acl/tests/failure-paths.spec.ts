@@ -11,7 +11,7 @@ import koffi from 'koffi'
 import { PROCESS_INFORMATION, getTempPath } from '../src/ffi.ts'
 import type { NativePtr, Win32Bindings } from '../src/ffi.ts'
 import { Win32Error } from '../src/errors.ts'
-import { drainPipe, spawnSandboxed, spawnSandboxedInherited, waitForExit } from '../src/spawn.ts'
+import { drainPipe, spawnSandboxed, spawnSandboxedInherited, waitForExit, DEFAULT_MAX_OUTPUT_BYTES } from '../src/spawn.ts'
 import * as abi from '../src/win32-abi.ts'
 
 const PVOID = koffi.pointer('void')
@@ -363,7 +363,7 @@ describe('drainPipe', () => {
       closeHandle,
       formatMessageW: vi.fn(() => 0),
     } as unknown as Win32Bindings
-    return drainPipe(api, 30n as NativePtr).then((buffer) => {
+    return drainPipe(api, 30n as NativePtr, DEFAULT_MAX_OUTPUT_BYTES).then((buffer) => {
       expect(buffer.length).toBe(0)
       expect(closeHandle).toHaveBeenCalledWith(30n)
     })
@@ -376,7 +376,7 @@ describe('drainPipe', () => {
       closeHandle: vi.fn(() => 1),
       formatMessageW: vi.fn(() => 0),
     } as unknown as Win32Bindings
-    return expect(drainPipe(api, 30n as NativePtr)).rejects.toMatchObject({ api: 'PeekNamedPipe' })
+    return expect(drainPipe(api, 30n as NativePtr, DEFAULT_MAX_OUTPUT_BYTES)).rejects.toMatchObject({ api: 'PeekNamedPipe' })
   })
 
   it('reports a ReadFile failure after data was reported available', () => {
@@ -390,7 +390,7 @@ describe('drainPipe', () => {
       closeHandle: vi.fn(() => 1),
       formatMessageW: vi.fn(() => 0),
     } as unknown as Win32Bindings
-    return expect(drainPipe(api, 30n as NativePtr)).rejects.toMatchObject({ api: 'ReadFile' })
+    return expect(drainPipe(api, 30n as NativePtr, DEFAULT_MAX_OUTPUT_BYTES)).rejects.toMatchObject({ api: 'ReadFile' })
   })
 
   it('drains one chunk and stops at ERROR_BROKEN_PIPE', () => {
@@ -411,7 +411,7 @@ describe('drainPipe', () => {
       closeHandle: vi.fn(() => 1),
       formatMessageW: vi.fn(() => 0),
     } as unknown as Win32Bindings
-    return drainPipe(api, 30n as NativePtr).then((buffer) => {
+    return drainPipe(api, 30n as NativePtr, DEFAULT_MAX_OUTPUT_BYTES).then((buffer) => {
       expect(buffer.toString('utf8')).toBe('ab')
     })
   })

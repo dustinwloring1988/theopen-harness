@@ -14,6 +14,14 @@ import type { NativePtr, Win32Bindings } from './ffi.ts'
 import * as abi from './win32-abi.ts'
 
 /**
+ * Default retained-bytes cap for one drained pipe (the
+ * `AclSandboxSpawnOptions.maxOutputBytes` default): the harness's standard
+ * per-stream output budget, matching the subprocess seam's collectors
+ * (toh-bash-local/toh-pwsh-local `maxOutputBytes`).
+ */
+export const DEFAULT_MAX_OUTPUT_BYTES = 64_000
+
+/**
  * Quote one argument per the CommandLineToArgvW parsing rules: backslashes
  * are doubled only before a quote character — including the closing quote
  * this function appends, so a trailing backslash run is doubled as well
@@ -167,13 +175,21 @@ export function spawnSandboxed(
 }
 
 /**
- * Drain one pipe read end to a Buffer via non-blocking PeekNamedPipe polling.
+ * Drain one pipe read end into a Buffer via non-blocking PeekNamedPipe
+ * polling. Retention is bounded: once more than `maxBytes` has arrived, whole
+ * head chunks (or the head of a single over-cap chunk) are dropped until
+ * exactly the most recent `maxBytes` remain — the subprocess seam's
+ * OutputCollector tail-keep shape — so host memory stays capped no matter how
+ * much the confined child writes.
  * @param api - the binding table.
  * @param handle - the pipe read end to drain (closed when done).
- * @returns the complete pipe contents.
+ * @param maxBytes - retained-bytes cap; resolved by the caller (the AclSandbox
+ *   spawn path applies {@link DEFAULT_MAX_OUTPUT_BYTES} unless overridden).
+ * @returns the most recent pipe contents, never longer than `maxBytes`.
  */
-export async function drainPipe(api: Win32Bindings, handle: NativePtr): Promise<Buffer> {
+export async function drainPipe(api: Win32Bindings, handle: NativePtr, maxBytes: number): Promise<Buffer> {
   const chunks: Buffer[] = []
+  let bytes = 0
   for (;;) {
     const bytesReadSlot = allocUint32()
     const totalAvailSlot = allocUint32()
@@ -191,7 +207,23 @@ export async function drainPipe(api: Win32Bindings, handle: NativePtr): Promise<
       if (api.readFile(handle, chunk, chunk.length, readSlot, null) === 0) {
         throwLastError(api, 'ReadFile', `drain failure after ${chunks.length} chunk(s)`)
       }
-      chunks.push(chunk.subarray(0, decodeUint32(readSlot)))
+      const read = chunk.subarray(0, decodeUint32(readSlot))
+      chunks.push(read)
+      bytes += read.length
+      while (bytes > maxBytes) {
+        const head = chunks[0] as Buffer // length ≥ 1 is guaranteed while over cap
+        const excess = bytes - maxBytes
+        if (head.length <= excess) {
+          // Drop the whole head chunk.
+          chunks.shift()
+          bytes -= head.length
+        } else {
+          // Trim the head so the retained window is byte-exact at the cap —
+          // the LAST maxBytes regardless of how the child chunked its output.
+          chunks[0] = head.subarray(excess)
+          bytes -= excess
+        }
+      }
     }
     // Small backoff instead of setImmediate: a bare next-tick would busy-poll
     // the pipe at full event-loop speed while the child produces no output.

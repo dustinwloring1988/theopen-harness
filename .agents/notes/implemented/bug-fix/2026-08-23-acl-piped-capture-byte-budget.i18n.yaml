@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-23-acl-piped-capture-byte-budget.md
+2026-08-23-acl-piped-capture-byte-budget.md: 16c8e7b88b80559a0d4671aa651ca03e05d4b1ff
+2026-08-23-acl-piped-capture-byte-budget.zh.md: 0236a89bdff00142325fc56b85fbc044892bc3a5
