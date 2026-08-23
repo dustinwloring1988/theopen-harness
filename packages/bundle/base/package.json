@@ -78,7 +78,7 @@
     "@buckeyestudio/toh-session-query-sqlite": "workspace:^",
     "@buckeyestudio/toh-session-telemetry-otel": "workspace:^",
     "@buckeyestudio/toh-session-title": "workspace:^",
-    "@buckeyestudio/toh-session-title-first-prompt-llm": "workspace:^",
+    "@buckeyestudio/toh-session-title-llm": "workspace:^",
     "@buckeyestudio/toh-settings-file": "workspace:^",
     "@buckeyestudio/toh-skill": "workspace:^",
     "@buckeyestudio/toh-skill-badge": "workspace:^",

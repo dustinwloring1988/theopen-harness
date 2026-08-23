@@ -66,6 +66,7 @@ const SCRIPT: StreamChunk[] = [
 ]
 
 const CONFIG = {
+  cadence: 'all-prompts',
   targetWords: 5,
   targetCjkCharacters: 10,
   maxInputBytes: 1_000,
@@ -210,6 +211,8 @@ describe('generateSessionTitleWithLlm', () => {
     expect(() => resolveSessionTitleLlmConfig('invalid' as never)).toThrow(/configuration is required/)
     expect(() => resolveSessionTitleLlmConfig({ ...CONFIG, extra: true } as SessionTitleLlmConfig))
       .toThrow(/unknown config key "extra"/)
+    expect(() => resolveSessionTitleLlmConfig({ ...CONFIG, cadence: 'sometimes' } as never))
+      .toThrow(/cadence must be "first-prompt" or "all-prompts"/)
     expect(() => resolveSessionTitleLlmConfig({ ...CONFIG, targetWords: 0 }))
       .toThrow(/targetWords.*positive integer/)
     expect(() => resolveSessionTitleLlmConfig({ ...CONFIG, targetWords: 1.5 }))

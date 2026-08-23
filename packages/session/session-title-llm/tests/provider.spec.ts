@@ -4,20 +4,21 @@ import LlmRuntime, { createUserMessage, LlmAdapter  } from '@buckeyestudio/toh-l
 import type { GenerateOptions, StreamChunk } from '@buckeyestudio/toh-llm'
 import SessionStore, { Session, SessionId } from '@buckeyestudio/toh-session'
 import SessionTitleService, { type SessionTitleProvider } from '@buckeyestudio/toh-session-title'
-import * as providerPlugin from '@buckeyestudio/toh-session-title-first-prompt-llm'
+import * as providerPlugin from '@buckeyestudio/toh-session-title-llm'
 
 class RecordingAdapter extends LlmAdapter {
   readonly requests: GenerateOptions[] = []
 
   override async * stream(options: GenerateOptions): AsyncIterable<StreamChunk> {
     this.requests.push(options)
-    yield { type: 'text-delta', index: 0, text: 'First-message model title' }
+    yield { type: 'text-delta', index: 0, text: 'Model title' }
     yield { type: 'finish', reason: { kind: 'stop' } }
   }
 }
 
 const TITLE_CONFIG = { fallbackMaxWords: 5, fallbackMaxBytes: 40, maxTitleBytes: 80 } as const
-const LLM_CONFIG = {
+const FIRST_PROMPT_CONFIG = {
+  cadence: 'first-prompt',
   targetWords: 5,
   targetCjkCharacters: 10,
   maxInputBytes: 1_000,
@@ -26,12 +27,20 @@ const LLM_CONFIG = {
   provider: 'title-route',
   model: 'title-model',
 } as const
+const ALL_PROMPTS_CONFIG = {
+  cadence: 'all-prompts',
+  targetWords: 5,
+  targetCjkCharacters: 10,
+  maxInputBytes: 1_000,
+  maxOutputTokens: 32,
+  timeoutMs: 1_000,
+} as const
 
 async function settle(): Promise<void> {
   await new Promise(resolve => setTimeout(resolve, 0))
 }
 
-describe('first-prompt LLM title provider', () => {
+describe('first-prompt cadence', () => {
   it('rejects an impossible empty provider request at its own boundary', async () => {
     const ctx = new Context()
     await ctx.plugin(LlmRuntime)
@@ -42,7 +51,7 @@ describe('first-prompt LLM title provider', () => {
       registered = provider
       return async () => undefined
     })
-    providerPlugin.apply(ctx, LLM_CONFIG)
+    providerPlugin.apply(ctx, FIRST_PROMPT_CONFIG)
 
     await expect(registered!.generate({
       session: Session.create(SessionId('empty-first-provider')),
@@ -51,14 +60,14 @@ describe('first-prompt LLM title provider', () => {
     })).rejects.toThrow(/requires one human message/)
   })
 
-  it('always selects only the first eligible human message, including explicit refresh', async () => {
+  it('always selects only the first eligible human message under its provenance id', async () => {
     const ctx = new Context()
     await ctx.plugin(LlmRuntime)
     await ctx.plugin(SessionStore)
     await ctx.plugin(SessionTitleService, TITLE_CONFIG)
     const adapter = new RecordingAdapter()
     ctx.llm.registerAdapter(['title-route'], adapter)
-    await ctx.plugin(providerPlugin, LLM_CONFIG)
+    await ctx.plugin(providerPlugin, FIRST_PROMPT_CONFIG)
     const session = ctx.sessions.create(SessionId('first-plugin'))
     session.append('turn/start', { turn: 1 })
     const first = session.append('user/message', createUserMessage({
@@ -81,6 +90,60 @@ describe('first-prompt LLM title provider', () => {
       expect(content?.type === 'text' && content.text).toContain('first input')
       expect(content?.type === 'text' && content.text).not.toContain('second input must be ignored')
     }
-    expect(ctx.sessionTitle.get(session)).toMatchObject({ messageSeqs: [first.seq] })
+    expect(ctx.sessionTitle.get(session)).toMatchObject({
+      messageSeqs: [first.seq],
+      source: {
+        kind: 'provider',
+        provider: 'session-title-first-prompt-llm',
+        model: { provider: 'title-route', model: 'title-model' },
+      },
+    })
+  })
+})
+
+describe('all-prompts cadence', () => {
+  it('includes seeded history and the latest prompt while inheriting the logged request route', async () => {
+    const seeded = Session.create(SessionId('seed-source'))
+    seeded.append('turn/start', { turn: 1 })
+    const inherited = seeded.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'inherited prompt' }], source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    seeded.append('session/title', {
+      title: 'Inherited fallback', messageSeqs: [inherited.seq], source: { kind: 'fallback' },
+    })
+    seeded.append('turn/end', { turn: 1, reason: { kind: 'completed' } })
+
+    const ctx = new Context()
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionTitleService, TITLE_CONFIG)
+    const adapter = new RecordingAdapter()
+    ctx.llm.registerAdapter(['current-route'], adapter)
+    await ctx.plugin(providerPlugin, ALL_PROMPTS_CONFIG)
+    const session = ctx.sessions.create(SessionId('all-plugin'), {
+      seed: seeded.events,
+      meta: { parentSession: seeded.id, seedLength: seeded.seq },
+    })
+    session.append('turn/start', { turn: 2 })
+    const latest = session.append('user/message', createUserMessage({
+      content: [{ type: 'text', text: 'latest prompt' }], source: { kind: 'user' },
+    }), { surfaceOp: 'append' })
+    await settle()
+    session.append('request/header', {
+      header: { config: { provider: 'current-route', model: 'current-model' } }, reason: 'resume',
+    })
+    await settle()
+
+    expect(adapter.requests[0]).toMatchObject({ provider: 'current-route', model: 'current-model' })
+    const content = adapter.requests[0]?.messages[0]?.content[0]
+    expect(content?.type === 'text' && content.text).toContain('inherited prompt')
+    expect(content?.type === 'text' && content.text).toContain('latest prompt')
+    expect(ctx.sessionTitle.get(session)).toMatchObject({
+      messageSeqs: [inherited.seq, latest.seq],
+      source: {
+        kind: 'provider',
+        provider: 'session-title-all-prompts-llm',
+      },
+    })
   })
 })

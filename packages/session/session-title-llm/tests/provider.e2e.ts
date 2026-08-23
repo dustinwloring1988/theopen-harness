@@ -5,7 +5,7 @@ import LlmRuntime from '@buckeyestudio/toh-llm'
 import * as LlmDeepSeek from '@buckeyestudio/toh-llm-deepseek'
 import SessionStore, { SessionId } from '@buckeyestudio/toh-session'
 import SessionTitleService from '@buckeyestudio/toh-session-title'
-import * as FirstMessageTitleProvider from '@buckeyestudio/toh-session-title-first-prompt-llm'
+import * as TitleProvider from '@buckeyestudio/toh-session-title-llm'
 
 const contexts: Context[] = []
 
@@ -32,7 +32,8 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('first-prompt title provider with
       fallbackMaxBytes: 40,
       maxTitleBytes: 80,
     })
-    await ctx.plugin(FirstMessageTitleProvider, {
+    await ctx.plugin(TitleProvider, {
+      cadence: 'first-prompt',
       targetWords: 5,
       targetCjkCharacters: 10,
       maxInputBytes: 4_096,

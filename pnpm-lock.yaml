@@ -606,9 +606,9 @@ importers:
       '@buckeyestudio/toh-session-title':
         specifier: workspace:*
         version: link:../packages/session/session-title
-      '@buckeyestudio/toh-session-title-first-prompt-llm':
+      '@buckeyestudio/toh-session-title-llm':
         specifier: workspace:*
-        version: link:../packages/session/session-title-first-prompt-llm
+        version: link:../packages/session/session-title-llm
       '@buckeyestudio/toh-settings-file':
         specifier: workspace:*
         version: link:../packages/settings/settings-file
@@ -1125,9 +1125,9 @@ importers:
       '@buckeyestudio/toh-session-title':
         specifier: workspace:^
         version: link:../../session/session-title
-      '@buckeyestudio/toh-session-title-first-prompt-llm':
+      '@buckeyestudio/toh-session-title-llm':
         specifier: workspace:^
-        version: link:../../session/session-title-first-prompt-llm
+        version: link:../../session/session-title-llm
       '@buckeyestudio/toh-settings-file':
         specifier: workspace:^
         version: link:../../settings/settings-file
@@ -6583,32 +6583,7 @@ importers:
         specifier: workspace:^
         version: link:../session-projection
 
-  packages/session/session-title-all-prompts-llm:
-    dependencies:
-      '@buckeyestudio/schemastery':
-        specifier: link:../../../vendor/schemastery
-        version: link:../../../vendor/schemastery
-    devDependencies:
-      '@buckeyestudio/cordis':
-        specifier: workspace:^
-        version: link:../../../vendor/cordis
-      '@buckeyestudio/toh-invariants':
-        specifier: workspace:^
-        version: link:../../runtime-diagnostics/invariants
-      '@buckeyestudio/toh-llm':
-        specifier: workspace:^
-        version: link:../../llm/llm
-      '@buckeyestudio/toh-session':
-        specifier: workspace:^
-        version: link:../../core/session
-      '@buckeyestudio/toh-session-title':
-        specifier: workspace:^
-        version: link:../session-title
-      '@buckeyestudio/toh-session-title-llm':
-        specifier: workspace:^
-        version: link:../session-title-llm
-
-  packages/session/session-title-first-prompt-llm:
+  packages/session/session-title-llm:
     dependencies:
       '@buckeyestudio/schemastery':
         specifier: link:../../../vendor/schemastery
@@ -6632,31 +6607,6 @@ importers:
       '@buckeyestudio/toh-llm-deepseek':
         specifier: workspace:^
         version: link:../../llm/llm-deepseek
-      '@buckeyestudio/toh-session':
-        specifier: workspace:^
-        version: link:../../core/session
-      '@buckeyestudio/toh-session-title':
-        specifier: workspace:^
-        version: link:../session-title
-      '@buckeyestudio/toh-session-title-llm':
-        specifier: workspace:^
-        version: link:../session-title-llm
-
-  packages/session/session-title-llm:
-    dependencies:
-      '@buckeyestudio/schemastery':
-        specifier: link:../../../vendor/schemastery
-        version: link:../../../vendor/schemastery
-    devDependencies:
-      '@buckeyestudio/cordis':
-        specifier: workspace:^
-        version: link:../../../vendor/cordis
-      '@buckeyestudio/toh-invariants':
-        specifier: workspace:^
-        version: link:../../runtime-diagnostics/invariants
-      '@buckeyestudio/toh-llm':
-        specifier: workspace:^
-        version: link:../../llm/llm
       '@buckeyestudio/toh-session':
         specifier: workspace:^
         version: link:../../core/session
