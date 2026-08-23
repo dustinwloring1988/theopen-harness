@@ -267,9 +267,11 @@ describe('LspConnection edge behavior', () => {
       + 'for (let i = 0; i < 40; i++) process.stdout.write(fr({ id: 10000 + i, method: "workspace/configuration", params: { items: [{}] } }));'
       + 'setInterval(()=>{}, 1000)'
     const conn = connectScript(script, 100_000, stallingReplyWriter())
+    const pending = conn.request('initialize', {})
     await conn.closed
     expect(conn.failed).toBe(true)
-    await expect(conn.request('initialize', {})).rejects.toThrow(/unanswered server-to-client requests/)
+    await expect(pending).rejects.toThrow(/exceeded 32 unanswered server-to-client requests/)
+    await expect(conn.request('initialize', {})).rejects.toThrow(/exceeded 32 unanswered server-to-client requests/)
   })
 })
 
