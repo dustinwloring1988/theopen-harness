@@ -1,6 +1,7 @@
 # Agent Note: First-run readiness reads every provider, and the setup card closes
 
 Status: implemented
+Archived: 2026-08-21
 
 [English](2026-08-12-onboarding-reads-every-provider.md) | 中文
 

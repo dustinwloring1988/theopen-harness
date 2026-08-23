@@ -358,7 +358,10 @@ export function ModelListEditor(props: ModelListEditorProps): ReactNode {
             <input
               className={styles['input']}
               type="text"
-              value={textOf(model, 'name')}
+              // An unnamed model displays as its id — here and in every
+              // selector, since resolution defaults the name to the id — so
+              // the field shows that default instead of reading as missing.
+              value={textOf(model, 'name') || textOf(model, 'id')}
               placeholder={t('modelName')}
               aria-label={`${t('modelName')} ${index + 1}`}
               disabled={disabled}

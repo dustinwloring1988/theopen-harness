@@ -169,6 +169,76 @@ describe('ModelsSettingsStore', () => {
 })
 
 describe('edge joins', () => {
+  it('presents a whole-section provider dormant when no layer above the defaults carries content', async () => {
+    // Stock mount: the composition base is empty and nothing is stored, so
+    // the official route is an addable directory entry, not a row.
+    const { face, mirror } = api({
+      describeSettings: () => Promise.resolve(ok({
+        writable: true,
+        hasDocument: false,
+        namespaces: [{
+          ns: 'llm-deepseek',
+          schema: {},
+          value: { apiKeyEnv: 'DEEPSEEK_API_KEY' },
+          applies: 'live' as const,
+          secrets: [],
+          revision: 0,
+        }] as never,
+      })),
+      providers: () => Promise.resolve(ok({
+        providers: [
+          { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [], active: true },
+        ] as never,
+      })),
+    })
+    const store = new ModelsSettingsStore(face, settingsSchema, mirror)
+    await store.load()
+    expect(store.store.getSnapshot().rows[0]).toMatchObject({
+      configured: false,
+      removable: false,
+      apiKeyEnv: 'DEEPSEEK_API_KEY',
+    })
+  })
+
+  it('marks a whole-section provider removable only when the user layer alone carries it', async () => {
+    const row = async (namespace: Record<string, unknown>): Promise<{ configured: boolean; removable: boolean }> => {
+      const { face, mirror } = api({
+        describeSettings: () => Promise.resolve(ok({
+          writable: true,
+          hasDocument: false,
+          namespaces: [{
+            ns: 'llm-deepseek',
+            schema: {},
+            value: { apiKeyEnv: 'DEEPSEEK_API_KEY', baseURL: 'https://base' },
+            ...'user' in namespace ? { user: namespace['user'] } : {},
+            ...'base' in namespace ? { base: namespace['base'] } : {},
+            applies: 'live' as const,
+            secrets: [],
+            revision: 0,
+          }] as never,
+        })),
+        providers: () => Promise.resolve(ok({
+          providers: [
+            { provider: 'deepseek-official', displayName: 'DeepSeek', settingsNs: 'llm-deepseek', settingsPath: [], active: true },
+          ] as never,
+        })),
+      })
+      const store = new ModelsSettingsStore(face, settingsSchema, mirror)
+      await store.load()
+      const { configured, removable } = store.store.getSnapshot().rows[0]!
+      return { configured, removable }
+    }
+    // A stored section with nothing pinned is the page-added shape: editable
+    // and deletable back to dormant.
+    expect(await row({ user: { baseURL: 'https://stored' } })).toEqual({ configured: true, removable: true })
+    // Composition content makes it a pinned fact the page cannot remove.
+    expect(await row({ user: { baseURL: 'https://stored' }, base: { thinking: 'disabled' } }))
+      .toEqual({ configured: true, removable: false })
+    expect(await row({ base: { baseURL: 'https://pinned' } })).toEqual({ configured: true, removable: false })
+    // An emptied section (the persisted shape after a removal) stays dormant.
+    expect(await row({ user: {} })).toEqual({ configured: false, removable: false })
+  })
+
   it('treats a non-object profile as having no credential reference', async () => {
     const { face, mirror } = api({
       describeSettings: () => Promise.resolve(ok({

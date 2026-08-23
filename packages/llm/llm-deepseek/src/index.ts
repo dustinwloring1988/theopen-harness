@@ -458,10 +458,27 @@ export function apply(ctx: Context, config: Config): void {
     registeredPolicy = policy
   }
 
-  installSettingsSection(ctx, NS, Config, config, {
+  installSettingsSection(ctx, NS, Config, compositionBase(config), {
     setSource: (source) => {
       current = source
     },
     onChange: ensureRegistrationFacts,
   })
+}
+
+/**
+ * The settings base layer this composition entry contributes: its fields
+ * minus the ones equal to the schema's own defaults. A field equal to its
+ * default resolves identically when omitted, so dropping it keeps a stock
+ * mount's section contentless — configuration surfaces can then present the
+ * provider as dormant until something is stored, while a deployment that
+ * pins a value still reads as composition-owned.
+ * @param config - the resolved composition entry config.
+ * @returns the base layer to register for the `llm-deepseek` section.
+ */
+function compositionBase(config: Config): Config {
+  const defaults: Config = Config({})
+  return Object.fromEntries(
+    Object.entries(config).filter(([key, value]) => !deepEqualJson(value, defaults[key as keyof Config])),
+  )
 }

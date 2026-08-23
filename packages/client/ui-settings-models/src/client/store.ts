@@ -104,6 +104,19 @@ function apiKeyEnvOf(
   return typeof ref === 'string' && ref.length > 0 ? ref : undefined
 }
 
+/**
+ * Whether a settings layer carries at least one key. A whole-section
+ * provider's profile is the namespace section itself, which the schema
+ * resolves with defaults for every registration, so "the layer says
+ * something" — not path presence — is its fact.
+ * @param layer - the raw user or composition-base layer, when present.
+ * @returns whether the layer carries content.
+ */
+export function sectionContent(layer: unknown): boolean {
+  return typeof layer === 'object' && layer !== null && !Array.isArray(layer)
+    && Object.keys(layer).length > 0
+}
+
 /** The models settings page controller (one per settings surface). */
 export class ModelsSettingsStore {
   /** The snapshot the section renders from (uSES-safe store). */
@@ -162,12 +175,22 @@ export class ModelsSettingsStore {
     const namespaces = new Map(views.map(view => [view.ns, view]))
     const rows: ProviderRow[] = providers.map((entry) => {
       const namespace = namespaces.get(entry.settingsNs)
+      // A route provider is configured where its profile path resolves; a
+      // whole-section provider's section always resolves, so its presence
+      // fact is whether the user or composition layer carries content above
+      // the schema defaults. Removal mirrors that split: a whole-section
+      // provider goes away when the user layer alone carries it.
+      const wholeSection = entry.settingsPath.length === 0
       const configured = namespace !== undefined
-        && (entry.settingsPath.length === 0 || this.schema.getPath(namespace.value, entry.settingsPath) !== undefined)
+        && (wholeSection
+          ? sectionContent(namespace.user) || sectionContent(namespace.base)
+          : this.schema.getPath(namespace.value, entry.settingsPath) !== undefined)
       const removable = namespace !== undefined
-        && entry.settingsPath.length > 0
-        && this.schema.hasPath(namespace.user, entry.settingsPath)
-        && !this.schema.hasPath(namespace.base, entry.settingsPath)
+        && (wholeSection
+          ? sectionContent(namespace.user) && !sectionContent(namespace.base)
+          : entry.settingsPath.length > 0
+            && this.schema.hasPath(namespace.user, entry.settingsPath)
+            && !this.schema.hasPath(namespace.base, entry.settingsPath))
       return {
         entry,
         configured,
@@ -222,75 +245,4 @@ export function providerUsable(row: ProviderRow): boolean {
   if (!row.entry.active) return false
   if (row.apiKeyEnv === undefined) return true
   return row.credential?.configured === true
-}
-
-/** First-run onboarding readiness derived only from the shared Models join. */
-export type OnboardingReadiness =
-  | { kind: 'loading' }
-  | { kind: 'adapter-absent' }
-  | { kind: 'provider-ready' }
-  | { kind: 'credential-missing' }
-  | {
-    kind: 'unavailable'
-    reason:
-      | 'load-failed'
-      | 'provider-inactive'
-      | 'credentials-unavailable'
-      | 'settings-read-only'
-      | 'credential-read-only'
-  }
-
-/**
- * Project first-run readiness from the provider/settings/credential join used
- * by the Models page. The step exists to leave the user with a model to talk
- * to, so ANY usable provider ends it; only when none exists does the official
- * DeepSeek route — the one route the prompt can offer a key field for — decide
- * whether prompting can help. A missing official configurable-provider
- * declaration means the adapter is not repairable by navigating to Models.
- * @param state - current shared Models join snapshot.
- * @returns the onboarding state without reading a parallel fact source.
- */
-export function onboardingReadiness(state: ModelsSettingsState): OnboardingReadiness {
-  if ((state.status === 'idle' || state.status === 'loading') && state.rows.length === 0) {
-    return { kind: 'loading' }
-  }
-  if (state.status === 'error') {
-    return {
-      kind: 'unavailable',
-      reason: 'load-failed',
-    }
-  }
-  if (state.rows.some(providerUsable)) return { kind: 'provider-ready' }
-  const row = state.rows.find(candidate =>
-    candidate.entry.provider === 'deepseek-official'
-    && candidate.entry.settingsNs === 'llm-deepseek'
-    && candidate.entry.settingsPath.length === 0)
-  if (row === undefined) return { kind: 'adapter-absent' }
-  if (!row.entry.active) {
-    return {
-      kind: 'unavailable',
-      reason: 'provider-inactive',
-    }
-  }
-  // Past the usable gate an active route names a reference it has no stored
-  // credential for, so the remaining questions are all about that credential.
-  if (state.credentialError !== null || row.credential === undefined) {
-    return {
-      kind: 'unavailable',
-      reason: 'credentials-unavailable',
-    }
-  }
-  if (!state.writable) {
-    return {
-      kind: 'unavailable',
-      reason: 'settings-read-only',
-    }
-  }
-  if (!row.credential.writable) {
-    return {
-      kind: 'unavailable',
-      reason: 'credential-read-only',
-    }
-  }
-  return { kind: 'credential-missing' }
 }

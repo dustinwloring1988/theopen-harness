@@ -150,7 +150,7 @@ describe('hand-declared providers', () => {
     // Membership of the catalog, not of the settings document: a shipped
     // provider carries a stored profile the moment anyone corrects it.
     expect(directory.filter(entry => entry.declared).map(entry => entry.provider))
-      .toEqual(['acme-gateway'])
+      .toEqual(['ollama', 'acme-gateway'])
     expect(directory.find(entry => entry.provider === 'deepseek')?.declared).toBe(false)
   })
 
@@ -396,6 +396,17 @@ describe('hand-declared providers', () => {
     })
     expect(resolved.get('acme-gateway')?.displayName).toBe('acme-gateway')
     expect(() => resolveProfiles({ 'acme-gateway': { displayName: '' } })).toThrow(/empty displayName/)
+  })
+
+  it('names a shipped route by its shipped display name when no displayName is configured', () => {
+    const resolved = resolveProfiles({
+      ollama: {
+        api: 'openai-completions',
+        baseURL: 'http://localhost:11434/v1',
+        models: [{ id: 'qwen3:8b', contextWindow: 40_960, maxTokens: 8192 }],
+      },
+    })
+    expect(resolved.get('ollama')?.displayName).toBe('Ollama (Local)')
   })
 })
 
@@ -1177,6 +1188,43 @@ describe('configurable-provider directory', () => {
     expect(offered).toContain('openai-codex')
     expect(offered).toContain('anthropic')
     expect(offered).toContain('openai')
+  })
+
+  it('offers a shipped local route the installed catalog does not describe', async () => {
+    const ctx = await harness({})
+
+    // `declared` stays true: pi-ai carries no entry under this key, so the
+    // adopting profile must still name the protocol and models — which is
+    // also what makes an editor card offer them. The endpoint ships as a
+    // suggestion only; nothing serves or stores it until a profile does.
+    expect(ctx.llm.listConfigurableProviders()).toContainEqual({
+      provider: 'ollama',
+      displayName: 'Ollama (Local)',
+      settingsNs: 'llm-pi-ai',
+      settingsPath: ['providers', 'ollama'],
+      declared: true,
+      baseURL: 'http://host.docker.internal:11434/v1',
+    })
+  })
+
+  it('keeps a shipped route\'s display name once its profile exists', async () => {
+    const dir = await home()
+    const ctx = await bootWithSettings(dir, {})
+    await ctx.settings.update(settingsNamespace('llm-pi-ai'), {
+      providers: {
+        ollama: {
+          api: 'openai-completions',
+          baseURL: 'http://localhost:11434/v1',
+          models: [{ id: 'qwen3:8b', contextWindow: 40_960, maxTokens: 8192 }],
+        },
+      },
+    })
+
+    // The option the picker offered is the row that remains after adoption:
+    // resolution defaults the display name to the shipped one, so the label
+    // does not silently fall back to the route key.
+    const entry = ctx.llm.listConfigurableProviders().find(candidate => candidate.provider === 'ollama')
+    expect(entry).toMatchObject({ displayName: 'Ollama (Local)', declared: true })
   })
 
   it('lists a route a stored profile names as a catalog route, not a declared one', async () => {

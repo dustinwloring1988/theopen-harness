@@ -446,6 +446,8 @@
     # The native DeepSeek adapter. No key or endpoint is inlined: both resolve per
     # request from the `llm-deepseek:` settings section over this entry, with the
     # key coming from the credential store below. Thinking defaults are a deployment
-    # choice.
+    # choice. This entry pins nothing beyond schema defaults, so on the web Models
+    # page the provider waits dormant in the add flow until a key or section is
+    # stored — it is not pre-added, and a stored configuration can be deleted.
     - id: llm-deepseek
       name: '@buckeyestudio/toh-llm-deepseek'
