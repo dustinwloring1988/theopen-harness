@@ -50,6 +50,12 @@ export interface GroupNode {
   expanded: boolean
   /** The group contains the selected session (active folder tint; supplied here so the renderer never scans). */
   containsCurrent: boolean
+  /**
+   * Visible members with a pending user interaction, counted across the whole
+   * group regardless of expansion — a folded group lights its header instead
+   * of hiding the wait behind expansion.
+   */
+  pendingCount: number
   /** Visible session rows (empty while the group is folded). */
   sessions: readonly SessionNode[]
 }
@@ -266,6 +272,7 @@ export function deriveGroups(
       sessionCount: g.sessions.length,
       expanded,
       containsCurrent: g.key === currentGroup,
+      pendingCount: g.sessions.filter(session => session.pendingInteraction !== undefined).length,
       sessions: expanded ? g.sessions.map(session => sessionNode(session, descendants)) : [],
     })
   }

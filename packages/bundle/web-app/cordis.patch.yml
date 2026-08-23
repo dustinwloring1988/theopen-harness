@@ -267,6 +267,12 @@
     - id: ui-message-feedback
       name: '@buckeyestudio/toh-client-ui-message-feedback'
 
+    # Turn notifications: OS toasts for turn completion and approval-blocked
+    # agents, plus the General-section preference row. Remove this entry to
+    # turn the surface off; nothing else reads its settings namespace.
+    - id: ui-notify
+      name: '@buckeyestudio/toh-client-ui-notify'
+
     # Model selection: the /model popupSelect + composer seat over session.models.
     - id: ui-model-selection
       name: '@buckeyestudio/toh-client-ui-model-selection'

@@ -3247,6 +3247,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@buckeyestudio/toh-client-ui-layout` ([`packages/client/ui-layout/src/index.ts`](../packages/client/ui-layout/src/index.ts))
 - `@buckeyestudio/toh-client-ui-message-feedback` ([`packages/client/ui-message-feedback/src/index.ts`](../packages/client/ui-message-feedback/src/index.ts))
 - `@buckeyestudio/toh-client-ui-model-selection` ([`packages/client/ui-model-selection/src/index.ts`](../packages/client/ui-model-selection/src/index.ts))
+- `@buckeyestudio/toh-client-ui-notify` ([`packages/client/ui-notify/src/index.ts`](../packages/client/ui-notify/src/index.ts))
 - `@buckeyestudio/toh-client-ui-permission-presets` ([`packages/client/ui-permission-presets/src/index.ts`](../packages/client/ui-permission-presets/src/index.ts))
 - `@buckeyestudio/toh-client-ui-plan` ([`packages/client/ui-plan/src/index.ts`](../packages/client/ui-plan/src/index.ts))
 - `@buckeyestudio/toh-client-ui-reference` ([`packages/client/ui-reference/src/index.ts`](../packages/client/ui-reference/src/index.ts))
