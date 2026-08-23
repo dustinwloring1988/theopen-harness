@@ -109,6 +109,7 @@
     "@buckeyestudio/toh-tool-web": "workspace:^",
     "@buckeyestudio/toh-tool-workflow": "workspace:^",
     "@buckeyestudio/toh-tools": "workspace:^",
+    "@buckeyestudio/toh-turn-budget-policy": "workspace:^",
     "@buckeyestudio/toh-typert-loader": "workspace:^",
     "@buckeyestudio/toh-typert-registry": "workspace:^",
     "@buckeyestudio/toh-user-approval": "workspace:^",
