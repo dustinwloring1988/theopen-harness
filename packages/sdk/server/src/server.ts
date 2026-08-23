@@ -47,8 +47,9 @@ function successStatus(reason: string, options: HarnessSdkJsonRpcServerOptions):
 
 /**
  * SDK server over one booted harness context and transport peer. Construction
- * subscribes to session, agent, and subagent lifecycle events until shutdown;
- * reinitialization is unsupported.
+ * subscribes to session, agent, and subagent lifecycle events until shutdown.
+ * Repeated initialize calls queue in arrival order and replace the previously
+ * server-mounted adapter; initialize during or after shutdown is refused.
  */
 export class HarnessSdkJsonRpcServer {
   private cwd = process.cwd()
@@ -59,6 +60,7 @@ export class HarnessSdkJsonRpcServer {
   private readonly sessions = new Map<string, SessionRecord>()
   private readonly sessionCreations = new Map<string, Promise<SessionRecord>>()
   private readonly disposers: (() => void)[] = []
+  private initializeTail: Promise<void> | undefined
   private shutdownTask: Promise<Record<string, never>> | undefined
   private shuttingDown = false
 
@@ -104,11 +106,21 @@ export class HarnessSdkJsonRpcServer {
   }
 
   /**
-   * Configure the SDK route, mounting the DeepSeek fallback only when unowned.
+   * Configure the SDK route, replacing any previously server-mounted adapter.
+   * Concurrent calls queue in arrival order; a call that overlaps shutdown is
+   * rejected and disposes the adapter it mounted, if any.
    * @param params - SDK handshake parameters.
    * @returns server identity for the handshake.
    */
   async initialize(params: InitializeParams): Promise<InitializeResult> {
+    const previous = this.initializeTail ?? Promise.resolve()
+    const task = previous.then(() => this.performInitialize(params))
+    this.initializeTail = task.then(() => undefined, () => undefined)
+    return task
+  }
+
+  private async performInitialize(params: InitializeParams): Promise<InitializeResult> {
+    if (this.shuttingDown) throw new Error('SDK server is shutting down')
     if (params.maxTokens !== undefined
       && (!Number.isSafeInteger(params.maxTokens) || params.maxTokens <= 0)) {
       throw new TypeError('initialize maxTokens must be a positive safe integer')
@@ -119,9 +131,25 @@ export class HarnessSdkJsonRpcServer {
     this.maxTokens = params.maxTokens
     if (!this.hasAdapterFor(this.provider)) {
       if (this.provider !== 'deepseek-official') throw new Error(`no adapter registered for provider "${this.provider}"`)
-      this.llmFiber = await this.ctx.plugin(LlmDeepSeek, {})
+      const superseded = this.llmFiber
+      this.llmFiber = undefined
+      await superseded?.dispose()
+      const mounted = await this.ctx.plugin(LlmDeepSeek, {})
+      // A shutdown that started mid-mount swept without this fiber, so the
+      // fresh mount disposes itself; shutdown completion then means no live
+      // server-mounted adapter remains.
+      if (this.shutdownStarted()) {
+        await mounted.dispose()
+        throw new Error('SDK server is shutting down')
+      }
+      this.llmFiber = mounted
     }
     return { serverInfo: { name: 'theopen-harness-sdk-runtime', version: '0.0.1' } }
+  }
+
+  /** Read after any await: concurrent shutdown flips the flag across suspension points. */
+  private shutdownStarted(): boolean {
+    return this.shuttingDown
   }
 
   /**

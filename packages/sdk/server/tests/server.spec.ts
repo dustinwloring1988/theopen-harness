@@ -108,6 +108,26 @@ async function settleSubagent(
   }
 }
 
+/** Server-mounted adapter stand-in with an observable dispose. */
+function adapterFiber(id: number, disposed: number[]): { dispose: () => Promise<void> } {
+  return {
+    dispose: vi.fn(() => {
+      disposed.push(id)
+      return Promise.resolve()
+    }),
+  }
+}
+
+/** A context without an LLM service whose plugin mounts are test-controlled. */
+function makeAdapterContext(plugin: (plugin: unknown) => Promise<unknown>): Context {
+  return {
+    on: vi.fn(() => () => undefined),
+    agents: { create: vi.fn(), get: () => undefined },
+    get: () => undefined,
+    plugin,
+  } as unknown as Context
+}
+
 describe('HarnessSdkJsonRpcServer', () => {
   it('creates a harness agent and calls the configured OpenAI-compatible endpoint', { timeout: 15_000 }, async () => {
     const storageDir = await mkdtemp(join(tmpdir(), 'toh-jsonrpc-'))
@@ -835,6 +855,104 @@ describe('HarnessSdkJsonRpcServer', () => {
       }
     },
   )
+
+  it('replaces a server-mounted adapter on re-initialize so shutdown disposes one live fiber', async () => {
+    const disposed: number[] = []
+    let mounts = 0
+    const plugin = vi.fn(async () => adapterFiber(++mounts, disposed))
+    const server = new HarnessSdkJsonRpcServer(makeAdapterContext(plugin), new FakeTransport())
+    const params = { cwd: '.', provider: 'deepseek-official', model: 'model' }
+
+    await server.initialize(params)
+    await server.initialize(params)
+
+    expect(plugin).toHaveBeenCalledTimes(2)
+    expect(disposed).toEqual([1])
+
+    await server.shutdown()
+    expect(disposed).toEqual([1, 2])
+  })
+
+  it('serializes overlapping initialize calls behind the first mounted adapter', async () => {
+    const disposed: number[] = []
+    const firstGate = Promise.withResolvers<{ dispose: () => Promise<void> }>()
+    const secondGate = Promise.withResolvers<{ dispose: () => Promise<void> }>()
+    const pendingGates = [firstGate, secondGate]
+    const plugin = vi.fn(() => {
+      const gate = pendingGates.shift()
+      if (gate === undefined) throw new Error('unexpected third adapter mount')
+      return gate.promise
+    })
+    const server = new HarnessSdkJsonRpcServer(makeAdapterContext(plugin), new FakeTransport())
+    const params = { cwd: '.', provider: 'deepseek-official', model: 'model' }
+
+    const first = server.initialize(params)
+    const second = server.initialize(params)
+    await vi.waitFor(() => { expect(plugin).toHaveBeenCalledTimes(1) })
+    expect(disposed).toEqual([])
+
+    const firstFiber = adapterFiber(1, disposed)
+    firstGate.resolve(firstFiber)
+    await first
+    await vi.waitFor(() => { expect(plugin).toHaveBeenCalledTimes(2) })
+    expect(firstFiber.dispose).toHaveBeenCalledOnce()
+
+    const secondFiber = adapterFiber(2, disposed)
+    secondGate.resolve(secondFiber)
+    await second
+    expect(secondFiber.dispose).not.toHaveBeenCalled()
+    expect(disposed).toEqual([1])
+
+    await server.shutdown()
+    expect(disposed).toEqual([1, 2])
+  })
+
+  it('rejects an initialize that overlaps shutdown and disposes its fresh mount', async () => {
+    const disposed: number[] = []
+    const mount = Promise.withResolvers<{ dispose: () => Promise<void> }>()
+    const plugin = vi.fn(() => mount.promise)
+    const server = new HarnessSdkJsonRpcServer(makeAdapterContext(plugin), new FakeTransport())
+
+    const initialization = server.initialize({ cwd: '.', provider: 'deepseek-official', model: 'model' })
+    await vi.waitFor(() => { expect(plugin).toHaveBeenCalledTimes(1) })
+    const shutdownTask = server.shutdown()
+    mount.resolve(adapterFiber(1, disposed))
+
+    await expect(initialization).rejects.toThrow('SDK server is shutting down')
+    await shutdownTask
+    expect(disposed).toEqual([1])
+  })
+
+  it('refuses initialize after shutdown without mounting another adapter', async () => {
+    const plugin = vi.fn(async () => adapterFiber(1, []))
+    const server = new HarnessSdkJsonRpcServer(makeAdapterContext(plugin), new FakeTransport())
+
+    await server.shutdown()
+    await expect(server.initialize({ cwd: '.', provider: 'deepseek-official', model: 'model' }))
+      .rejects.toThrow('SDK server is shutting down')
+    expect(plugin).not.toHaveBeenCalled()
+  })
+
+  it('leaves no LLM providers after repeated initialize and shutdown', { timeout: 15_000 }, async () => {
+    const storageDir = await mkdtemp(join(tmpdir(), 'toh-jsonrpc-reinit-'))
+    const ctx = await makeHarness(storageDir)
+    vi.stubEnv('DEEPSEEK_API_KEY', 'test-key')
+    try {
+      const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+      const params = { cwd: storageDir, provider: 'deepseek-official', model: 'model' }
+
+      await server.initialize(params)
+      expect(ctx.get('llm')?.listProviders()).toEqual([{ id: 'deepseek-official', name: 'DeepSeek' }])
+      await server.initialize(params)
+      expect(ctx.get('llm')?.listProviders()).toEqual([{ id: 'deepseek-official', name: 'DeepSeek' }])
+
+      await server.shutdown()
+      expect(ctx.get('llm')?.listProviders() ?? []).toEqual([])
+    } finally {
+      await ctx.fiber.dispose()
+      await rm(storageDir, { recursive: true, force: true })
+    }
+  })
 
   it('reports no adapter when the LLM service is absent', async () => {
     const ctx = new Context()
