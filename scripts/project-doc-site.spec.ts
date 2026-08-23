@@ -324,7 +324,7 @@ describe('docsPages locale routes', () => {
       ['docs/user/develop/framework/events.md', '../practice/index.md'],
       ['docs/user/develop/framework/service.md', '../practice/index.md'],
       ['docs/user/develop/practice/index.md', '../basic/index.md'],
-      ['docs/user/guide/index.md', '../develop/basic/index.md'],
+      ['docs/user/guide/quickstart.md', '../develop/basic/index.md'],
     ] as const
 
     for (const [englishSource, englishTarget] of entries) {

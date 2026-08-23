@@ -114,9 +114,9 @@ const homeAndGuide = pairedPages([
     order: 0,
   },
   {
-    source: 'docs/user/guide/index.md',
+    source: 'docs/user/guide/quickstart.md',
     route: 'guide/quickstart.md',
-    label: { root: '使用 Web UI', en: 'Use the Web UI' },
+    label: { root: '快速开始', en: 'Quickstart' },
     sidebar: { root: 'zh-guide', en: 'en-guide' },
     section: { root: '入门', en: 'Guide' },
     order: 1,
