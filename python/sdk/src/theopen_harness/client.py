@@ -20,6 +20,14 @@ from .models import IncomingRequest, InitializeResponse, JsonObject, JsonValue, 
 ModelT = TypeVar("ModelT", bound=BaseModel)
 NotificationFilter: TypeAlias = Callable[[Notification], bool]
 
+# close() must return even when the runtime wedges, so the shutdown budget is
+# clamped to this ceiling regardless of configuration; None selects the ceiling
+# rather than an unbounded wait.
+_SHUTDOWN_TIMEOUT_CEILING_SECONDS = 30.0
+# Termination delivery (SIGKILL / TerminateProcess) is owned by the OS once
+# requested; this bounds only the final reap join after escalation.
+_KILL_JOIN_SECONDS = 5.0
+
 
 @dataclass(slots=True)
 class HarnessConfig:
@@ -61,26 +69,26 @@ class HarnessClient:
         self.close()
 
     def start(self) -> None:
-        if self._proc is not None:
-            return
         with self._lock:
+            if self._proc is not None:
+                return
             self._session_parents.clear()
-        args = list(self.config.launch_args_override or self._default_launch_args())
-        env = os.environ.copy()
-        if self.config.env:
-            env.update(self.config.env)
-        self._inject_bundled_default_config(env)
-        self._proc = subprocess.Popen(
-            args,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            cwd=None if self.config.cwd is None else str(Path(self.config.cwd).resolve()),
-            env=env,
-            bufsize=1,
-        )
+            args = list(self.config.launch_args_override or self._default_launch_args())
+            env = os.environ.copy()
+            if self.config.env:
+                env.update(self.config.env)
+            self._inject_bundled_default_config(env)
+            self._proc = subprocess.Popen(
+                args,
+                stdin=subprocess.PIPE,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+                encoding="utf-8",
+                cwd=None if self.config.cwd is None else str(Path(self.config.cwd).resolve()),
+                env=env,
+                bufsize=1,
+            )
         self._start_reader_thread()
         self._start_stderr_thread()
 
@@ -88,8 +96,14 @@ class HarnessClient:
         proc = self._proc
         if proc is None:
             return
+        deadline = time.monotonic() + self._clamped_shutdown_timeout()
         try:
-            self.request("shutdown", None, response_model=_ShutdownResponse, timeout_seconds=self.config.shutdown_timeout_seconds)
+            self.request(
+                "shutdown",
+                None,
+                response_model=_ShutdownResponse,
+                timeout_seconds=max(deadline - time.monotonic(), 0.0),
+            )
         except Exception as exc:
             self._stderr_lines.append(f"shutdown request failed: {exc}")
         if proc.stdin:
@@ -103,10 +117,17 @@ class HarnessClient:
             except ProcessLookupError:
                 pass
         try:
-            proc.wait(timeout=self.config.shutdown_timeout_seconds)
+            proc.wait(timeout=max(deadline - time.monotonic(), 0.0))
         except subprocess.TimeoutExpired:
-            proc.kill()
-            proc.wait()
+            try:
+                proc.kill()
+            except ProcessLookupError:
+                pass
+            try:
+                proc.wait(timeout=_KILL_JOIN_SECONDS)
+            except subprocess.TimeoutExpired:
+                # Termination was delivered; the OS owns completion from here.
+                pass
         self._proc = None
         self._fail_waiters(self._runtime_closed_error("TheOpen Harness runtime closed"))
         if self._reader_thread and self._reader_thread.is_alive():
@@ -399,6 +420,17 @@ class HarnessClient:
     def _runtime_closed_error(self, reason: str) -> TransportClosedError:
         diagnostics = self._runtime_diagnostics()
         return TransportClosedError(f"{reason}\n{diagnostics}" if diagnostics else reason)
+
+    def _clamped_shutdown_timeout(self) -> float:
+        """Return the shutdown budget clamped into [0, _SHUTDOWN_TIMEOUT_CEILING_SECONDS].
+
+        None selects the ceiling so close() keeps an upper bound independent of
+        configuration.
+        """
+        configured = self.config.shutdown_timeout_seconds
+        if configured is None:
+            return _SHUTDOWN_TIMEOUT_CEILING_SECONDS
+        return min(max(configured, 0.0), _SHUTDOWN_TIMEOUT_CEILING_SECONDS)
 
     def _runtime_diagnostics(self) -> str:
         """Return available subprocess state for transport failures and timeouts."""

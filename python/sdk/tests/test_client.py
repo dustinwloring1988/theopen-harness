@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import inspect
+import subprocess
 import sys
 import threading
 import time
@@ -779,6 +780,152 @@ for line in sys.stdin:
     client.close()
     assert time.monotonic() - start < 2
     assert proc.poll() is not None
+    assert client._proc is None
+
+
+def test_concurrent_start_spawns_exactly_one_runtime_subprocess(tmp_path: Path) -> None:
+    script = tmp_path / "counting_runtime.py"
+    spawn_log = tmp_path / "spawns.log"
+    script.write_text(
+        """
+import json
+import os
+import sys
+
+with open(os.environ["SPAWN_LOG"], "a") as seen:
+    seen.write(str(os.getpid()) + "\\n")
+
+for line in sys.stdin:
+    msg = json.loads(line)
+    if msg.get("method") == "initialize":
+        print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": {"serverInfo": {"name": "fake-toh"}}}), flush=True)
+    elif msg.get("method") == "shutdown":
+        print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": {}}), flush=True)
+        break
+""".strip()
+    )
+
+    client = HarnessClient(
+        HarnessConfig(
+            launch_args_override=(sys.executable, str(script)),
+            env={"SPAWN_LOG": str(spawn_log)},
+        )
+    )
+    barrier = threading.Barrier(8)
+
+    def attempt_start() -> None:
+        barrier.wait()
+        client.start()
+
+    threads = [threading.Thread(target=attempt_start) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    proc = client._proc
+    assert proc is not None
+    client.initialize(provider="deepseek-official", cwd="/workspace", model="dsagent")
+    client.close()
+
+    spawned = spawn_log.read_text().splitlines()
+    assert len(spawned) == 1
+    assert proc.poll() is not None
+    assert client._proc is None
+
+
+def test_client_close_bounds_unconfigured_shutdown_behind_hard_ceiling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from theopen_harness import client as sdk_client
+
+    monkeypatch.setattr(sdk_client, "_SHUTDOWN_TIMEOUT_CEILING_SECONDS", 0.2)
+    script = tmp_path / "wedged_runtime.py"
+    script.write_text(
+        """
+import json
+import signal
+import sys
+import time
+
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+
+for line in sys.stdin:
+    msg = json.loads(line)
+    if msg.get("method") == "initialize":
+        print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": {"serverInfo": {"name": "fake-toh"}}}), flush=True)
+    elif msg.get("method") == "shutdown":
+        time.sleep(60)
+""".strip()
+    )
+
+    client = HarnessClient(
+        HarnessConfig(
+            launch_args_override=(sys.executable, str(script)),
+            shutdown_timeout_seconds=None,
+        )
+    )
+    client.start()
+    proc = client._proc
+    assert proc is not None
+    client.initialize(provider="deepseek-official", cwd="/workspace", model="dsagent")
+
+    start = time.monotonic()
+    client.close()
+
+    assert time.monotonic() - start < 10
+    assert proc.poll() is not None
+    assert client._proc is None
+
+
+class _WedgedRuntimeProc:
+    """Fake runtime Popen that ignores terminate() until kill() escalates."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self.waits: list[float | None] = []
+
+    @property
+    def stdin(self) -> None:
+        return None
+
+    def poll(self) -> int | None:
+        return 0 if "kill" in self.calls else None
+
+    def terminate(self) -> None:
+        self.calls.append("terminate")
+
+    def kill(self) -> None:
+        self.calls.append("kill")
+
+    def wait(self, timeout: float | None = None) -> int:
+        self.waits.append(timeout)
+        if "kill" not in self.calls:
+            raise subprocess.TimeoutExpired(cmd="wedged-runtime", timeout=timeout)
+        return 0
+
+
+@pytest.mark.parametrize("configured_timeout", [None, 0.25], ids=["unselected", "configured"])
+def test_client_close_escalates_from_terminate_to_kill_with_clamped_waits(
+    monkeypatch: pytest.MonkeyPatch, configured_timeout: float | None
+) -> None:
+    from theopen_harness import client as sdk_client
+
+    proc = _WedgedRuntimeProc()
+    client = HarnessClient(HarnessConfig(shutdown_timeout_seconds=configured_timeout))
+    client._proc = proc
+
+    client.close()
+
+    expected_budget = (
+        sdk_client._SHUTDOWN_TIMEOUT_CEILING_SECONDS
+        if configured_timeout is None
+        else configured_timeout
+    )
+    assert proc.calls == ["terminate", "kill"]
+    request_wait, kill_join = proc.waits
+    assert kill_join == sdk_client._KILL_JOIN_SECONDS
+    assert request_wait is not None and 0 <= request_wait <= expected_budget
     assert client._proc is None
 
 
