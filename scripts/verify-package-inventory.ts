@@ -44,9 +44,9 @@ function agentsLayoutGroups(): Inventory {
       continue
     }
     if (collecting) {
-      const child = /^ {2}([a-z0-9-]+)\/(?:\s|$)/.exec(line)
-      if (child) groups.push(child[1])
-      else collecting = false
+      const token = /^ {2}([a-z0-9-]+)\/(?:\s|$)/.exec(line)?.[1]
+      if (token === undefined) collecting = false
+      else groups.push(token)
       continue
     }
     if (line.startsWith('packages/')) collecting = true
