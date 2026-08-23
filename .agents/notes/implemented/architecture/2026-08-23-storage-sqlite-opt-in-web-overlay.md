@@ -15,6 +15,7 @@ The backend composes as an opt-in example overlay instead of a shipped default:
 - [`examples/web-storage-sqlite/cordis.yml`](../../../../examples/web-storage-sqlite/cordis.yml) inserts a `storage-sqlite` row (database at `$TOH_HOME/storages/workspace.sqlite3`) and patches `storage-domain` with `routes: { workspace: sqlite }`; run with `toh web --patch`. Only the `workspace` domain changes medium.
 - The overlay resolves through `apps/cli`'s dependency surface (`@buckeyestudio/toh-storage-sqlite` joined its dependencies), the same resolution path as `web-schedule`.
 - `apps/cli/tests/web-storage-sqlite-overlay.e2e.ts` boots the shipped Web composition plus the overlay keylessly and asserts both backends register side by side and workspace records land as durable rows in the routed database file.
+- `apps/cli/tests/web-storage-sqlite-overlay.snapshot.ts` pins keyless assembled-app snapshots through the documented command: the composed profile tree's overlay-provenance rows (`storage-domain` routed to `sqlite`, the inserted `storage-sqlite` row), and a built-bin boot to readiness that materializes the routed database file under `$TOH_HOME/storages`.
 
 The shipped default stays `json` everywhere: no bundle patch changed, so existing deployments boot identically.
 

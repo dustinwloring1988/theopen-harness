@@ -15,6 +15,7 @@ Status: implemented
 - [`examples/web-storage-sqlite/cordis.yml`](../../../../examples/web-storage-sqlite/cordis.yml) 插入一行 `storage-sqlite`（数据库位于 `$TOH_HOME/storages/workspace.sqlite3`），并给 `storage-domain` 打上 `routes: { workspace: sqlite }` 补丁；用 `toh web --patch` 启动。只有 `workspace` 域更换介质。
 - 该 overlay 经由 `apps/cli` 的依赖面解析（`@buckeyestudio/toh-storage-sqlite` 已加入其 dependencies），与 `web-schedule` 是同一条解析路径。
 - `apps/cli/tests/web-storage-sqlite-overlay.e2e.ts` 无 key 地启动出厂 Web 组合加该 overlay，断言两个后端并列注册，且 workspace 记录以持久行落在被路由的数据库文件里。
+- `apps/cli/tests/web-storage-sqlite-overlay.snapshot.ts` 通过文档命令无 key 地固定组装应用快照：组合树中带 overlay 出处标记的行（`storage-domain` 路由到 `sqlite`、插入的 `storage-sqlite` 行），以及构建产物启动到就绪后在 `$TOH_HOME/storages` 下生成被路由的数据库文件。
 
 出厂默认在所有域上保持 `json`：没有任何 bundle patch 改动，既有部署的启动行为不变。
 
