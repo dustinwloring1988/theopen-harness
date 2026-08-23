@@ -132,6 +132,8 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
   private readonly registry = new DynamicCordisRegistry()
   private readonly inspectRegistry: CordisInspectRegistryService
   private readonly starting = new Map<CordisDynamicPluginId, Promise<DynamicCordisHostHalfResult>>()
+  /** Bumped by every stop/undefine so a start that outlived its mandate never publishes. */
+  private readonly stopGeneration = new Map<CordisDynamicPluginId, number>()
   private readonly resolved: ResolvedConfig
   private group: Fiber | undefined
 
@@ -202,7 +204,9 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
   }
 
   /**
-   * Remove a Plugin, its active run, and all immutable Packages.
+   * Remove a Plugin, its active run, and all immutable Packages. An activation
+   * still starting is joined and invalidated: it disposes its host half and
+   * reports failure instead of publishing onto the removed record.
    * @param agent - Agent whose Session must own the Plugin.
    * @param pluginId - Stable Plugin identity to remove.
    * @returns Whether removal succeeded and whether it stopped an active run.
@@ -210,10 +214,13 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
   async undefine(agent: Agent, pluginId: CordisDynamicPluginId): Promise<DynamicCordisUndefineReceipt> {
     const plugin = this.owned(agent, pluginId)
     if (plugin === undefined) return { ok: false, reason: 'plugin-missing', message: missingPluginMessage(pluginId) }
-    const wasRunning = plugin.run !== undefined
     this.cancelPending(pluginId, `dynamic plugin "${pluginId}" was removed before approval`)
-    if (plugin.run !== undefined) await this.retract(plugin)
     this.registry.delete(pluginId)
+    this.invalidateActivation(pluginId)
+    await this.joinActivation(pluginId)
+    const wasRunning = plugin.run !== undefined
+    if (plugin.run !== undefined) await this.retract(plugin)
+    this.stopGeneration.delete(pluginId)
     return { ok: true, wasRunning }
   }
 
@@ -448,7 +455,9 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
   }
 
   /**
-   * Stop the active run while retaining every Package version.
+   * Stop the active run while retaining every Package version. An activation
+   * still starting is joined and invalidated instead of answering
+   * `not-running`, so the mount can never outlive the stop.
    * @param agent - Agent whose Session must own the Plugin.
    * @param pluginId - Stable Plugin identity to stop.
    * @returns Success or the reason no run was stopped.
@@ -457,10 +466,12 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     const plugin = this.owned(agent, pluginId)
     if (plugin === undefined) return { ok: false, reason: 'plugin-missing', message: missingPluginMessage(pluginId) }
     const pending = this.registry.pendingRequestFor(pluginId)
-    if (plugin.run === undefined && pending === undefined) {
+    if (plugin.run === undefined && pending === undefined && !this.starting.has(pluginId)) {
       return { ok: false, reason: 'not-running', message: `dynamic plugin "${pluginId}" is not running` }
     }
     if (pending !== undefined) this.cancelPending(pluginId, `dynamic plugin "${pluginId}" was stopped before approval`)
+    this.invalidateActivation(pluginId)
+    await this.joinActivation(pluginId)
     if (plugin.run !== undefined) await this.retract(plugin)
     if (plugin.latestRun !== undefined) {
       plugin.latestRun.status = 'stopped'
@@ -827,6 +838,7 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     attempt: DynamicCordisRunAttempt,
   ): Promise<DynamicCordisHostHalfResult> {
     const { plugin, definition, mode } = plan
+    const generation = this.stopGeneration.get(plugin.pluginId) ?? 0
     if (allowActiveAttach
       && plugin.run?.packageId === definition.packageId
       && plugin.run.pluginRunId === attempt.pluginRunId) {
@@ -852,6 +864,10 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     if (definition.hostCode !== undefined) {
       const failure = await this.startHost(plugin, definition.hostCode, run)
       if (failure !== undefined) return { ok: false, ...failure }
+    }
+    if (!this.activationOwns(plugin, generation)) {
+      await this.discardRun(run)
+      return { ok: false, message: this.invalidatedActivationMessage(plugin.pluginId) }
     }
     plugin.run = run
     this.ctx.emit('cordis/dynamic-package', {
@@ -1220,13 +1236,41 @@ export class DynamicCordisRunnerService extends TypertRemoteService {
     const run = plugin.run
     if (run === undefined) return
     delete plugin.run
-    for (const dispose of run.handlerDisposers.splice(0)) dispose()
-    if (run.fiber !== undefined) await run.fiber.dispose()
+    await this.discardRun(run)
     this.ctx.emit('cordis/dynamic-retract', {
       pluginId: plugin.pluginId,
       packageId: run.packageId,
       pluginRunId: run.pluginRunId,
     })
+  }
+
+  private invalidateActivation(pluginId: CordisDynamicPluginId): void {
+    this.stopGeneration.set(pluginId, (this.stopGeneration.get(pluginId) ?? 0) + 1)
+  }
+
+  private async joinActivation(pluginId: CordisDynamicPluginId): Promise<void> {
+    const inFlight = this.starting.get(pluginId)
+    if (inFlight === undefined) return
+    // startFresh settles rather than rejects for every handled failure; this
+    // swallows only an unexpected rejection, because undefine/stop tear down
+    // whatever state remains themselves.
+    await inFlight.catch(() => {})
+  }
+
+  private activationOwns(plugin: DynamicCordisPlugin, generation: number): boolean {
+    return this.registry.get(plugin.pluginId) === plugin
+      && (this.stopGeneration.get(plugin.pluginId) ?? 0) === generation
+  }
+
+  private invalidatedActivationMessage(pluginId: CordisDynamicPluginId): string {
+    return this.registry.get(pluginId) === undefined
+      ? `dynamic plugin "${pluginId}" was removed during activation`
+      : `dynamic plugin "${pluginId}" was stopped during activation`
+  }
+
+  private async discardRun(run: DynamicCordisRun): Promise<void> {
+    for (const dispose of run.handlerDisposers.splice(0)) dispose()
+    if (run.fiber !== undefined) await run.fiber.dispose()
   }
 
   private owned(agent: Agent, pluginId: CordisDynamicPluginId): DynamicCordisPlugin | undefined {

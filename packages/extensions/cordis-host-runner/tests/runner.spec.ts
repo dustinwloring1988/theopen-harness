@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { ApprovalRequestId } from '../src/index.ts'
 import type {
   ApprovalRequestId as ApprovalRequestIdType, CordisDynamicPluginId,
 } from '../src/types.ts'
-import { AGENT_A, AGENT_B, CLIENT_CODE, setup, running } from './helpers.ts'
+import { AGENT_A, AGENT_B, CLIENT_CODE, dummyTool, setup, running } from './helpers.ts'
 
 /**
  * The runner's own chain on a real cordis tree: define records without running,
@@ -505,6 +505,90 @@ describe('dynamic runner teardown', () => {
     await ctx.fiber.dispose()
 
     expect(ctx.get('dynDoubler')).toBeUndefined()
+  })
+})
+
+describe('removal racing an in-flight activation', () => {
+  afterEach(() => {
+    vi.restoreAllMocks()
+  })
+
+  // The host half logs once its apply is running, then parks on the next
+  // tools/change until the test registers one — holding startHost inside its
+  // multi-await window while a removal verb fires.
+  const GATED_HOST_CODE = `
+      return {
+        name: 'gated',
+        inject: ['tools'],
+        async apply(ctx) {
+          console.log('gate armed')
+          await new Promise(resolve => ctx.on('tools/change', resolve))
+          ctx.provide('dynGated', { ok: true })
+        },
+      }
+    `
+
+  it('leaves nothing mounted when undefine lands while the host half is still starting', async () => {
+    const { ctx, runner, gateway } = await setup()
+    const { pluginId, packageId } = define(runner, {
+      sessionId: AGENT_A.id, name: 'gated', purpose: 'p', host: GATED_HOST_CODE,
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    const activation = runner.run(AGENT_A, pluginId, packageId, 'run')
+    await vi.waitFor(() => {
+      expect(log).toHaveBeenCalledWith(`[cordis:${pluginId}]`, 'gate armed')
+    })
+    expect(runner.inventory().map(row => [row.latestRun?.status, row.activeRun]))
+      .toEqual([['starting-host', undefined]])
+
+    const removal = runner.undefine(AGENT_A, pluginId)
+    ctx.tools.register(dummyTool('kick'))
+
+    await expect(removal).resolves.toEqual({ ok: true, wasRunning: false })
+    await expect(activation).resolves.toMatchObject({
+      ok: false,
+      message: `dynamic plugin "${pluginId}" was removed during activation`,
+    })
+    expect(ctx.get('dynGated')).toBeUndefined()
+    expect(runner.inventory()).toEqual([])
+    // Nothing was ever announced, so nothing needs retracting.
+    expect(gateway.events).toEqual([])
+  })
+
+  it('cancels an activation still starting instead of answering not-running', async () => {
+    const { ctx, runner, gateway } = await setup()
+    const { pluginId, packageId } = define(runner, {
+      sessionId: AGENT_A.id, name: 'gated', purpose: 'p', host: GATED_HOST_CODE,
+    })
+    const log = vi.spyOn(console, 'log').mockImplementation(() => {})
+
+    const activation = runner.run(AGENT_A, pluginId, packageId, 'run')
+    await vi.waitFor(() => {
+      expect(log).toHaveBeenCalledWith(`[cordis:${pluginId}]`, 'gate armed')
+    })
+
+    const stopping = runner.stop(AGENT_A, pluginId)
+    ctx.tools.register(dummyTool('kick'))
+
+    await expect(stopping).resolves.toEqual({ ok: true })
+    await expect(activation).resolves.toMatchObject({
+      ok: false,
+      message: `dynamic plugin "${pluginId}" was stopped during activation`,
+    })
+    expect(ctx.get('dynGated')).toBeUndefined()
+
+    // The definition survives and activates normally on the next run.
+    const armsBefore = log.mock.calls.length
+    const second = runner.run(AGENT_A, pluginId, packageId, 'run')
+    await vi.waitFor(() => {
+      expect(log.mock.calls.length).toBeGreaterThan(armsBefore)
+    })
+    ctx.tools.register(dummyTool('kick-again'))
+    await expect(second).resolves.toMatchObject({ ok: true, pluginRunId: 'run-2' })
+    expect(gateway.events).toEqual([
+      ['cordis/dynamic-package', { pluginId, packageId, pluginRunId: 'run-2', name: 'gated' }],
+    ])
   })
 })
 
