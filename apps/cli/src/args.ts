@@ -44,8 +44,13 @@ interface PluginInvocation {
   args: string[]
 }
 
+/** Launch the desktop container app around the web profile. */
+interface DesktopInvocation {
+  mode: 'desktop'
+}
+
 /** The resolved `toh` invocation. Help, version, and errors exit inside {@link parseDshArgs}. */
-export type TohInvocation = ProfileInvocation | DumpConfigInvocation | PluginInvocation
+export type TohInvocation = ProfileInvocation | DumpConfigInvocation | PluginInvocation | DesktopInvocation
 
 /** Launcher flags shared by the default command and the `web` alias. */
 interface BootOptions {
@@ -69,6 +74,7 @@ Examples:
   toh --profile tui --resume <session>       arguments after the launcher flags reach the app
   toh --profile web --help                   the web app's own flags and help
   toh plugin --profile tui add <package>     install a plugin into the tui profile
+  toh desktop                                open the desktop app (Electron window over the web profile)
 `
 
 /**
@@ -178,6 +184,14 @@ export function parseDshArgs(argv: readonly string[], version: string): TohInvoc
       if (options.profile === '') program.error('error: --profile needs a name')
       if (args.length === 0) program.error('error: plugin needs pnpm arguments to forward (e.g. add <package>)')
       resolved = { mode: 'plugin', profile: options.profile, args }
+    })
+
+  const desktop = program.command('desktop').description('launch the desktop container app: one Electron window that spawns and owns the web backend')
+  desktop
+    .helpOption(false)
+    .action(() => {
+      rejectParentOptions('desktop')
+      resolved = { mode: 'desktop' }
     })
 
   try {

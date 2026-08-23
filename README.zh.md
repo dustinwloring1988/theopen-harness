@@ -40,6 +40,16 @@ pnpm toh web
 
 `pnpm run build` 会准备仓库产物。`pnpm toh web` 会直接使用这些已构建产物，不会重新构建。
 
+<a id="desktop-app"></a>
+
+### 桌面应用
+
+```sh
+pnpm toh desktop
+```
+
+桌面命令会围绕同一个 Web UI 打开一个 Electron 窗口：该窗口自行拉起并持有 loopback 端口上的 web 后端，因此关闭窗口即停止 Harness——无需单独的服务器或浏览器标签页。再次启动时只聚焦已有窗口，不会另起后端。应用需要已构建的检出（`pnpm run build`）以及 PATH 中的 `node`。
+
 ## 社区与支持
 
 - 欢迎通过 [GitHub Discussions](https://github.com/dustinwloring1988/theopen-harness/discussions) 提交反馈或 bug 报告。

@@ -429,6 +429,12 @@ interface LlmConfigurableProvider {
    * from outside.
    */
   declared?: boolean
+  /**
+   * Endpoint the adapter suggests for this route, when one exists. A surface
+   * adopting the route prefills it; nothing stores or serves it until the
+   * profile does.
+   */
+  baseURL?: string
 }
 ```
 

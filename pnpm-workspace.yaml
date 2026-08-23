@@ -42,6 +42,9 @@ allowBuilds:
   lefthook: true
   # Cross-platform boundary for the persistent PTY backend, including ConPTY on Windows.
   node-pty: true
+  # The desktop container app runs its postinstall to fetch the Electron
+  # runtime binary that `electron .` executes; without it only the types install.
+  electron: true
   # Pulled in by @earendil-works/pi-ai (optional LLM API backend). pnpm lists
   # them only because they ship lifecycle scripts, but those are no-ops we don't
   # need, so we deny them — install still succeeds.
