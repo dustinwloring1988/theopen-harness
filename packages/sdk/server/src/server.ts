@@ -151,6 +151,10 @@ export class HarnessSdkJsonRpcServer {
       // The selected provider owns its adapter, so the server-mounted fallback
       // for the previous provider is obsolete even though no replacement mounts.
       await this.disposeServerMountedFiber()
+      // Nothing remains for this run to mount or sweep, but a shutdown that
+      // started mid-disposal still surfaces as this call's rejection instead
+      // of a success response that every later request contradicts.
+      if (this.shutdownStarted()) throw new Error('SDK server is shutting down')
     }
     return { serverInfo: { name: 'theopen-harness-sdk-runtime', version: '0.0.1' } }
   }

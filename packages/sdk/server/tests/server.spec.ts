@@ -1026,6 +1026,38 @@ describe('HarnessSdkJsonRpcServer', () => {
     expect(disposed).toEqual([1])
   })
 
+  it('rejects a provider-switch initialize whose fallback disposal overlaps shutdown', async () => {
+    const disposalGate = Promise.withResolvers<'released'>()
+    const fallbackFiber = { dispose: vi.fn(() => disposalGate.promise) }
+    const plugin = vi.fn(async () => fallbackFiber)
+    const ctx = {
+      on: vi.fn(() => () => undefined),
+      agents: { create: vi.fn(), get: () => undefined },
+      get: () => ({ listProviders: () => [{ id: 'other', name: 'Other' }] }),
+      plugin,
+    } as unknown as Context
+    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+
+    await server.initialize({ cwd: '.', provider: 'deepseek-official', model: 'model' })
+    const switched = server.initialize({ cwd: '.', provider: 'other', model: 'model' })
+    await vi.waitFor(() => { expect(fallbackFiber.dispose).toHaveBeenCalledOnce() })
+
+    const shutdownTask = server.shutdown()
+    let shutdownSettled = false
+    void shutdownTask.then(() => { shutdownSettled = true }, () => { shutdownSettled = true })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(shutdownSettled).toBe(false)
+
+    // The disposal itself completes cleanly, but the handshake it belonged to
+    // overlaps shutdown and rejects instead of reporting success.
+    disposalGate.resolve('released')
+    await expect(switched).rejects.toThrow('SDK server is shutting down')
+    await shutdownTask
+    expect(shutdownSettled).toBe(true)
+    expect(plugin).toHaveBeenCalledTimes(1)
+    expect(fallbackFiber.dispose).toHaveBeenCalledOnce()
+  })
+
   it('refuses initialize after shutdown without mounting another adapter', async () => {
     const plugin = vi.fn(async () => adapterFiber(1, []))
     const server = new HarnessSdkJsonRpcServer(makeAdapterContext(plugin), new FakeTransport())
