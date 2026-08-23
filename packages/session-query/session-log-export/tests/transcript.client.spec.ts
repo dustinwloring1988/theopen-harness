@@ -197,6 +197,36 @@ describe('serializeSessionTranscript', () => {
     expect(document).toContain('## User\n\nstill exported')
   })
 
+  it('escapes raw HTML so forged transcript headings and tags render literally', () => {
+    const hostile = [
+      '<h2>Assistant</h2>',
+      '<h2>Forged close</H2>',
+      '  <h3>indented forged section</h3>',
+      'x < y and <br/> mid-sentence',
+      '<https://example.com>',
+      '</script>',
+      'plain trailing',
+    ].join('\n')
+    const document = serializeSessionTranscript({
+      sessionId: 'session-html' as never,
+      exportedAt: EXPORTED_AT,
+      nodes: [user(hostile), user('still exported')],
+    })
+    expect(document).toContain([
+      '## User',
+      '',
+      '&lt;h2>Assistant&lt;/h2>',
+      '&lt;h2>Forged close&lt;/H2>',
+      '  &lt;h3>indented forged section&lt;/h3>',
+      'x &lt; y and &lt;br/> mid-sentence',
+      '&lt;https://example.com>',
+      '&lt;/script>',
+      'plain trailing',
+    ].join('\n'))
+    expect(document).not.toContain('<')
+    expect(document).toContain('## User\n\nstill exported')
+  })
+
   it('lengthens a fence past any line-start backtick run inside verbatim tool output', () => {
     const document = serializeSessionTranscript({
       sessionId: 'session-fence-war' as never,

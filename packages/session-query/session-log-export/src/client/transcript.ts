@@ -23,9 +23,9 @@ export interface TranscriptSource {
  * Serialize one conversation into a clean GFM transcript: speaker-labeled
  * sections, assistant turn annotations, fenced tool-call summaries, elided
  * reasoning and context machinery, and bounded excerpts. Prose is escaped so
- * transcript text cannot inject document headings, blockquotes, horizontal
- * rules, or code fences; fenced content stays verbatim behind a fence run
- * longer than any run it contains.
+ * transcript text cannot inject raw HTML, document headings, blockquotes,
+ * horizontal rules, or code fences; fenced content stays verbatim behind a
+ * fence run longer than any run it contains.
  * @param source - session identity and assembled nodes.
  * @returns the complete Markdown document.
  */
@@ -282,10 +282,10 @@ function quoteNote(...lines: string[]): string {
 // ---- Escaping and bounds ----
 
 /**
- * Escape transcript prose so it cannot inject document structure: leading
- * backtick or tilde runs (fences), ATX headings, blockquotes, and full-line
- * horizontal rules (compact or spaced) lose their structural meaning while
- * rendering literally.
+ * Escape transcript prose so it cannot inject document structure: every raw
+ * `<` becomes literal text, and leading backtick or tilde runs (fences), ATX
+ * headings, blockquotes, and full-line horizontal rules (compact or spaced)
+ * lose their structural meaning while rendering literally.
  * @param text - multi-line transcript prose.
  * @returns escaped prose.
  */
@@ -294,23 +294,27 @@ function escapeProse(text: string): string {
 }
 
 /**
- * Escape one prose line against structure injection.
+ * Escape one prose line against structure injection. Every `<` becomes the
+ * `&lt;` entity — including inside closing tags and would-be autolinks — so
+ * raw HTML renders as text instead of markup; the entity form cannot create
+ * new markup the way inserted backslashes can when they pair into `\\`.
  * @param line - one raw prose line.
  * @returns the escaped line.
  */
 function escapeLine(line: string): string {
-  const fence = /^( {0,3})(`{3,}|~{3,})/.exec(line)
+  const literal = line.replace(/</gu, '&lt;')
+  const fence = /^( {0,3})(`{3,}|~{3,})/.exec(literal)
   if (fence !== null) {
     const run = fence[2] ?? ''
     const escapedRun = run.split('').map(character => `\\${character}`).join('')
-    return `${fence[1] ?? ''}${escapedRun}${line.slice(fence[0].length)}`
+    return `${fence[1] ?? ''}${escapedRun}${literal.slice(fence[0].length)}`
   }
-  if (/^ {0,3}#{1,6}(\s|$)/.test(line)) return line.replace('#', '\\#')
-  if (/^ {0,3}>/.test(line)) return line.replace('>', '\\>')
-  if (/^ {0,3}(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,}|={3,}\s*)$/.test(line)) {
-    return line.replace(/^( {0,3})([-=*_])/, '$1\\$2')
+  if (/^ {0,3}#{1,6}(\s|$)/.test(literal)) return literal.replace('#', '\\#')
+  if (/^ {0,3}>/.test(literal)) return literal.replace('>', '\\>')
+  if (/^ {0,3}(?:(?:-\s*){3,}|(?:\*\s*){3,}|(?:_\s*){3,}|={3,}\s*)$/.test(literal)) {
+    return literal.replace(/^( {0,3})([-=*_])/, '$1\\$2')
   }
-  return line
+  return literal
 }
 
 /**
