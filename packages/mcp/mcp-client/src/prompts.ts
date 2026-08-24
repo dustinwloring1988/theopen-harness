@@ -183,6 +183,19 @@ export function registerPromptsBridge(ctx: Context, skills: SkillRegistry, opts:
    * metadata never reach a generation that did not list them.
    */
   let catalogGeneration: Client | undefined
+  /**
+   * Monotonic counter bumped when each sync attempt starts. Lookups capture it
+   * before their request and refuse the result when any later attempt started,
+   * including one whose replacement listing commits mid-request.
+   */
+  let syncRevision = 0
+  /**
+   * The sync attempt that last committed {@link candidates}. It trails
+   * {@link syncRevision} from that attempt's start until its commit, so after
+   * a failed re-sync the previous candidates stay listed while their loads
+   * stay unloadable until a clean catalog commits.
+   */
+  let catalogRevision = -1
   let candidates: readonly SkillCandidate[] = []
   /** Discovery has completed at least once without a fetch failure. */
   let complete = false
@@ -226,6 +239,23 @@ export function registerPromptsBridge(ctx: Context, skills: SkillRegistry, opts:
     }
   }
 
+  /**
+   * Whether a lookup that captured `revision` may still resolve through the
+   * catalog: the bridge must be live, no sync may be active, no newer sync
+   * attempt may have started, the newest attempt must have committed a clean
+   * catalog, and that catalog's generation must still be the live one.
+   */
+  function loadable(revision: number): boolean {
+    return (
+      !disposed &&
+      !syncing &&
+      revision === syncRevision &&
+      catalogRevision === revision &&
+      catalogGeneration !== undefined &&
+      catalogGeneration === currentGeneration
+    )
+  }
+
   const provider: SkillProvider = {
     name: providerLabel,
     list(): Promise<readonly SkillCandidate[] | { candidates: readonly SkillCandidate[]; complete: boolean }> {
@@ -236,14 +266,17 @@ export function registerPromptsBridge(ctx: Context, skills: SkillRegistry, opts:
     },
     async get(candidate: SkillCandidate, options: SkillLookupOptions): Promise<SkillDefinition | undefined> {
       options.signal?.throwIfAborted()
+      const revision = syncRevision
       // A candidate's locator and argument metadata describe the listing that
-      // produced them. While a newer listing — a reconnect or a same-generation
-      // list_changed re-sync — is in flight, or the committed listing's
-      // generation is no longer live, report unloadable so consumers retry
-      // through invalidation instead of sending stale names and argument
-      // metadata to a server state the catalog may no longer describe.
+      // produced them. The fence is re-judged after the request resolves too:
+      // a reconnect or a same-generation `list_changed` re-sync starting (and
+      // even committing) while the request is in flight reports unloadable so
+      // consumers retry through invalidation instead of sending stale names
+      // and argument metadata to a server state the catalog may no longer
+      // describe.
+      if (!loadable(revision)) return undefined
       const generation = catalogGeneration
-      if (generation === undefined || disposed || syncing || generation !== currentGeneration) return undefined
+      if (generation === undefined) return undefined
       const locator = candidate.locator as PromptLocator
       let result: { messages?: unknown }
       try {
@@ -262,6 +295,7 @@ export function registerPromptsBridge(ctx: Context, skills: SkillRegistry, opts:
         return undefined
       }
       options.signal?.throwIfAborted()
+      if (!loadable(revision)) return undefined
       return {
         name: candidate.name,
         description: candidate.description,
@@ -281,6 +315,8 @@ export function registerPromptsBridge(ctx: Context, skills: SkillRegistry, opts:
   async function sync(generation: Client): Promise<void> {
     if (disposed) return
     currentGeneration = generation
+    syncRevision += 1
+    const revision = syncRevision
     syncing = true
     try {
       const records = await listAllPrompts(generation)
@@ -292,10 +328,13 @@ export function registerPromptsBridge(ctx: Context, skills: SkillRegistry, opts:
       }
       candidates = next
       catalogGeneration = generation
+      catalogRevision = revision
       complete = true
     } catch (error) {
       // Fetch-phase failure: keep serving the last good candidate set and let
-      // consumers retry through an incomplete observation.
+      // consumers retry through an incomplete observation. The committed
+      // revision now trails the live one, so those candidates' loads stay
+      // unloadable until a clean catalog commits.
       complete = false
       ctx.logger.warn(`${label}: prompt synchronization failed: ${String(error)}`)
     } finally {

@@ -552,6 +552,9 @@ importers:
       '@buckeyestudio/toh-lsp-stdio':
         specifier: workspace:*
         version: link:../packages/lsp/lsp-stdio
+      '@buckeyestudio/toh-mcp-client':
+        specifier: workspace:*
+        version: link:../packages/mcp/mcp-client
       '@buckeyestudio/toh-permission-presets':
         specifier: workspace:*
         version: link:../packages/interaction/permission-presets
