@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import queue
 import subprocess
@@ -48,6 +49,7 @@ class HarnessClient:
     def __init__(self, config: HarnessConfig | None = None) -> None:
         self.config = config or HarnessConfig()
         self._proc: subprocess.Popen[str] | None = None
+        self._lifecycle_lock = threading.Lock()
         self._lock = threading.Lock()
         self._write_lock = threading.Lock()
         self._responses: dict[str, queue.Queue[JsonValue | BaseException]] = {}
@@ -69,34 +71,91 @@ class HarnessClient:
         self.close()
 
     def start(self) -> None:
-        with self._lock:
-            if self._proc is not None:
-                return
-            self._session_parents.clear()
-            args = list(self.config.launch_args_override or self._default_launch_args())
-            env = os.environ.copy()
-            if self.config.env:
-                env.update(self.config.env)
-            self._inject_bundled_default_config(env)
-            self._proc = subprocess.Popen(
-                args,
-                stdin=subprocess.PIPE,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                text=True,
-                encoding="utf-8",
-                cwd=None if self.config.cwd is None else str(Path(self.config.cwd).resolve()),
-                env=env,
-                bufsize=1,
-            )
-        self._start_reader_thread()
-        self._start_stderr_thread()
+        with self._lifecycle_lock:
+            with self._lock:
+                if self._proc is not None:
+                    return
+                self._session_parents.clear()
+                args = list(self.config.launch_args_override or self._default_launch_args())
+                env = os.environ.copy()
+                if self.config.env:
+                    env.update(self.config.env)
+                self._inject_bundled_default_config(env)
+                self._proc = subprocess.Popen(
+                    args,
+                    stdin=subprocess.PIPE,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                    encoding="utf-8",
+                    cwd=None if self.config.cwd is None else str(Path(self.config.cwd).resolve()),
+                    env=env,
+                    bufsize=1,
+                )
+            self._start_reader_thread()
+            self._start_stderr_thread()
 
     def close(self) -> None:
-        proc = self._proc
-        if proc is None:
-            return
-        deadline = time.monotonic() + self._clamped_shutdown_timeout()
+        with self._lifecycle_lock:
+            proc = self._proc
+            if proc is None:
+                return
+            deadline = time.monotonic() + self._clamped_shutdown_timeout()
+            self._send_shutdown_bounded(deadline)
+            if proc.stdin:
+                try:
+                    proc.stdin.close()
+                except Exception as exc:
+                    self._stderr_lines.append(f"stdin close failed: {exc}")
+            if proc.poll() is None:
+                try:
+                    proc.terminate()
+                except ProcessLookupError:
+                    pass
+            reaped = True
+            try:
+                proc.wait(timeout=max(deadline - time.monotonic(), 0.0))
+            except subprocess.TimeoutExpired:
+                try:
+                    proc.kill()
+                except ProcessLookupError:
+                    pass
+                try:
+                    proc.wait(timeout=_KILL_JOIN_SECONDS)
+                except subprocess.TimeoutExpired:
+                    # Kill was delivered, but the process remains unreaped; keep
+                    # self._proc so a retried close() can finish the reap and
+                    # start() cannot spawn a second runtime meanwhile.
+                    reaped = False
+            if reaped:
+                self._proc = None
+            self._fail_waiters(self._runtime_closed_error("TheOpen Harness runtime closed"))
+            if self._reader_thread and self._reader_thread.is_alive():
+                self._reader_thread.join(timeout=0.5)
+            if self._stderr_thread and self._stderr_thread.is_alive():
+                self._stderr_thread.join(timeout=0.5)
+
+    def _send_shutdown_bounded(self, deadline: float) -> None:
+        """Send the shutdown request without letting its write block past deadline.
+
+        The request runs on a worker joined against the remaining budget: a
+        write stuck behind another request holding _write_lock, or blocked on
+        a full stdin pipe, would otherwise delay terminate()/kill() forever.
+        """
+        sender = threading.Thread(
+            target=self._send_shutdown_request,
+            args=(deadline,),
+            name="toh-runtime-shutdown-sender",
+            daemon=True,
+        )
+        sender.start()
+        sender.join(timeout=max(deadline - time.monotonic(), 0.0))
+        if sender.is_alive():
+            self._stderr_lines.append(
+                "shutdown request did not complete within the shutdown budget; proceeding to terminate"
+            )
+
+    def _send_shutdown_request(self, deadline: float) -> None:
         try:
             self.request(
                 "shutdown",
@@ -106,38 +165,6 @@ class HarnessClient:
             )
         except Exception as exc:
             self._stderr_lines.append(f"shutdown request failed: {exc}")
-        if proc.stdin:
-            try:
-                proc.stdin.close()
-            except Exception as exc:
-                self._stderr_lines.append(f"stdin close failed: {exc}")
-        if proc.poll() is None:
-            try:
-                proc.terminate()
-            except ProcessLookupError:
-                pass
-        reaped = True
-        try:
-            proc.wait(timeout=max(deadline - time.monotonic(), 0.0))
-        except subprocess.TimeoutExpired:
-            try:
-                proc.kill()
-            except ProcessLookupError:
-                pass
-            try:
-                proc.wait(timeout=_KILL_JOIN_SECONDS)
-            except subprocess.TimeoutExpired:
-                # Kill was delivered, but the process remains unreaped; keep
-                # self._proc so a retried close() can finish the reap and
-                # start() cannot spawn a second runtime meanwhile.
-                reaped = False
-        if reaped:
-            self._proc = None
-        self._fail_waiters(self._runtime_closed_error("TheOpen Harness runtime closed"))
-        if self._reader_thread and self._reader_thread.is_alive():
-            self._reader_thread.join(timeout=0.5)
-        if self._stderr_thread and self._stderr_thread.is_alive():
-            self._stderr_thread.join(timeout=0.5)
 
     def initialize(
         self,
@@ -429,10 +456,12 @@ class HarnessClient:
         """Return the shutdown budget clamped into [0, _SHUTDOWN_TIMEOUT_CEILING_SECONDS].
 
         None selects the ceiling so close() keeps an upper bound independent of
-        configuration.
+        configuration. NaN selects the ceiling too: every comparison against
+        NaN is false, so min/max clamping would pass it through and every
+        deadline derived from it would never expire.
         """
         configured = self.config.shutdown_timeout_seconds
-        if configured is None:
+        if configured is None or math.isnan(configured):
             return _SHUTDOWN_TIMEOUT_CEILING_SECONDS
         return min(max(configured, 0.0), _SHUTDOWN_TIMEOUT_CEILING_SECONDS)
 
