@@ -23,22 +23,24 @@ function bench() {
   const controller = new SessionLogDownloadController(async () => new Response('zip'), vi.fn())
   const request = vi.fn((sessionId: SessionId) => controller.download(sessionId))
   const dismiss = vi.fn((sessionId: SessionId) => { controller.dismiss(sessionId) })
+  const buildMarkdown = vi.fn(() => '# Session transcript')
   const useSessionLogDownload = bindSessionExport(controller)
   const props = {
     sessionId: SID,
     useSessionLogDownload,
     request,
     dismiss,
+    buildMarkdown,
     t: (key: keyof typeof en): string => en[key],
   } as unknown as SessionLogDownloadDialogProps
   const view = render(<SessionLogDownloadHeaderAction {...props} />)
-  return { controller, request, view }
+  return { controller, request, buildMarkdown, view }
 }
 
 afterEach(cleanup)
 
-describe('Session export Header action', () => {
-  it('renders the 111×32 text capsule and downloads through the shared controller', async () => {
+describe('Session export Header actions', () => {
+  it('renders the ZIP capsule and downloads through the shared controller', async () => {
     const b = bench()
     const button = b.view.getByRole('button', { name: 'Session log' })
     expect(button.querySelector('svg')).not.toBeNull()
@@ -47,7 +49,18 @@ describe('Session export Header action', () => {
     expect(await b.view.findByRole('dialog', { name: 'Session download started' })).toBeTruthy()
   })
 
-  it('disables the capsule while either entry path downloads this Session', async () => {
+  it('renders a Markdown capsule that hands the serialized transcript to the same controller', async () => {
+    const b = bench()
+    const button = b.view.getByRole('button', { name: 'Markdown' })
+    fireEvent.click(button)
+    await waitFor(() => {
+      expect(b.request).toHaveBeenCalledWith(SID, { format: 'markdown', document: '# Session transcript' })
+    })
+    expect(b.buildMarkdown).toHaveBeenCalledWith(SID)
+    expect(await b.view.findByRole('dialog', { name: 'Session download started' })).toBeTruthy()
+  })
+
+  it('disables both capsules while either entry path downloads this Session', async () => {
     const b = bench()
     let release!: (response: Response) => void
     const pending = new Promise<Response>((resolve) => { release = resolve })
@@ -58,15 +71,19 @@ describe('Session export Header action', () => {
       useSessionLogDownload,
       request: (sessionId: SessionId) => controller.download(sessionId),
       dismiss: (sessionId: SessionId) => { controller.dismiss(sessionId) },
+      buildMarkdown: b.buildMarkdown,
       t: (key: keyof typeof en): string => en[key],
     } as unknown as SessionLogDownloadDialogProps)} />)
 
     const download = controller.download(SID)
-    const button = b.view.getByRole('button', { name: 'Session log' })
-    await waitFor(() => { expect(button.getAttribute('aria-busy')).toBe('true') })
-    expect((button as HTMLButtonElement).disabled).toBe(true)
+    const zipButton = b.view.getByRole('button', { name: 'Session log' })
+    const markdownButton = b.view.getByRole('button', { name: 'Markdown' })
+    await waitFor(() => { expect(zipButton.getAttribute('aria-busy')).toBe('true') })
+    expect((zipButton as HTMLButtonElement).disabled).toBe(true)
+    expect((markdownButton as HTMLButtonElement).disabled).toBe(true)
     release(new Response('zip'))
     await download
-    await waitFor(() => { expect(button.getAttribute('aria-busy')).toBe('false') })
+    await waitFor(() => { expect(zipButton.getAttribute('aria-busy')).toBe('false') })
+    expect((markdownButton as HTMLButtonElement).disabled).toBe(false)
   })
 })

@@ -8,8 +8,9 @@
     patches:
       - insert:
           - id: session-title-provider
-            name: '@buckeyestudio/toh-session-title-first-prompt-llm'
+            name: '@buckeyestudio/toh-session-title-llm'
             config:
+              cadence: 'first-prompt'
               targetWords: 5
               targetCjkCharacters: 10
               maxInputBytes: 4096

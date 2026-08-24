@@ -35,7 +35,7 @@ describe('SessionLogDownloadDialog', () => {
     const b = bench()
     act(() => {
       b.controller.store.set({
-        bySession: { [SID]: { open: true, status: 'error', error: 'toolbar failed' } },
+        bySession: { [SID]: { open: true, status: 'error', error: 'toolbar failed', format: 'zip' } },
       })
     })
     const dialog = await b.view.findByRole('dialog', { name: 'Session export failed' })
@@ -54,16 +54,36 @@ describe('SessionLogDownloadDialog', () => {
 
     const download = controller.download(SID)
     expect(await b.view.findByRole('dialog', { name: 'Exporting Session' })).toBeTruthy()
+    expect(b.view.getByText('Preparing a ZIP containing this Session, its sub-Sessions, and attachments.')).toBeTruthy()
     release(new Response('zip', { status: 200 }))
     await download
     expect(await b.view.findByRole('dialog', { name: 'Session download started' })).toBeTruthy()
+    expect(b.view.getByText('The browser is downloading the Session ZIP.')).toBeTruthy()
+  })
+
+  it('adapts the preparation and success copy to the Markdown transcript format', async () => {
+    const b = bench()
+    act(() => {
+      b.controller.store.set({
+        bySession: { [SID]: { open: true, status: 'downloading', error: null, format: 'markdown' } },
+      })
+    })
+    expect(await b.view.findByRole('dialog', { name: 'Exporting Session' })).toBeTruthy()
+    expect(b.view.getByText('Assembling the Markdown transcript for this session window.')).toBeTruthy()
+    act(() => {
+      b.controller.store.set({
+        bySession: { [SID]: { open: true, status: 'success', error: null, format: 'markdown' } },
+      })
+    })
+    expect(await b.view.findByRole('dialog', { name: 'Session download started' })).toBeTruthy()
+    expect(b.view.getByText('The browser is downloading the Session Markdown transcript.')).toBeTruthy()
   })
 
   it('uses fallback copy when a failure has no detail', async () => {
     const b = bench()
     act(() => {
       b.controller.store.set({
-        bySession: { [SID]: { open: true, status: 'error', error: '' } },
+        bySession: { [SID]: { open: true, status: 'error', error: '', format: 'zip' } },
       })
     })
     const dialog = await b.view.findByRole('dialog', { name: 'Session export failed' })

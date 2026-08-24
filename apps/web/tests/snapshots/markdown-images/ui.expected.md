@@ -4,6 +4,9 @@
   - button "Session log":
     - text: Session log
     - img
+  - button "Markdown":
+    - text: Markdown
+    - img
   - tablist:
     - tab "Chat" [selected]
     - tab "Trajectory"

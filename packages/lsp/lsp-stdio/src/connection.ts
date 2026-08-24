@@ -2,11 +2,12 @@
  * A JSON-RPC endpoint over one language server spawned through the subprocess
  * capability. Owns id correlation, outbound requests/notifications, and inbound
  * server→client requests: it answers `workspace/configuration` from static
- * config, and rejects `workspace/applyEdit` (this host never applies edits or
- * runs commands). It caps stderr, surfaces framing/decoder failures as a
- * fatal close, and exposes tree-scoped termination through the handle so the
- * instance owns teardown; group/tree mechanics live in the subprocess
- * Service Provider.
+ * config, rejects `workspace/applyEdit` (this host never applies edits or
+ * runs commands), and bounds concurrent unanswered server→client requests so a
+ * hostile or broken server cannot exhaust memory through undrained reply
+ * writes. It caps stderr, surfaces framing/decoder failures as a fatal close,
+ * and exposes tree-scoped termination through the handle so the instance owns
+ * teardown; group/tree mechanics live in the subprocess Service Provider.
  * @module @buckeyestudio/toh-lsp-stdio/connection
  */
 
@@ -44,6 +45,15 @@ interface Pending {
 }
 
 /**
+ * Fixed bound on concurrent unanswered server→client requests. Each unanswered request pins one
+ * reply frame in the child's stdin buffer, and Node buffers writes without limit while the pipe is
+ * full, so a hostile or broken server could otherwise grow memory without bound. Real servers keep
+ * single-digit concurrency (progress creates, configuration, registration), so the bound is far
+ * above any legitimate flow.
+ */
+const MAX_IN_FLIGHT_SERVER_REQUESTS = 32
+
+/**
  * Write one JSON-RPC message to the child stdin.
  * @param stdin - the spawned server stdin.
  * @param message - the unencoded JSON-RPC message.
@@ -70,6 +80,8 @@ export class LspConnection {
   private readonly pending = new Map<number, Pending>()
   private nextId = 1
   private closeReason: Error | undefined
+  /** Server→client requests whose reply write has not settled. */
+  private inFlightServerRequests = 0
   /** Set once the process has fully exited; the instance awaits it during teardown. */
   readonly closed: Promise<void>
 
@@ -244,6 +256,14 @@ export class LspConnection {
     const id = frame.id
     const method = frame.method
     if (typeof method === 'string' && (typeof id === 'number' || typeof id === 'string')) {
+      // Same fatal treatment as a framing failure: the reply frames cannot be dropped (the server
+      // would stall), so past the bound the connection is failed and the tree terminated.
+      if (this.inFlightServerRequests >= MAX_IN_FLIGHT_SERVER_REQUESTS) {
+        this.fail(new Error(`language server exceeded ${MAX_IN_FLIGHT_SERVER_REQUESTS} unanswered server-to-client requests`))
+        this.handle.terminate()
+        return
+      }
+      this.inFlightServerRequests++
       // A response-write failure has already invalidated the connection in `write()`.
       /* v8 ignore next -- protocol tests exercise response writes; only a simultaneous connection
          failure makes this consumption handler run. */
@@ -263,6 +283,8 @@ export class LspConnection {
       await this.write({ jsonrpc: '2.0', id, result })
     } catch (error) {
       await this.write({ jsonrpc: '2.0', id, error: { code: -32601, message: asError(error).message } })
+    } finally {
+      this.inFlightServerRequests--
     }
   }
 

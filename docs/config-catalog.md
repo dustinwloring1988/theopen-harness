@@ -346,7 +346,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/attachment/attachment-local/src/index.ts:51`](../packages/attachment/attachment-local/src/index.ts)
+Source: [`packages/attachment/attachment-local/src/index.ts:52`](../packages/attachment/attachment-local/src/index.ts)
 
 <a id="buckeyestudiotoh-bash-local"></a>
 
@@ -1746,7 +1746,7 @@ export interface Config {
 export type JsonlCompression = 'zstd' | 'none'
 ```
 
-Source: [`packages/session/session-persistence-jsonl/src/index.ts:60`](../packages/session/session-persistence-jsonl/src/index.ts)
+Source: [`packages/session/session-persistence-jsonl/src/index.ts:61`](../packages/session/session-persistence-jsonl/src/index.ts)
 
 <a id="buckeyestudiotoh-session-persistence-sqlite"></a>
 
@@ -1842,7 +1842,7 @@ export type JournalMode = 'wal' | 'delete' | 'truncate' | 'persist'
 
 Depends on: [`SessionQueryConfig`](../packages/session-query/session-query/src/index.ts)
 
-Source: [`packages/session-query/session-query-sqlite/src/index.ts:89`](../packages/session-query/session-query-sqlite/src/index.ts)
+Source: [`packages/session-query/session-query-sqlite/src/index.ts:94`](../packages/session-query/session-query-sqlite/src/index.ts)
 
 <a id="buckeyestudiotoh-session-reference"></a>
 
@@ -1930,35 +1930,37 @@ export interface Config {
 
 Source: [`packages/session/session-title/src/index.ts:79`](../packages/session/session-title/src/index.ts)
 
-<a id="buckeyestudiotoh-session-title-all-prompts-llm"></a>
+<a id="buckeyestudiotoh-session-title-llm"></a>
 
-## `@buckeyestudio/toh-session-title-all-prompts-llm`
-
-Requires: `sessionTitle` · `llm` · `sessions`
-
-```ts config-catalog
-/** Required LLM policy; this plugin adds no defaults. */
-export type Config = SessionTitleLlmConfig
-```
-
-Depends on: [`SessionTitleLlmConfig`](../packages/session/session-title-llm/src/index.ts)
-
-Source: [`packages/session/session-title-all-prompts-llm/src/index.ts:15`](../packages/session/session-title-all-prompts-llm/src/index.ts)
-
-<a id="buckeyestudiotoh-session-title-first-prompt-llm"></a>
-
-## `@buckeyestudio/toh-session-title-first-prompt-llm`
+## `@buckeyestudio/toh-session-title-llm`
 
 Requires: `sessionTitle` · `llm` · `sessions`
 
 ```ts config-catalog
-/** Required LLM policy; this plugin adds no defaults. */
-export type Config = SessionTitleLlmConfig
+/** Required deployment policy for the model-backed title plugin. */
+export interface SessionTitleLlmConfig {
+  /** Automatic generation cadence this registration owns. */
+  readonly cadence: SessionTitleAutomaticMode
+  /** Target word count for non-CJK titles. */
+  readonly targetWords: number
+  /** Target character count for Chinese, Japanese, or Korean titles. */
+  readonly targetCjkCharacters: number
+  /** Maximum UTF-8 bytes in the final JSON-framed user prompt. */
+  readonly maxInputBytes: number
+  /** Auxiliary generation output-token cap. */
+  readonly maxOutputTokens: number
+  /** End-to-end auxiliary request deadline in milliseconds. */
+  readonly timeoutMs: number
+  /** Optional explicit provider route; must be paired with `model`. */
+  readonly provider?: string
+  /** Optional explicit model id; must be paired with `provider`. */
+  readonly model?: string
+}
 ```
 
-Depends on: [`SessionTitleLlmConfig`](../packages/session/session-title-llm/src/index.ts)
+Depends on: [`SessionTitleAutomaticMode`](../packages/session/session-title/src/index.ts)
 
-Source: [`packages/session/session-title-first-prompt-llm/src/index.ts:15`](../packages/session/session-title-first-prompt-llm/src/index.ts)
+Source: [`packages/session/session-title-llm/src/index.ts:51`](../packages/session/session-title-llm/src/index.ts)
 
 <a id="buckeyestudiotoh-settings-file"></a>
 
@@ -3145,10 +3147,12 @@ export interface Config {
   maxRedirects?: number
   /** `User-Agent` header sent on every request. */
   userAgent?: string
+  /** Permit loopback, private, and otherwise non-public destinations. Defaults to false. */
+  allowPrivateNetworks?: boolean
 }
 ```
 
-Source: [`packages/web/web-fetch-http/src/index.ts:34`](../packages/web/web-fetch-http/src/index.ts)
+Source: [`packages/web/web-fetch-http/src/index.ts:36`](../packages/web/web-fetch-http/src/index.ts)
 
 <a id="buckeyestudiotoh-web-search-deepseek"></a>
 
@@ -3382,7 +3386,6 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@buckeyestudio/toh-sdk-jsonrpc-demo` ([`packages/examples/jsonrpc-demo/src/index.ts`](../packages/examples/jsonrpc-demo/src/index.ts))
 - `@buckeyestudio/toh-sdk-protocol` ([`packages/sdk/protocol/src/index.ts`](../packages/sdk/protocol/src/index.ts))
 - `@buckeyestudio/toh-session-telemetry` ([`packages/session/session-telemetry/src/index.ts`](../packages/session/session-telemetry/src/index.ts))
-- `@buckeyestudio/toh-session-title-llm` ([`packages/session/session-title-llm/src/index.ts`](../packages/session/session-title-llm/src/index.ts))
 - `@buckeyestudio/toh-subagent-in-process-driver` ([`packages/subagent/subagent-in-process-driver/src/index.ts`](../packages/subagent/subagent-in-process-driver/src/index.ts))
 - `@buckeyestudio/toh-timeout` ([`packages/util/timeout/src/index.ts`](../packages/util/timeout/src/index.ts))
 - `@buckeyestudio/toh-typert-generator` ([`packages/typert/generator/src/index.ts`](../packages/typert/generator/src/index.ts))

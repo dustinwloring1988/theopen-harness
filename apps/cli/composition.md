@@ -24,7 +24,7 @@ flowchart LR
   cfg --> plugin_toh_base_typert_gateway
   plugin_toh_base_session_title["session-title<br/>@buckeyestudio/toh-session-title"]
   cfg --> plugin_toh_base_session_title
-  plugin_toh_base_session_title_llm["session-title-llm<br/>@buckeyestudio/toh-session-title-first-prompt-llm"]
+  plugin_toh_base_session_title_llm["session-title-llm<br/>@buckeyestudio/toh-session-title-llm"]
   cfg --> plugin_toh_base_session_title_llm
   plugin_toh_base_user_questions["user-questions<br/>@buckeyestudio/toh-user-questions"]
   cfg --> plugin_toh_base_user_questions
@@ -178,7 +178,7 @@ flowchart LR
 | `typert-loader` | `@buckeyestudio/toh-typert-loader` |
 | `typert-gateway` | `@buckeyestudio/toh-api-gateway` |
 | `session-title` | `@buckeyestudio/toh-session-title` |
-| `session-title-llm` | `@buckeyestudio/toh-session-title-first-prompt-llm` |
+| `session-title-llm` | `@buckeyestudio/toh-session-title-llm` |
 | `user-questions` | `@buckeyestudio/toh-user-questions` |
 | `agent` | `@buckeyestudio/toh-agent` |
 | `agent-default-model` | `@buckeyestudio/toh-agent-default-model` |

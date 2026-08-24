@@ -131,6 +131,7 @@ describe('loadLayeredEnv', () => {
     ['the executable search path', 'PATH=/tmp/evil\n'],
     ['a module preload', 'NODE_OPTIONS=--require /tmp/evil.js\n'],
     ['a skill root', 'TOH_AGENTS_HOME=/tmp/injected\n'],
+    ['a telemetry switch', 'TOH_TELEMETRY_DISABLED=1\n'],
     ['a network proxy', 'HTTPS_PROXY=http://attacker.example\n'],
     ['a lowercase network proxy', 'https_proxy=http://attacker.example\n'],
     ['a browser command', 'BROWSER=./script\n'],
@@ -144,6 +145,65 @@ describe('loadLayeredEnv', () => {
       expect(() => loadLayeredEnv(NAME, project, vi.fn())).toThrow(/only the launching environment may set/)
       expect(process.env[NAMES[1]]).toBeUndefined()
     } finally {
+      clear()
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('accepts the web provider-selection names from either file and reports their layer', () => {
+    const home = tmp()
+    const project = tmp()
+    writeFileSync(join(home, '.env'), 'TOH_WEB_FETCH_PROVIDER=http\n')
+    writeFileSync(join(project, '.env'), 'TOH_WEB_SEARCH_PROVIDER=perplexity\n')
+    clear()
+    for (const name of ['TOH_WEB_SEARCH_PROVIDER', 'TOH_WEB_FETCH_PROVIDER']) Reflect.deleteProperty(process.env, name)
+    vi.stubEnv('TOH_HOME', home)
+    try {
+      const snapshot = loadLayeredEnv(NAME, project, vi.fn())
+      expect(snapshot.get('TOH_WEB_SEARCH_PROVIDER')).toEqual({ value: 'perplexity', source: 'project-env', path: join(project, '.env') })
+      expect(snapshot.get('TOH_WEB_FETCH_PROVIDER')).toEqual({ value: 'http', source: 'user-env', path: join(home, '.env') })
+      expect(process.env.TOH_WEB_SEARCH_PROVIDER).toBe('perplexity')
+      expect(process.env.TOH_WEB_FETCH_PROVIDER).toBe('http')
+    } finally {
+      for (const name of ['TOH_WEB_SEARCH_PROVIDER', 'TOH_WEB_FETCH_PROVIDER']) Reflect.deleteProperty(process.env, name)
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('folds case when deciding whether a TOH_ name is provider selection or harness switch', () => {
+    const home = tmp()
+    const project = tmp()
+    writeFileSync(join(project, '.env'), 'toh_web_search_provider=perplexity\nTOH_PERMISSION_MODE=danger-full-access\n')
+    clear()
+    Reflect.deleteProperty(process.env, 'toh_web_search_provider')
+    vi.stubEnv('TOH_HOME', home)
+    try {
+      expect(() => loadLayeredEnv(NAME, project, vi.fn())).toThrow(/only the launching environment may set/)
+      expect(process.env['toh_web_search_provider']).toBeUndefined()
+    } finally {
+      Reflect.deleteProperty(process.env, 'toh_web_search_provider')
+      clear()
+      vi.unstubAllEnvs()
+    }
+  })
+
+  it('resolves a lowercase provider-selection spelling through the uppercase id end-to-end', () => {
+    const home = tmp()
+    const project = tmp()
+    writeFileSync(join(project, '.env'), 'toh_web_search_provider=perplexity\n')
+    clear()
+    Reflect.deleteProperty(process.env, 'TOH_WEB_SEARCH_PROVIDER')
+    vi.stubEnv('TOH_HOME', home)
+    const warn = vi.fn()
+    try {
+      const snapshot = loadLayeredEnv(NAME, project, warn)
+      // The snapshot entry and the materialized variable both carry the
+      // canonical spelling WebRuntime resolves, with the file's layer kept.
+      expect(snapshot.get('TOH_WEB_SEARCH_PROVIDER')).toEqual({ value: 'perplexity', source: 'project-env', path: join(project, '.env') })
+      expect(process.env.TOH_WEB_SEARCH_PROVIDER).toBe('perplexity')
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      Reflect.deleteProperty(process.env, 'TOH_WEB_SEARCH_PROVIDER')
       clear()
       vi.unstubAllEnvs()
     }

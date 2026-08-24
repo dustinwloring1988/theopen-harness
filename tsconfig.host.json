@@ -165,8 +165,6 @@
     { "path": "./packages/workspace/workspace" },
     { "path": "./packages/session/session-title" },
     { "path": "./packages/session/session-title-llm" },
-    { "path": "./packages/session/session-title-first-prompt-llm" },
-    { "path": "./packages/session/session-title-all-prompts-llm" },
     { "path": "./packages/session/session-telemetry" },
     { "path": "./packages/identity/anonymous-user-id" },
     { "path": "./packages/session/session-telemetry-otel" },

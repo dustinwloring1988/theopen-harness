@@ -13,6 +13,10 @@
             name: '@buckeyestudio/toh-web'
           - id: web-fetch-http
             name: '@buckeyestudio/toh-web-fetch-http'
+            # The fixture target is loopback by design, so this scenario opts
+            # into the provider's private-network guard.
+            config:
+              allowPrivateNetworks: true
           - id: web-fetch-fixture
             name: './web-fetch-fixture-server.mjs'
           - id: tool-web

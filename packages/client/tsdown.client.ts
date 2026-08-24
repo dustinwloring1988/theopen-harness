@@ -55,10 +55,11 @@ function styleInjectionModule(
 /**
  * Wire/type layers a client bundle may inline: browser-safe contracts
  * with no runtime identity to share (no Symbol/instanceof/singleton state).
- * Everything else under @buckeyestudio/* is either a module-table entry
- * (external) or a leak the purity gate rejects.
+ * A `pkg/sub` entry admits one pure submodule instead of its whole package,
+ * whose implementation stays a leak. Everything else under @buckeyestudio/*
+ * is either a module-table entry (external) or a leak the purity gate rejects.
  */
-export const INLINE_SAFE = /^@buckeyestudio\/toh-(host-apiproxy|file-reference|session|llm|tools|brand)(\/|$)/
+export const INLINE_SAFE = /^@buckeyestudio\/toh-(host-apiproxy|file-reference|session|llm|tools|brand|session-query\/ranking)(\/|$)/
 
 /**
  * Vendored framework libraries: rescoped into @buckeyestudio, so the gate below

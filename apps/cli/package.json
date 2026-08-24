@@ -51,6 +51,7 @@
     "@buckeyestudio/toh-pwsh-sandbox": "workspace:^",
     "@buckeyestudio/toh-session-projection": "workspace:^",
     "@buckeyestudio/toh-session-reference": "workspace:^",
+    "@buckeyestudio/toh-storage-sqlite": "workspace:^",
     "@buckeyestudio/toh-time-context": "workspace:^",
     "@buckeyestudio/toh-skill": "workspace:^",
     "@buckeyestudio/toh-skill-filesystem": "workspace:^",

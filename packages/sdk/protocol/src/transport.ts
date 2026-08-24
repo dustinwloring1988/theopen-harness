@@ -8,13 +8,19 @@
 
 import { randomUUID } from 'node:crypto'
 import type { Readable, Writable } from 'node:stream'
-import { StringDecoder } from 'node:string_decoder'
+
+/** `\n` as a raw byte; it never occurs inside a multi-byte UTF-8 sequence, so byte scans cannot split one. */
+const NEWLINE_BYTE = 0x0a
 
 type JsonRpcId = string | number
 type RequestHandler = (method: string, params: Record<string, unknown>) => Promise<unknown>
 type NotificationHandler = (method: string, params: Record<string, unknown>) => void
 
-/** A JSON-RPC error response, preserving the wire `code` and optional `data`. */
+/**
+ * A JSON-RPC error response, preserving the wire `code` and optional `data`.
+ * Handlers throw it to emit a specific error frame; clients receive it from
+ * peer error frames.
+ */
 export class JsonRpcResponseError extends Error {
   /**
    * @param code - the wire error code, or `undefined` when the peer sent none.
@@ -53,15 +59,38 @@ interface PendingRequest {
   reject: (error: Error) => void
 }
 
+/** Default cap on one incoming frame before the peer connection fails: 16 MiB. */
+export const DEFAULT_MAX_FRAME_BYTES = 16 * 1024 * 1024
+
+/** Construction options for {@link JsonRpcLineTransport}. */
+export interface JsonRpcLineTransportOptions {
+  /**
+   * Maximum size in UTF-8 bytes of one incoming frame, terminated or not. A
+   * peer whose frame exceeds it has every pending request rejected with
+   * `JsonRpcResponseError` code `-32700` and its input stream destroyed.
+   * @default {@link DEFAULT_MAX_FRAME_BYTES}
+   */
+  maxFrameBytes?: number
+}
+
 /**
  * Line-delimited endpoint over caller-owned streams. {@link start} attaches
  * listeners; {@link close} detaches them and rejects pending requests without
  * destroying the streams. Missing request handlers return `-32601`; handler
- * failures return `-32603`. Notifications without a handler are dropped.
+ * failures return `-32603`, except a thrown {@link JsonRpcResponseError} with
+ * a finite numeric wire `code`, whose code, message, and `data` are written
+ * verbatim (a non-finite, non-numeric, or missing code falls back to `-32603`
+ * without `data`, and `data` that fails JSON serialization is dropped).
+ * Notifications without a handler are dropped. An
+ * incoming frame past `maxFrameBytes` (default {@link DEFAULT_MAX_FRAME_BYTES}),
+ * while unterminated or once complete, drops the buffered bytes, destroys the
+ * input stream, and rejects every pending request with `-32700`.
  */
 export class JsonRpcLineTransport implements JsonRpcTransportPeer {
-  private buffer = ''
-  private readonly decoder = new StringDecoder('utf8')
+  private chunks: Buffer[] = []
+  /** Raw byte length of the input queued in `chunks`, tracked across chunk boundaries. */
+  private bufferedBytes = 0
+  private readonly maxFrameBytes: number
   private started = false
   private requestHandler: RequestHandler | undefined
   private notificationHandler: NotificationHandler | undefined
@@ -70,7 +99,14 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
   constructor(
     private readonly input: Readable,
     private readonly output: Writable,
-  ) {}
+    options: JsonRpcLineTransportOptions = {},
+  ) {
+    const { maxFrameBytes = DEFAULT_MAX_FRAME_BYTES } = options
+    if (!Number.isSafeInteger(maxFrameBytes) || maxFrameBytes <= 0) {
+      throw new TypeError('maxFrameBytes must be a positive safe integer')
+    }
+    this.maxFrameBytes = maxFrameBytes
+  }
 
   /** Attach the input listeners and begin reading frames. Idempotent. */
   start(): void {
@@ -93,8 +129,11 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
 
   /**
    * Install the request handler, replacing any prior handler.
-   * @param handler - resolves to the response `result`; a rejection becomes a
-   * `-32603` error response carrying the message.
+   * @param handler - resolves to the response `result`; a rejection becomes an
+   * error response carrying the message (`-32603`, or the thrown
+   * {@link JsonRpcResponseError}'s own finite numeric wire `code` plus `data`;
+   * a non-finite, non-numeric, or missing `code` falls back to `-32603` without
+   * `data`, and `data` that fails JSON serialization is dropped).
    */
   onRequest(handler: RequestHandler): void {
     this.requestHandler = handler
@@ -173,19 +212,81 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
   }
 
   private readonly onData = (chunk: Buffer | string): void => {
-    this.buffer += typeof chunk === 'string' ? chunk : this.decoder.write(chunk)
+    const bytes = typeof chunk === 'string' ? Buffer.from(chunk, 'utf8') : chunk
+    this.chunks.push(bytes)
+    this.bufferedBytes += bytes.length
     this.drainLines()
+    if (this.bufferedBytes > this.maxFrameBytes) {
+      this.failOversizedFrame()
+    }
   }
 
   private drainLines(): void {
     for (;;) {
-      const newline = this.buffer.indexOf('\n')
-      if (newline < 0) break
-      const line = this.buffer.slice(0, newline).trim()
-      this.buffer = this.buffer.slice(newline + 1)
+      const newlineOffset = this.indexOfNewline()
+      if (newlineOffset < 0) return
+      if (newlineOffset > this.maxFrameBytes) {
+        this.failOversizedFrame()
+        return
+      }
+      const line = this.takeBytes(newlineOffset + 1).toString('utf8').trim()
       if (!line) continue
       void this.handleLine(line)
     }
+  }
+
+  /** Byte offset of the first `\n` in the queued input, or -1 when none is buffered. */
+  private indexOfNewline(): number {
+    let offset = 0
+    for (const chunk of this.chunks) {
+      const newline = chunk.indexOf(NEWLINE_BYTE)
+      if (newline >= 0) return offset + newline
+      offset += chunk.length
+    }
+    return -1
+  }
+
+  /** Remove and return the first `count` queued bytes; `count` never exceeds the queue. */
+  private takeBytes(count: number): Buffer {
+    const head = this.chunks[0]
+    if (head !== undefined && head.length === count) {
+      this.chunks.shift()
+      this.bufferedBytes -= count
+      return head
+    }
+    const parts: Buffer[] = []
+    let remaining = count
+    while (remaining > 0) {
+      const chunk = this.chunks[0]
+      if (chunk === undefined) break
+      if (chunk.length <= remaining) {
+        parts.push(chunk)
+        this.chunks.shift()
+        remaining -= chunk.length
+      } else {
+        parts.push(chunk.subarray(0, remaining))
+        this.chunks[0] = chunk.subarray(remaining)
+        remaining = 0
+      }
+    }
+    this.bufferedBytes -= count - remaining
+    return Buffer.concat(parts)
+  }
+
+  /**
+   * Drop the oversized frame and destroy the input stream; the stream error
+   * rejects every pending request. The peer cannot resume mid-frame delivery,
+   * so the connection is unusable, and retaining more input risks unbounded
+   * memory growth.
+   */
+  private failOversizedFrame(): void {
+    const error = new JsonRpcResponseError(
+      -32700,
+      `JSON-RPC frame exceeded ${this.maxFrameBytes} bytes`,
+    )
+    this.chunks = []
+    this.bufferedBytes = 0
+    this.input.destroy(error)
   }
 
   private readonly onInputError = (error: Error): void => {
@@ -193,7 +294,6 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
   }
 
   private readonly onInputEnd = (): void => {
-    this.buffer += this.decoder.end()
     this.drainLines()
     this.failPending(new Error('JSON-RPC input closed'))
   }
@@ -233,6 +333,10 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
       const result = await handler(method, params)
       this.write({ jsonrpc: '2.0', id, result })
     } catch (error) {
+      if (error instanceof JsonRpcResponseError && typeof error.code === 'number' && Number.isFinite(error.code)) {
+        this.writeError(id, error.code, error.message, error.data)
+        return
+      }
       this.writeError(id, -32603, error instanceof Error ? error.message : String(error))
     }
   }
@@ -253,8 +357,19 @@ export class JsonRpcLineTransport implements JsonRpcTransportPeer {
     pending.resolve(frame.result)
   }
 
-  private writeError(id: JsonRpcId, code: number, message: string): void {
-    this.write({ jsonrpc: '2.0', id, error: { code, message } })
+  private writeError(id: JsonRpcId, code: number, message: string, data?: unknown): void {
+    try {
+      this.write({
+        jsonrpc: '2.0',
+        id,
+        error: { code, message, ...(data === undefined ? {} : { data }) },
+      })
+    } catch {
+      // Unserializable data (circular references, BigInt) or data whose toJSON
+      // or getters fail only on the complete-frame serialization throws here;
+      // the fallback frame carries primitives alone and always reaches the peer.
+      this.write({ jsonrpc: '2.0', id, error: { code, message } })
+    }
   }
 
   private write(message: Record<string, unknown>): void {

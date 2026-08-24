@@ -117,14 +117,44 @@ const BOOTSTRAP_NAMES = new Set([
 const BOOTSTRAP_PREFIXES = ['TOH_', 'XDG_', 'DYLD_', 'BASH_FUNC_']
 
 /**
+ * Exact `TOH_*` names a discovered file may set despite the namespace denial:
+ * the web seam's provider selections. They choose among providers the mounted
+ * composition already registered and decide nothing about how this process
+ * launches, where instructions load from, or how the network is reached
+ * ([exception rationale](../../../../.agents/notes/implemented/architecture/2026-08-23-file-settable-provider-selections.md)).
+ */
+const FILE_SETTABLE_TOH_NAMES: ReadonlySet<string> = new Set([
+  'TOH_WEB_SEARCH_PROVIDER',
+  'TOH_WEB_FETCH_PROVIDER',
+])
+
+/**
+ * The spelling one discovered name is validated, materialized, and snapshotted
+ * under. Case variants of the two {@link FILE_SETTABLE_TOH_NAMES} selections
+ * fold onto their canonical `TOH_*` form — the only form WebRuntime resolves —
+ * so a lowercase `.env` entry resolves identically on case-sensitive platforms;
+ * every other name keeps its written form.
+ * @param name - the variable name as a discovered file wrote it.
+ * @returns the canonical name to store and look up.
+ */
+function canonicalEnvName(name: string): string {
+  const upper = name.toUpperCase()
+  return FILE_SETTABLE_TOH_NAMES.has(upper) ? upper : name
+}
+
+/**
  * Whether a variable may come only from the inherited process environment
- * because it changes process, runtime, VCS, or network bootstrap.
+ * because it changes process, runtime, VCS, or network bootstrap. The two
+ * {@link FILE_SETTABLE_TOH_NAMES} selections are the namespace's only
+ * file-settable names, matched case-insensitively.
  * @param name - the variable name.
  * @returns true when only the inherited environment may supply it.
  */
 function isBootstrapOnly(name: string): boolean {
   const upper = name.toUpperCase()
-  return BOOTSTRAP_NAMES.has(upper) || BOOTSTRAP_PREFIXES.some(prefix => upper.startsWith(prefix))
+  if (BOOTSTRAP_NAMES.has(upper)) return true
+  if (FILE_SETTABLE_TOH_NAMES.has(upper)) return false
+  return BOOTSTRAP_PREFIXES.some(prefix => upper.startsWith(prefix))
 }
 
 /**
@@ -150,8 +180,14 @@ function readEnvLayer(
     // ENOENT (no .env) is fine — rely on the ambient environment.
     return undefined
   }
-  // Parse once so validation and materialization use exactly the same entries.
-  const values = parseEnv(content) as Record<string, string>
+  // Parse once so validation and materialization use exactly the same entries,
+  // each under its canonical name (a case-variant duplicate of a provider
+  // selection therefore overwrites the spelling read before it, last-wins).
+  const parsed = parseEnv(content) as Record<string, string>
+  const values: Record<string, string> = {}
+  for (const [name, value] of Object.entries(parsed)) {
+    values[canonicalEnvName(name)] = value
+  }
   for (const name of Object.keys(values)) {
     if (!isBootstrapOnly(name)) continue
     throw new Error(
