@@ -8417,6 +8417,9 @@ importers:
       '@buckeyestudio/toh-invariants':
         specifier: workspace:^
         version: link:../../runtime-diagnostics/invariants
+      '@buckeyestudio/toh-launch-environment':
+        specifier: workspace:^
+        version: link:../../util/launch-environment
       '@buckeyestudio/toh-llm':
         specifier: workspace:^
         version: link:../../llm/llm
