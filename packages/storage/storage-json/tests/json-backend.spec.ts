@@ -381,9 +381,6 @@ describe('json backend specifics', () => {
     let releaseWrite!: () => void
     await setHoldOnce(new Promise<void>((resolveHold) => { releaseDeletion = resolveHold }))
     const deletion = unit.deleteRecord('t', 'k')
-    // The no-op delete resolves while the earlier delete is still pending:
-    // ordering metadata must keep the later write safe from its rollback.
-    await expect(unit.deleteRecord('t', 'k')).resolves.toBeUndefined()
     const write = unit.putRecord('t', 'k', { v: 'written' })
     await setHoldOnce(new Promise<void>((resolveHold) => { releaseWrite = resolveHold }))
     await rename(path, backup)
@@ -443,6 +440,53 @@ describe('json backend specifics', () => {
     await reopened.close()
   })
 
+  it('resolves an overlapping absent-key delete only after an earlier failed delete rolls back', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    await unit.putRecord('t', 'k', { v: 'committed' })
+    const path = join(root, 'shape.json')
+    const backup = join(root, 'shape.committed.json')
+    let releaseDeletion!: () => void
+    let releaseRollback!: () => void
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseDeletion = resolveHold }))
+    const deletion = unit.deleteRecord('t', 'k')
+    let noOpSettled = false
+    const noOp = unit.deleteRecord('t', 'k').finally(() => { noOpSettled = true })
+    // The second hold parks the rollback's replacement publish, so the
+    // restored record stays observable until after the failure settles.
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseRollback = resolveHold }))
+    // A directory at the publish target rejects atomic replacement on every host.
+    await rename(path, backup)
+    await mkdir(path)
+    releaseDeletion()
+    await expect(deletion).rejects.toThrow()
+    // The failed deletion rolled back by deferring its restore to the
+    // no-op delete's ticket: memory stays without the record and the
+    // no-op delete stays unresolved until it settles that queue.
+    expect(await unit.loadAll()).toEqual({
+      tables: { t: {} },
+      global: null,
+    })
+    expect(noOpSettled).toBe(false)
+    await rm(path, { recursive: true })
+    await rename(backup, path)
+    releaseRollback()
+    await expect(noOp).resolves.toBeUndefined()
+    await backend.close()
+    const onDisk = JSON.parse(await readFile(path, 'utf8')) as {
+      tables: Record<string, Record<string, unknown>>
+    }
+    expect(onDisk.tables['t']).toEqual({})
+    const reopened = new JsonStorageBackend(root)
+    const reopenedUnit = await reopened.kv.open(descriptor)
+    expect(await reopenedUnit.loadAll()).toEqual({
+      tables: { t: {} },
+      global: null,
+    })
+    await reopened.close()
+  })
+
   it('rolls stacked overlapping failures back to the last acknowledged value', async () => {
     const root = await freshRoot()
     const backend = new JsonStorageBackend(root)
@@ -466,6 +510,10 @@ describe('json backend specifics', () => {
     // it, so the drained medium holds only the last acknowledged value.
     await rm(path, { recursive: true })
     await rename(backup, path)
+    expect(await unit.loadAll()).toEqual({
+      tables: { t: { k: { v: 'committed' } } },
+      global: null,
+    })
     await backend.close()
     const onDisk = JSON.parse(await readFile(path, 'utf8')) as {
       tables: Record<string, Record<string, unknown>>

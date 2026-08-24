@@ -136,8 +136,27 @@ class JsonKvUnit implements KvUnit {
   async deleteRecord(table: string, key: string): Promise<void> {
     this.assertOpen()
     const records = this.records(table)
-    if (!records.has(key)) return
     const target = `${table}\u0000${key}`
+    if (!records.has(key)) {
+      if (!this.targetMutations.has(target)) return
+      // An overlapping mutation on the key may still roll a failed publish
+      // back to the last acknowledged value and hand its restore to the
+      // newest ticket: settle the queue first, then apply that restore —
+      // re-deleting the record when it comes back — so a resolved delete
+      // always outlives every earlier mutation's rollback. A mutation issued
+      // after this one owns the record's fate instead, so this delete
+      // resolves without touching it.
+      const ticket = this.beginMutation(target)
+      await this.drain()
+      const settled = this.targetMutations.get(target)
+      if (settled === undefined || settled.revision !== ticket) return
+      const deferred = settled.deferredRestore
+      this.targetMutations.delete(target)
+      if (deferred === undefined) return
+      restoreRecord(records, key)(deferred)
+      this.republishCurrentState()
+      if (!deferred.present) return
+    }
     const revision = this.beginMutation(target)
     const prior: PriorValue = { present: true, value: records.get(key) }
     records.delete(key)
