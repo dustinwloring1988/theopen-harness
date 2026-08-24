@@ -8,6 +8,7 @@
 
 import { Context, Service } from '@buckeyestudio/cordis'
 import z from '@buckeyestudio/schemastery'
+import { launchEnvironmentOf } from '@buckeyestudio/toh-launch-environment'
 import type {
   WebFetchProvider,
   WebFetchRequest,
@@ -49,8 +50,9 @@ interface Selection<P> {
 /**
  * Config for the web seam. `searchProvider` / `fetchProvider` pin which provider
  * wins for each capability; both are optional (a single registered usable
- * provider auto-selects). Operational overrides such as environment variables
- * must feed these same fields rather than introduce a hidden priority chain.
+ * provider auto-selects). Operational overrides resolve `$TOH_WEB_SEARCH_PROVIDER` /
+ * `$TOH_WEB_FETCH_PROVIDER` through the launch-environment snapshot into these same
+ * fields; explicit config outranks every environment layer.
  */
 export interface WebRuntimeConfig {
   /** Explicit search provider id. Omitted = auto-select when exactly one usable. */
@@ -73,9 +75,10 @@ export interface WebRuntimeConfig {
  */
 export class WebRuntime extends Service {
   /**
-   * Provider selection config. Operational env overrides feed the SAME fields:
-   * `$TOH_WEB_SEARCH_PROVIDER` / `$TOH_WEB_FETCH_PROVIDER` are equivalent to
-   * `searchProvider` / `fetchProvider` and are NOT a hidden priority chain.
+   * Provider selection config. `$TOH_WEB_SEARCH_PROVIDER` / `$TOH_WEB_FETCH_PROVIDER`
+   * feed the SAME fields through the launch-environment snapshot (project/user
+   * `.env` layered under `process.env`) and are equivalent to `searchProvider` /
+   * `fetchProvider`, NOT a hidden priority chain.
    */
   static Config: z<WebRuntimeConfig> = z.object({
     searchProvider: z.string(),
@@ -89,8 +92,9 @@ export class WebRuntime extends Service {
 
   constructor(ctx: Context, config: WebRuntimeConfig = {}) {
     super(ctx, 'web')
-    this.searchProviderId = config.searchProvider ?? process.env.TOH_WEB_SEARCH_PROVIDER
-    this.fetchProviderId = config.fetchProvider ?? process.env.TOH_WEB_FETCH_PROVIDER
+    const environment = launchEnvironmentOf(ctx)
+    this.searchProviderId = config.searchProvider ?? environment.get('TOH_WEB_SEARCH_PROVIDER')?.value
+    this.fetchProviderId = config.fetchProvider ?? environment.get('TOH_WEB_FETCH_PROVIDER')?.value
   }
 
   /**

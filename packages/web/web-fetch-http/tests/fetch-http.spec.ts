@@ -1,13 +1,20 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { AddressInfo } from 'node:net'
+import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib'
 import { Context } from '@buckeyestudio/cordis'
 import WebRuntime from '@buckeyestudio/toh-web'
 import { HttpFetchProvider, LOCAL_FETCH_PROVIDER_ID } from '@buckeyestudio/toh-web-fetch-http'
 import type { HttpFetchLimits } from '@buckeyestudio/toh-web-fetch-http'
 import * as fetchPlugin from '@buckeyestudio/toh-web-fetch-http'
+import { classifyBlockedRange, createPrivateNetworkPolicy, isLocalNetworkHostname } from '../src/private-network.ts'
+import type { HostResolver, PrivateNetworkPolicy, ResolvedAddress } from '../src/private-network.ts'
+import { pinnedLookup } from '../src/provider.ts'
 import { classifyContentType, decoderForCharset, isSameOrigin, parseCharset, validateFetchUrl } from '../src/policy.ts'
 
+// The loopback fixture servers below are the explicitly trusted composition:
+// every provider under test opts in, while dedicated suites prove the
+// shipped default blocks these same targets.
 const limits: HttpFetchLimits = {
   maxUrlLength: 2048,
   maxResponseBytes: 5_000_000,
@@ -15,6 +22,7 @@ const limits: HttpFetchLimits = {
   timeoutMs: 5_000,
   maxRedirects: 5,
   userAgent: 'test-agent/1.0',
+  allowPrivateNetworks: true,
 }
 
 type Handler = (req: IncomingMessage, res: ServerResponse) => void
@@ -22,10 +30,13 @@ type Handler = (req: IncomingMessage, res: ServerResponse) => void
 let server: Server
 let base: string
 let handler: Handler
+/** Requests answered by the fixture server in the current test (any suite may assert it). */
+let servedRequests = 0
 
 beforeEach(async () => {
   handler = (_req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('default') }
-  server = createServer((req, res) => { handler(req, res) })
+  servedRequests = 0
+  server = createServer((req, res) => { servedRequests++; handler(req, res) })
   await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve))
   const { port } = server.address() as AddressInfo
   base = `http://127.0.0.1:${port}`
@@ -36,8 +47,8 @@ afterEach(async () => {
   await new Promise<void>(resolve => server.close(() => { resolve() }))
 })
 
-function provider(overrides: Partial<HttpFetchLimits> = {}): HttpFetchProvider {
-  return new HttpFetchProvider({ ...limits, ...overrides })
+function provider(overrides: Partial<HttpFetchLimits> = {}, policy?: PrivateNetworkPolicy): HttpFetchProvider {
+  return new HttpFetchProvider({ ...limits, ...overrides }, policy)
 }
 
 describe('policy helpers', () => {
@@ -75,6 +86,248 @@ describe('policy helpers', () => {
     expect(decoderForCharset(undefined).encoding).toBe('utf-8')
     expect(decoderForCharset('iso-8859-1').encoding).toBe('windows-1252')
     expect(() => decoderForCharset('not-a-charset')).toThrow(expect.objectContaining({ code: 'WEB_UNSUPPORTED_CONTENT_TYPE' }))
+  })
+})
+
+describe('private-network classification', () => {
+  const blockedCases: Array<[address: string, range: string]> = [
+    // Loopback and unspecified.
+    ['127.0.0.1', 'loopback'],
+    ['127.255.255.254', 'loopback'],
+    ['0.0.0.0', 'unspecified'],
+    ['0.255.0.0', 'unspecified'],
+    // RFC 1918 private.
+    ['10.1.2.3', 'private'],
+    ['172.16.0.0', 'private'],
+    ['172.31.255.255', 'private'],
+    ['192.168.1.1', 'private'],
+    // Link-local, including the cloud-metadata endpoint.
+    ['169.254.169.254', 'link-local'],
+    // CGNAT shared address space (100.64/10).
+    ['100.64.0.0', 'shared-address-space'],
+    ['100.127.255.255', 'shared-address-space'],
+    // IETF protocol assignments (192.0.0/24) and deprecated 6to4 relay anycast
+    // (192.88.99/24): anycast services inside closed scopes, no public endpoint.
+    ['192.0.0.9', 'ietf-protocol-assignments'],
+    ['192.0.0.255', 'ietf-protocol-assignments'],
+    ['192.88.99.1', 'relay-anycast'],
+    // Benchmarking space (198.18/15) is routed only inside test networks.
+    ['198.18.0.1', 'benchmarking'],
+    ['198.19.255.255', 'benchmarking'],
+    // Multicast, reserved, and broadcast.
+    ['224.0.0.1', 'multicast'],
+    ['239.255.255.255', 'multicast'],
+    ['240.0.0.1', 'reserved'],
+    ['255.255.255.255', 'broadcast'],
+    // Documentation ranges are not public destinations either.
+    ['192.0.2.9', 'documentation'],
+    ['198.51.100.7', 'documentation'],
+    ['203.0.113.99', 'documentation'],
+    // IPv6 loopback, unspecified, ULA fc00::/7, link-local fe80::/10,
+    // deprecated site-local fec0::/10, multicast ff00::/8, documentation.
+    ['::1', 'loopback'],
+    ['::', 'unspecified'],
+    ['fc00::1', 'unique-local'],
+    ['fc00::', 'unique-local'],
+    ['fd12:3456:789a::1', 'unique-local'],
+    ['fe80::1', 'link-local'],
+    ['febf::ffff', 'link-local'],
+    ['fec0::1', 'deprecated-site-local'],
+    ['ff02::1', 'multicast'],
+    ['2001:db8::1', 'documentation'],
+    // IPv4-mapped IPv6 classifies by its embedded IPv4 destination.
+    ['::ffff:10.0.0.5', 'private'],
+    ['::ffff:127.0.0.1', 'loopback'],
+    ['::ffff:169.254.9.9', 'link-local'],
+    ['::ffff:198.18.0.1', 'benchmarking'],
+    // The deprecated IPv4-compatible form embeds the same way.
+    ['::10.0.0.5', 'private'],
+    ['::0.0.0.5', 'unspecified'],
+    // The NAT64 well-known prefix carries an embedded IPv4 destination too.
+    ['64:ff9b::10.0.0.5', 'private'],
+    ['64:ff9b::192.88.99.1', 'relay-anycast'],
+    // 6to4 (2002::/16) tunnels to its embedded IPv4 destination: a non-public
+    // embedded destination targets a closed scope.
+    ['2002:c0a8:101::', 'private'],
+    ['2002:7f00:1::', 'loopback'],
+    ['2002:c612:1::', 'benchmarking'],
+  ]
+  it.each(blockedCases)('classifies %s as %s', (address, range) => {
+    expect(classifyBlockedRange(address)).toBe(range)
+  })
+
+  const publicCases = [
+    // Boundaries just outside every blocked prefix.
+    '8.8.8.8',
+    '172.32.0.0',
+    '172.15.255.255',
+    '100.63.255.255',
+    '100.128.0.1',
+    '169.253.0.1',
+    '192.0.1.0',
+    '192.87.0.1',
+    '192.89.0.1',
+    '198.17.255.255',
+    '198.20.0.0',
+    '198.51.101.1',
+    '203.0.114.1',
+    '2606:4700:4700::1111',
+    // Uncompressed (no `::`) presentation parses the same as compressed.
+    '2001:4860:4860:0000:0000:0000:0000:8888',
+    // 6to4 with a public embedded destination stays public.
+    '2002:808:808::',
+    '::ffff:8.8.8.8',
+  ]
+  it.each(publicCases.map(address => [address] as const))('classifies %s as public', (address) => {
+    expect(classifyBlockedRange(address)).toBeUndefined()
+  })
+
+  it.each([
+    ['not-an-ip'],
+    ['1.2.3'],
+    ['1.2.3.4.5'],
+    ['256.1.1.1'],
+    ['01.02.03.04'],
+    ['::gggg::1'],
+    ['1:2:3:4:5:6:7:8:9'],
+    ['1::2::3'],
+  ])('fails closed on unrecognized input %s', (address) => {
+    expect(classifyBlockedRange(address)).toBe('unrecognized-address')
+  })
+})
+
+describe('local-network hostnames', () => {
+  it.each([
+    ['localhost'],
+    ['LOCALHOST'],
+    ['localhost.'],
+    ['sub.localhost'],
+    ['printer.local'],
+  ])('recognizes %s as a local-network name', (hostname) => {
+    expect(isLocalNetworkHostname(hostname)).toBe(true)
+  })
+
+  it.each([
+    ['example.com'],
+    ['local'],
+    ['notlocalhost'],
+    ['local.dev'],
+  ])('treats %s as a public name', (hostname) => {
+    expect(isLocalNetworkHostname(hostname)).toBe(false)
+  })
+})
+
+/** A resolver over a fixed hostname→records table; unknown names fail like ENOTFOUND. */
+function fakeResolver(records: Record<string, ResolvedAddress[]>): HostResolver {
+  return async (hostname) => {
+    const hit = records[hostname]
+    if (hit === undefined) throw Object.assign(new Error(`getaddrinfo ENOTFOUND ${hostname}`), { code: 'ENOTFOUND' })
+    return hit
+  }
+}
+
+describe('private-network policy', () => {
+  it('blocks a hostname resolving into a non-public range', async () => {
+    const policy = createPrivateNetworkPolicy({ allowPrivateNetworks: false, resolve: fakeResolver({ 'private.test': [{ address: '10.0.0.9', family: 4 }] }) })
+    await expect(policy.resolveValidated('private.test'))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED', message: expect.stringContaining('10.0.0.9') as string }))
+  })
+
+  it('blocks when any one of several resolved addresses is non-public', async () => {
+    const policy = createPrivateNetworkPolicy({
+      allowPrivateNetworks: false,
+      resolve: fakeResolver({ 'mixed.test': [{ address: '93.184.216.34', family: 4 }, { address: 'fd00::1', family: 6 }] }),
+    })
+    await expect(policy.resolveValidated('mixed.test'))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED' }))
+  })
+
+  it('passes validated addresses through in resolution order', async () => {
+    const records: ResolvedAddress[] = [{ address: '93.184.216.34', family: 4 }, { address: '2606:2800:220:1::1', family: 6 }]
+    const policy = createPrivateNetworkPolicy({ allowPrivateNetworks: false, resolve: fakeResolver({ 'public.test': records }) })
+    await expect(policy.resolveValidated('public.test')).resolves.toEqual(records)
+  })
+
+  it('permits non-public resolutions only under allowPrivateNetworks', async () => {
+    const records: ResolvedAddress[] = [{ address: '192.168.0.20', family: 4 }]
+    const allowing = createPrivateNetworkPolicy({ allowPrivateNetworks: true, resolve: fakeResolver({ 'private.test': records }) })
+    await expect(allowing.resolveValidated('private.test')).resolves.toEqual(records)
+  })
+
+  it('blocks benchmarking-space destinations by default and permits them when opted in', async () => {
+    const records: ResolvedAddress[] = [{ address: '198.18.0.1', family: 4 }]
+    const blocking = createPrivateNetworkPolicy({ allowPrivateNetworks: false, resolve: fakeResolver({ 'bench.test': records }) })
+    await expect(blocking.resolveValidated('bench.test'))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED', message: expect.stringContaining('198.18.0.1') as string }))
+    const allowing = createPrivateNetworkPolicy({ allowPrivateNetworks: true, resolve: fakeResolver({ 'bench.test': records }) })
+    await expect(allowing.resolveValidated('bench.test')).resolves.toEqual(records)
+  })
+
+  it('blocks CGNAT shared-address-space destinations by default and permits them when opted in', async () => {
+    const records: ResolvedAddress[] = [{ address: '100.64.1.1', family: 4 }]
+    const blocking = createPrivateNetworkPolicy({ allowPrivateNetworks: false, resolve: fakeResolver({ 'cgnat.test': records }) })
+    await expect(blocking.resolveValidated('cgnat.test'))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED', message: expect.stringContaining('100.64.1.1') as string }))
+    const allowing = createPrivateNetworkPolicy({ allowPrivateNetworks: true, resolve: fakeResolver({ 'cgnat.test': records }) })
+    await expect(allowing.resolveValidated('cgnat.test')).resolves.toEqual(records)
+  })
+
+  it('blocks local-network names without consulting the resolver', async () => {
+    let resolverCalls = 0
+    const policy = createPrivateNetworkPolicy({
+      allowPrivateNetworks: false,
+      resolve: async () => { resolverCalls++; return [] },
+    })
+    await expect(policy.resolveValidated('metadata.internal.local'))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED' }))
+    expect(resolverCalls).toBe(0)
+  })
+
+  it('skips resolution for literal-IP hostnames and classifies them directly', async () => {
+    let resolverCalls = 0
+    const policy = createPrivateNetworkPolicy({
+      allowPrivateNetworks: false,
+      resolve: async () => { resolverCalls++; return [] },
+    })
+    await expect(policy.resolveValidated('127.0.0.1'))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED' }))
+    await expect(policy.resolveValidated('8.8.8.8')).resolves.toEqual([{ address: '8.8.8.8', family: 4 }])
+    expect(resolverCalls).toBe(0)
+  })
+
+  it('classifies bracketed IPv6 literals directly and returns their unbracketed addresses', async () => {
+    // url.hostname keeps the brackets (`[::1]`), a form isIP rejects and the
+    // OS resolver cannot resolve; the policy must see through to the bare
+    // address for both classification and the dial list it hands back.
+    let resolverCalls = 0
+    const policy = createPrivateNetworkPolicy({
+      allowPrivateNetworks: false,
+      resolve: async () => { resolverCalls++; return [] },
+    })
+    await expect(policy.resolveValidated('[::1]'))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED' }))
+    await expect(policy.resolveValidated('[2606:4700:4700::1111]'))
+      .resolves.toEqual([{ address: '2606:4700:4700::1111', family: 6 }])
+    expect(resolverCalls).toBe(0)
+  })
+
+  it('fails closed when the resolver returns an unrecognizable record', async () => {
+    const policy = createPrivateNetworkPolicy({ allowPrivateNetworks: false, resolve: async () => [{ address: 'corrupt', family: 4 }] })
+    await expect(policy.resolveValidated('weird.test'))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED' }))
+  })
+
+  it('re-validates fresh resolution on each call — the property redirect hops rely on', async () => {
+    let calls = 0
+    const flipping: HostResolver = async () => {
+      calls++
+      return calls === 1 ? [{ address: '93.184.216.34', family: 4 }] : [{ address: '10.0.0.9', family: 4 }]
+    }
+    const policy = createPrivateNetworkPolicy({ allowPrivateNetworks: false, resolve: flipping })
+    await expect(policy.resolveValidated('rebinding.test')).resolves.toHaveLength(1)
+    await expect(policy.resolveValidated('rebinding.test'))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED', message: expect.stringContaining('10.0.0.9') as string }))
+    expect(calls).toBe(2)
   })
 })
 
@@ -162,10 +415,138 @@ describe('HttpFetchProvider caps', () => {
     expect(result.body.content).toBe('café')
   })
 
+  it('joins repeated headers and keeps array-valued headers readable', async () => {
+    // set-cookie always arrives as an array; the adapter must not choke on it.
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain', 'set-cookie': ['a=1', 'b=2'] })
+      res.end('ok')
+    }
+    const result = await provider().fetch({ url: base })
+    expect(result.statusCode).toBe(200)
+  })
+
   it('rejects an unsupported declared charset', async () => {
     handler = (_req, res) => { res.writeHead(200, { 'content-type': 'text/plain; charset=not-a-charset' }); res.end('x') }
     await expect(provider().fetch({ url: base }))
       .rejects.toThrow(expect.objectContaining({ code: 'WEB_UNSUPPORTED_CONTENT_TYPE' }))
+  })
+})
+
+describe('HttpFetchProvider content decoding', () => {
+  it('decodes a gzip body to its text', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'gzip' })
+      res.end(gzipSync(Buffer.from('hello compressed world')))
+    }
+    const result = await provider().fetch({ url: base })
+    expect(result.body).toEqual({ kind: 'text', content: 'hello compressed world' })
+    expect(result.truncated).toBe(false)
+  })
+
+  it('decodes a brotli body to its text', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'br' })
+      res.end(brotliCompressSync(Buffer.from('brotli text')))
+    }
+    const result = await provider().fetch({ url: base })
+    expect(result.body.content).toBe('brotli text')
+  })
+
+  it('decodes a zlib-wrapped deflate body to its text', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'deflate' })
+      res.end(deflateSync(Buffer.from('deflate text')))
+    }
+    const result = await provider().fetch({ url: base })
+    expect(result.body.content).toBe('deflate text')
+  })
+
+  it('treats the deprecated x-gzip label as gzip', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'x-gzip' })
+      res.end(gzipSync(Buffer.from('aliased')))
+    }
+    const result = await provider().fetch({ url: base })
+    expect(result.body.content).toBe('aliased')
+  })
+
+  it('passes an identity-declared body through unchanged', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'identity' })
+      res.end('as sent')
+    }
+    const result = await provider().fetch({ url: base })
+    expect(result.body.content).toBe('as sent')
+  })
+
+  it('treats a blank Content-Encoding header as no coding', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': '' })
+      res.end('blank')
+    }
+    const result = await provider().fetch({ url: base })
+    expect(result.body.content).toBe('blank')
+  })
+
+  it('decompresses BEFORE charset decoding', async () => {
+    // 0xE9 is "é" in ISO-8859-1; decoding the compressed bytes directly would
+    // never produce it.
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain; charset=iso-8859-1', 'content-encoding': 'gzip' })
+      res.end(gzipSync(Buffer.from([0x63, 0x61, 0x66, 0xE9])))
+    }
+    const result = await provider().fetch({ url: base })
+    expect(result.body.content).toBe('café')
+  })
+
+  it('applies the byte cap to DECOMPRESSED bytes', async () => {
+    // The wire transfer is far below the cap; only decompression exceeds it,
+    // so the cap must measure decoded bytes to bound memory.
+    handler = (_req, res) => {
+      const body = gzipSync(Buffer.from('abcdefghij'.repeat(100)))
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'gzip', 'content-length': String(body.byteLength) })
+      res.end(body)
+    }
+    const result = await provider({ maxResponseBytes: 50 }).fetch({ url: base })
+    expect(result.body.content).toBe('abcdefghij'.repeat(5))
+    expect(result.truncated).toBe(true)
+  })
+
+  it('rejects an unknown declared encoding with WEB_UNSUPPORTED_CONTENT_TYPE', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'zstd' })
+      res.end('unreadable')
+    }
+    await expect(provider().fetch({ url: base }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_UNSUPPORTED_CONTENT_TYPE' }))
+  })
+
+  it('reports a corrupt compressed body as WEB_PROVIDER_ERROR instead of returning garbage', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'gzip' })
+      res.end(Buffer.from('this is not gzip'))
+    }
+    await expect(provider().fetch({ url: base }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_ERROR' }))
+  })
+
+  it('still fast-rejects an over-cap Content-Length on a compressed response', async () => {
+    handler = (_req, res) => {
+      const body = gzipSync(Buffer.from('x'.repeat(999_999)))
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'gzip', 'content-length': String(body.byteLength) })
+      res.end(body)
+    }
+    await expect(provider({ maxResponseBytes: 10 }).fetch({ url: base }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_FETCH_TOO_LARGE' }))
+  })
+
+  it('decodes a compressed html body with its content type intact', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/html', 'content-encoding': 'br' })
+      res.end(brotliCompressSync(Buffer.from('<h1>hi</h1>')))
+    }
+    const result = await provider().fetch({ url: base })
+    expect(result.body).toEqual({ kind: 'html', content: '<h1>hi</h1>' })
   })
 })
 
@@ -327,43 +708,190 @@ describe('HttpFetchProvider invalid URLs and abort', () => {
 
 })
 
-describe('HttpFetchProvider body cancellation on error paths', () => {
-  /** A fake Response whose body.cancel is observable. */
-  type FakeInit = { status: number; headers: Record<string, string>; location?: string }
-  function fakeResponse(init: FakeInit): { response: Response; cancelled: () => boolean } {
-    let cancelled = false
-    const headers = new Headers(init.headers)
-    if (init.location !== undefined) headers.set('location', init.location)
-    const response = {
-      status: init.status,
-      headers,
-      body: { cancel: () => { cancelled = true; return Promise.resolve() } },
-    } as unknown as Response
-    return { response, cancelled: () => cancelled }
+describe('HttpFetchProvider private-network guard', () => {
+  it('blocks a loopback target under the shipped default (allowPrivateNetworks: false)', async () => {
+    await expect(provider({ allowPrivateNetworks: false }).fetch({ url: base }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED' }))
+    expect(servedRequests).toBe(0)
+  })
+
+  it('blocks a literal-IP loopback URL without any resolution', async () => {
+    await expect(provider({ allowPrivateNetworks: false }).fetch({ url: 'http://127.0.0.1:9/' }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED' }))
+    expect(servedRequests).toBe(0)
+  })
+
+  it('blocks a literal benchmarking-space URL under the shipped default', async () => {
+    await expect(provider({ allowPrivateNetworks: false }).fetch({ url: 'http://198.18.0.1:9/' }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED' }))
+    expect(servedRequests).toBe(0)
+  })
+
+  it('blocks a bracketed IPv6 loopback URL like every other private destination', async () => {
+    await expect(provider({ allowPrivateNetworks: false }).fetch({ url: 'http://[::1]:9/' }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED' }))
+    expect(servedRequests).toBe(0)
+  })
+
+  it('dials a bracketed IPv6 loopback URL once allowPrivateNetworks is opted into', async () => {
+    // The fixture listens on ::1 itself, so success proves the dial landed on
+    // the validated unbracketed address rather than failing on the bracketed
+    // hostname form.
+    const v6 = createServer((_req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('v6 loopback') })
+    await new Promise<void>(resolve => v6.listen(0, '::1', resolve))
+    try {
+      const { port } = v6.address() as AddressInfo
+      const result = await provider().fetch({ url: `http://[::1]:${port}/` })
+      expect(result.body.content).toBe('v6 loopback')
+    } finally {
+      await new Promise<void>(resolve => v6.close(() => { resolve() }))
+    }
+  })
+
+  it('blocks a localhost name through real OS resolution', async () => {
+    // `localhost` resolves to loopback through the OS resolver on every
+    // platform; no mocking — the shipped default must refuse it end to end.
+    const { port } = server.address() as AddressInfo
+    await expect(provider({ allowPrivateNetworks: false }).fetch({ url: `http://localhost:${port}/` }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED', message: expect.stringMatching(/localhost|loopback/) as string }))
+    expect(servedRequests).toBe(0)
+  })
+
+  it('permits the same target once allowPrivateNetworks is opted into', async () => {
+    const { port } = server.address() as AddressInfo
+    handler = (_req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('private ok') }
+    const result = await provider().fetch({ url: `http://localhost:${port}/` })
+    expect(result.body.content).toBe('private ok')
+    expect(servedRequests).toBe(1)
+  })
+
+  it('pins each dial to the validated addresses, not a second resolution', async () => {
+    // `pin.test` does not exist in OS DNS at all: the request can only reach
+    // the fixture server because the dial used exactly the address list the
+    // policy returned.
+    const { port } = server.address() as AddressInfo
+    handler = (_req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('pinned') }
+    const policy = createPrivateNetworkPolicy({ allowPrivateNetworks: true, resolve: fakeResolver({ 'pin.test': [{ address: '127.0.0.1', family: 4 }] }) })
+    const result = await provider({}, policy).fetch({ url: `http://pin.test:${port}/` })
+    expect(result.body.content).toBe('pinned')
+    expect(servedRequests).toBe(1)
+  })
+
+  it('re-resolves and re-validates on every same-origin redirect hop', async () => {
+    // Same-origin redirects keep the hostname string identical, so per-hop
+    // address validation is what re-checks the destination each hop: the
+    // resolver must be consulted once per request, twice for one redirect.
+    const { port } = server.address() as AddressInfo
+    let calls = 0
+    const counting: HostResolver = async (hostname) => {
+      calls++
+      return hostname === 'hop.test' ? [{ address: '127.0.0.1', family: 4 }] : []
+    }
+    handler = (req, res) => {
+      if (req.url === '/start') { res.writeHead(302, { location: '/end' }); res.end() }
+      else { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('arrived') }
+    }
+    const policy = createPrivateNetworkPolicy({ allowPrivateNetworks: true, resolve: counting })
+    const result = await provider({}, policy).fetch({ url: `http://hop.test:${port}/start` })
+    expect(result.body.content).toBe('arrived')
+    expect(calls).toBe(2)
+    expect(servedRequests).toBe(2)
+  })
+
+  it('blocks a redirect hop whose fresh resolution lands in a non-public range', async () => {
+    // The policy-level property behind the per-hop check: hop 1 validates
+    // cleanly; by hop 2 the same hostname resolves into a private range, and
+    // validation fails without dialing.
+    let calls = 0
+    const flipping: HostResolver = async (hostname) => {
+      calls++
+      return hostname === 'flip.test'
+        ? (calls === 1 ? [{ address: '127.0.0.1', family: 4 }] : [{ address: '10.0.0.9', family: 4 }])
+        : []
+    }
+    const allowing = createPrivateNetworkPolicy({ allowPrivateNetworks: true, resolve: flipping })
+    const validating = createPrivateNetworkPolicy({ allowPrivateNetworks: false, resolve: flipping })
+    // The chain cannot run under the validating policy (hop 1's loopback
+    // record is blocked there), so prove the flip is caught at the policy
+    // layer with the same resolver state the second hop would see.
+    await expect(allowing.resolveValidated('flip.test')).resolves.toHaveLength(1)
+    await expect(validating.resolveValidated('flip.test'))
+      .rejects.toThrow(expect.objectContaining({
+        code: 'WEB_PRIVATE_NETWORK_BLOCKED',
+        message: expect.stringContaining('10.0.0.9') as string,
+      }))
+    expect(calls).toBe(2)
+    expect(servedRequests).toBe(0)
+  })
+
+  it('surfaces resolver failure as WEB_PROVIDER_ERROR', async () => {
+    const { port } = server.address() as AddressInfo
+    const policy = createPrivateNetworkPolicy({
+      allowPrivateNetworks: true,
+      resolve: fakeResolver({}),
+    })
+    await expect(provider({}, policy).fetch({ url: `http://missing.test:${port}/` }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_ERROR' }))
+  })
+
+  it('applies the deadline while resolution itself is outstanding', async () => {
+    const { port } = server.address() as AddressInfo
+    const policy = createPrivateNetworkPolicy({
+      allowPrivateNetworks: true,
+      resolve: () => new Promise<ResolvedAddress[]>(() => { /* never settles */ }),
+    })
+    await expect(provider({ timeoutMs: 60 }, policy).fetch({ url: `http://slow-dns.test:${port}/` }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_FETCH_TIMEOUT' }))
+    expect(servedRequests).toBe(0)
+  })
+
+  it('classifies an abort arriving during resolution as WEB_ABORTED', async () => {
+    const { port } = server.address() as AddressInfo
+    const controller = new AbortController()
+    // A non-Error abort reason must still classify as WEB_ABORTED. The
+    // hostname form keeps the request on the resolution path (literal IPs
+    // never consult a resolver).
+    const policy = createPrivateNetworkPolicy({
+      allowPrivateNetworks: true,
+      resolve: () => new Promise<ResolvedAddress[]>(() => {
+        controller.abort('caller-cancelled')
+      }),
+    })
+    await expect(provider({}, policy).fetch({ url: `http://slow-resolve.test:${port}/` }, controller.signal))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_ABORTED' }))
+    expect(servedRequests).toBe(0)
+  })
+})
+
+describe('pinnedLookup', () => {
+  const addresses: ResolvedAddress[] = [{ address: '127.0.0.1', family: 4 }, { address: '::1', family: 6 }]
+
+  function callLookup(list: ResolvedAddress[], options: { all: boolean }): Promise<string | Array<{ address: string; family: number }>> {
+    return new Promise((resolveCall, rejectCall) => {
+      try {
+        pinnedLookup(list)('', options, (error, result) => {
+          if (error !== null) rejectCall(error)
+          else resolveCall(result)
+        })
+      } catch (error: unknown) {
+        rejectCall(error instanceof Error ? error : new Error(String(error)))
+      }
+    })
   }
 
-  it('cancels the body when a cross-origin redirect is blocked', async () => {
-    const { response, cancelled } = fakeResponse({ status: 302, headers: {}, location: 'https://elsewhere.test/' })
-    vi.stubGlobal('fetch', vi.fn(async () => response))
-    await expect(provider().fetch({ url: 'http://127.0.0.1:9/' }))
-      .rejects.toThrow(expect.objectContaining({ code: 'WEB_REDIRECT_BLOCKED' }))
-    expect(cancelled()).toBe(true)
+  it('returns only the first validated address in single-address form', async () => {
+    await expect(callLookup(addresses, { all: false })).resolves.toBe('127.0.0.1')
   })
 
-  it('cancels the body when an unsupported charset is rejected', async () => {
-    const { response, cancelled } = fakeResponse({ status: 200, headers: { 'content-type': 'text/plain; charset=not-a-charset' } })
-    vi.stubGlobal('fetch', vi.fn(async () => response))
-    await expect(provider().fetch({ url: 'http://127.0.0.1:9/' }))
-      .rejects.toThrow(expect.objectContaining({ code: 'WEB_UNSUPPORTED_CONTENT_TYPE' }))
-    expect(cancelled()).toBe(true)
+  it('returns every validated address in all-address form', async () => {
+    await expect(callLookup(addresses, { all: true })).resolves.toEqual([
+      { address: '127.0.0.1', family: 4 },
+      { address: '::1', family: 6 },
+    ])
   })
 
-  it('cancels the body when a redirect has no Location header', async () => {
-    const { response, cancelled } = fakeResponse({ status: 302, headers: {} })
-    vi.stubGlobal('fetch', vi.fn(async () => response))
-    await expect(provider().fetch({ url: 'http://127.0.0.1:9/' }))
-      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_ERROR' }))
-    expect(cancelled()).toBe(true)
+  it('throws when handed an empty validated list', async () => {
+    await expect(callLookup([], { all: true })).rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_ERROR' }))
   })
 })
 
@@ -371,12 +899,23 @@ describe('web-fetch-http plugin registration', () => {
   it('registers the provider into ctx.web (HMR-safe)', async () => {
     const ctx = new Context()
     await ctx.plugin(WebRuntime, { fetchProvider: LOCAL_FETCH_PROVIDER_ID })
-    const fiber = await ctx.plugin(fetchPlugin, {})
+    // The loopback fixture is the trusted-composition opt-in; the shipped
+    // default's blocking behavior has its own suite above.
+    const fiber = await ctx.plugin(fetchPlugin, { allowPrivateNetworks: true })
     await expect(ctx.web.fetch({ url: `${base}/` }))
       .resolves.toMatchObject({ statusCode: 200 })
     await fiber.dispose()
     await expect(ctx.web.fetch({ url: `${base}/` }))
       .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_CONFIGURED_MISSING' }))
+  })
+
+  it('blocks loopback under the default config, proving the shipped posture', async () => {
+    const ctx = new Context()
+    await ctx.plugin(WebRuntime, { fetchProvider: LOCAL_FETCH_PROVIDER_ID })
+    const fiber = await ctx.plugin(fetchPlugin, {})
+    await expect(ctx.web.fetch({ url: `${base}/` }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED' }))
+    await fiber.dispose()
   })
 
   it('has no default export (namespace plugin export shape)', () => {
@@ -421,7 +960,7 @@ describe('web-fetch-http plugin registration', () => {
   it('accepts maxRedirects: 0 (follow no redirects) as valid config', async () => {
     const ctx = new Context()
     await ctx.plugin(WebRuntime, { fetchProvider: LOCAL_FETCH_PROVIDER_ID })
-    const fiber = await ctx.plugin(fetchPlugin, { maxRedirects: 0 })
+    const fiber = await ctx.plugin(fetchPlugin, { maxRedirects: 0, allowPrivateNetworks: true })
     await expect(ctx.web.fetch({ url: `${base}/` }))
       .resolves.toMatchObject({ statusCode: 200 })
     await fiber.dispose()

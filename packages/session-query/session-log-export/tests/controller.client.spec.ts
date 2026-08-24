@@ -2,14 +2,32 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { SessionId } from '@buckeyestudio/toh-client-runtime/client'
 import {
-  downloadUrl, SessionLogDownloadController, sessionLogZipFilename,
+  downloadUrl, SessionLogDownloadController, sessionLogZipFilename, sessionMarkdownFilename,
 } from '../src/client/controller.ts'
 
 const SID = 'session-export-controller' as SessionId
 
+/** jsdom's URL lacks the blob statics; install recording doubles for the Markdown path. */
+function stubBlobUrls() {
+  const created: string[] = []
+  const revoked: string[] = []
+  let next = 0
+  const urlCtor = URL as unknown as Record<string, unknown>
+  urlCtor.createObjectURL = () => {
+    const url = `blob:mock-${String(next++)}`
+    created.push(url)
+    return url
+  }
+  urlCtor.revokeObjectURL = (url: string) => { revoked.push(url) }
+  return { created, revoked }
+}
+
 afterEach(() => {
   vi.restoreAllMocks()
   vi.unstubAllGlobals()
+  const urlCtor = URL as unknown as Record<string, unknown>
+  delete urlCtor.createObjectURL
+  delete urlCtor.revokeObjectURL
 })
 
 describe('SessionLogDownloadController', () => {
@@ -32,7 +50,36 @@ describe('SessionLogDownloadController', () => {
       'toh-session-session-export-controller.zip',
     )
     expect(controller.store.getSnapshot().bySession[SID]).toEqual({
-      open: true, status: 'success', error: null,
+      open: true, status: 'success', error: null, format: 'zip',
+    })
+  })
+
+  it('saves a Markdown transcript through a revoked object URL without touching the host endpoint', async () => {
+    const blobs = stubBlobUrls()
+    const fetcher = vi.fn()
+    const save = vi.fn()
+    const controller = new SessionLogDownloadController(fetcher, save)
+
+    await controller.download(SID, { format: 'markdown', document: '# Session transcript' })
+
+    expect(fetcher).not.toHaveBeenCalled()
+    expect(blobs.created).toHaveLength(1)
+    expect(blobs.revoked).toEqual(blobs.created)
+    expect(save).toHaveBeenCalledWith(blobs.created[0], 'toh-session-session-export-controller.md')
+    expect(controller.store.getSnapshot().bySession[SID]).toEqual({
+      open: true, status: 'success', error: null, format: 'markdown',
+    })
+  })
+
+  it('publishes Markdown save failures through the shared error state', async () => {
+    stubBlobUrls()
+    const save = vi.fn(() => { throw new Error('download manager refused') })
+    const controller = new SessionLogDownloadController(vi.fn(), save)
+
+    await controller.download(SID, { format: 'markdown', document: '# Session transcript' })
+
+    expect(controller.store.getSnapshot().bySession[SID]).toEqual({
+      open: true, status: 'error', error: 'download manager refused', format: 'markdown',
     })
   })
 
@@ -62,6 +109,7 @@ describe('SessionLogDownloadController', () => {
       open: true,
       status: 'error',
       error: 'Export failed: HTTP 500 backend unavailable',
+      format: 'zip',
     })
 
     const transport = new SessionLogDownloadController(async () => { throw 'offline' }, vi.fn())
@@ -133,10 +181,11 @@ describe('SessionLogDownloadController', () => {
 })
 
 describe('browser download helpers', () => {
-  it('sanitizes the archive filename and hands the URL to a download anchor', () => {
+  it('sanitizes the archive and transcript filenames and hands the URL to a download anchor', () => {
     const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => {})
 
     expect(sessionLogZipFilename('a/b' as SessionId)).toBe('toh-session-a_b.zip')
+    expect(sessionMarkdownFilename('a/b' as SessionId)).toBe('toh-session-a_b.md')
     downloadUrl('http://host/api/session.export?sessionId=a', 'archive.zip')
     expect(click).toHaveBeenCalledOnce()
     const anchor = click.mock.instances[0] as HTMLAnchorElement

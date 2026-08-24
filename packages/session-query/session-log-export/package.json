@@ -29,7 +29,8 @@
     "@buckeyestudio/toh-client-ui-commands": "workspace:^",
     "@buckeyestudio/toh-client-ui-conversation": "workspace:^",
     "@buckeyestudio/toh-commands": "workspace:^",
-    "@buckeyestudio/toh-invariants": "workspace:^"
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-llm": "workspace:^"
   },
   "devDependencies": {
     "@buckeyestudio/cordis": "workspace:^",
@@ -43,6 +44,7 @@
     "@buckeyestudio/toh-client-ui-slots": "workspace:^",
     "@buckeyestudio/toh-commands": "workspace:^",
     "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-llm": "workspace:^",
     "@buckeyestudio/toh-session": "workspace:^",
     "@types/react": "~19.2.3",
     "react": "^19.2.8"

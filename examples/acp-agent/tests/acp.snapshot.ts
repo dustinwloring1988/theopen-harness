@@ -60,6 +60,7 @@ const DEPTH_TWO_CONFIG = fileURLToPath(new URL('../depth-two.cordis.yml', import
 const CHILD_QUESTION_CONFIG = fileURLToPath(new URL('../child-question.cordis.yml', import.meta.url))
 const SESSION_SANDBOX_ROOT_CONFIG = fileURLToPath(new URL('../session-sandbox-root.cordis.yml', import.meta.url))
 const RETRY_CONFIG = fileURLToPath(new URL('../retry.cordis.yml', import.meta.url))
+const TURN_BUDGET_CONFIG = fileURLToPath(new URL('../turn-budget.cordis.yml', import.meta.url))
 const SESSION_TITLE_CONFIG = fileURLToPath(new URL('../session-title.cordis.yml', import.meta.url))
 const SUBAGENT_REPORT_CONFIG = fileURLToPath(
   new URL('../subagent-report.cordis.yml', import.meta.url),
@@ -85,6 +86,7 @@ const PRODUCT_SUBAGENT_RESULT_DIAGNOSTIC_CONFIG = fileURLToPath(
   new URL('../subagent-result-diagnostic.cordis.yml', import.meta.url),
 )
 const FS_DIFF_BOUND_CONFIG = fileURLToPath(new URL('./fs-diff-bound.cordis.yml', import.meta.url))
+const MCP_PROMPTS_CONFIG = fileURLToPath(new URL('./mcp-prompts.cordis.yml', import.meta.url))
 const SNAPSHOTS_DIR = join(dirname(fileURLToPath(import.meta.url)), 'snapshots')
 const PACKED_CHUNKS_SOURCE = 'hook-cc-pretool-deny'
 
@@ -347,6 +349,21 @@ const SCENARIOS: Scenario[] = [
     toolSchemasSource: 'text-turn',
     prepareWorkspace: prepareEditingCordisSkillWorkspace,
   },
+  // Authored keyless replay through a deterministic workspace-supplied MCP
+  // stdio server: the prompts bridge publishes the server's prompt into the
+  // session skill catalog, and the REAL skill tool loads its body over the
+  // wire through `prompts/get`. The overlay adds the MCP client (its bridged
+  // tool schemas change the composed request), so it pins its own class; its
+  // system prompt is unchanged from the shared composition.
+  {
+    name: 'mcp-prompts-skill-load',
+    hasModelTurn: true,
+    recorded: false,
+    pinsHeader: true,
+    headerClass: 'mcp-prompts',
+    systemPromptSource: 'product-subagent-codex',
+    configPath: MCP_PROMPTS_CONFIG,
+  },
   { name: 'lsp-definition', hasModelTurn: true, recorded: false, pinsHeader: true, headerClass: 'lsp', configPath: LSP_CONFIG },
   // web_fetch markdown rendering end to end: the overlay's loopback fixture
   // server supplies deterministic HTML (entities, a GFM table, nesting), the
@@ -426,6 +443,13 @@ const SCENARIOS: Scenario[] = [
   // the fixture scripts five identical todo_write calls and pins BOTH reminder
   // tiers (gentle at 3, detailed at 5) as injected user/message in transcript and log.
   { name: 'repeat-tool-reminder', hasModelTurn: true, recorded: false },
+  // Keyless, authored (like repeat-tool-reminder): the fixture scripts the same
+  // five todo_write calls plus wrap-up replies and pins the turn-budget policy's
+  // two-stage escalation — one advisory steer at the step-3 closing attempt, then
+  // a hook-cause cancel at the step-5 closing attempt — as injected user/message
+  // and an aborted/hook turn/end in transcript and log. Its overlay only mounts
+  // the opt-in policy with scenario limits, so it shares the default header class.
+  { name: 'turn-budget-policy', hasModelTurn: true, recorded: false, configPath: TURN_BUDGET_CONFIG },
   // Authored replay: a root AGENTS.md pins the session prefix, then a read in
   // nested/ discovers its narrower AGENTS.md as a raw, metadata-bearing
   // injected user/message. Both portable AGENTS.md fixtures are symlinks to a sibling

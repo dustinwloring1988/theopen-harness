@@ -346,7 +346,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/attachment/attachment-local/src/index.ts:51`](../packages/attachment/attachment-local/src/index.ts)
+Source: [`packages/attachment/attachment-local/src/index.ts:52`](../packages/attachment/attachment-local/src/index.ts)
 
 <a id="buckeyestudiotoh-bash-local"></a>
 
@@ -1403,6 +1403,8 @@ export interface StdioConfig {
   failOnStartupError: boolean
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
   reconnect?: ReconnectConfig
+  /** MCP Prompts bridged into the skill registry; omission leaves prompts unbridged. */
+  prompts?: PromptsConfig
 }
 
 /** Config for connecting to an MCP server over Streamable HTTP (SSE). */
@@ -1425,6 +1427,8 @@ export interface StreamableHttpConfig {
   failOnStartupError: boolean
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
   reconnect?: ReconnectConfig
+  /** MCP Prompts bridged into the skill registry; omission leaves prompts unbridged. */
+  prompts?: PromptsConfig
 }
 
 /** Automatic reconnect policy for one MCP server connection. */
@@ -1438,9 +1442,17 @@ export interface ReconnectConfig {
   /** Consecutive failed attempts per outage before giving up for good (default 10). */
   maxAttempts?: number
 }
+
+/** Automatic prompts-bridging policy for one MCP server connection. */
+export interface PromptsConfig {
+  /** Bridge this server's MCP Prompts into the skill registry (default false). */
+  enabled?: boolean
+  /** Advertise bridged prompts to model-facing skill catalogs (default true). */
+  modelInvocable?: boolean
+}
 ```
 
-Source: [`packages/mcp/mcp-client/src/index.ts:98`](../packages/mcp/mcp-client/src/index.ts)
+Source: [`packages/mcp/mcp-client/src/index.ts:110`](../packages/mcp/mcp-client/src/index.ts)
 
 <a id="buckeyestudiotoh-message-feedback"></a>
 
@@ -1746,7 +1758,7 @@ export interface Config {
 export type JsonlCompression = 'zstd' | 'none'
 ```
 
-Source: [`packages/session/session-persistence-jsonl/src/index.ts:60`](../packages/session/session-persistence-jsonl/src/index.ts)
+Source: [`packages/session/session-persistence-jsonl/src/index.ts:61`](../packages/session/session-persistence-jsonl/src/index.ts)
 
 <a id="buckeyestudiotoh-session-persistence-sqlite"></a>
 
@@ -1842,7 +1854,7 @@ export type JournalMode = 'wal' | 'delete' | 'truncate' | 'persist'
 
 Depends on: [`SessionQueryConfig`](../packages/session-query/session-query/src/index.ts)
 
-Source: [`packages/session-query/session-query-sqlite/src/index.ts:89`](../packages/session-query/session-query-sqlite/src/index.ts)
+Source: [`packages/session-query/session-query-sqlite/src/index.ts:94`](../packages/session-query/session-query-sqlite/src/index.ts)
 
 <a id="buckeyestudiotoh-session-reference"></a>
 
@@ -1930,35 +1942,37 @@ export interface Config {
 
 Source: [`packages/session/session-title/src/index.ts:79`](../packages/session/session-title/src/index.ts)
 
-<a id="buckeyestudiotoh-session-title-all-prompts-llm"></a>
+<a id="buckeyestudiotoh-session-title-llm"></a>
 
-## `@buckeyestudio/toh-session-title-all-prompts-llm`
-
-Requires: `sessionTitle` · `llm` · `sessions`
-
-```ts config-catalog
-/** Required LLM policy; this plugin adds no defaults. */
-export type Config = SessionTitleLlmConfig
-```
-
-Depends on: [`SessionTitleLlmConfig`](../packages/session/session-title-llm/src/index.ts)
-
-Source: [`packages/session/session-title-all-prompts-llm/src/index.ts:15`](../packages/session/session-title-all-prompts-llm/src/index.ts)
-
-<a id="buckeyestudiotoh-session-title-first-prompt-llm"></a>
-
-## `@buckeyestudio/toh-session-title-first-prompt-llm`
+## `@buckeyestudio/toh-session-title-llm`
 
 Requires: `sessionTitle` · `llm` · `sessions`
 
 ```ts config-catalog
-/** Required LLM policy; this plugin adds no defaults. */
-export type Config = SessionTitleLlmConfig
+/** Required deployment policy for the model-backed title plugin. */
+export interface SessionTitleLlmConfig {
+  /** Automatic generation cadence this registration owns. */
+  readonly cadence: SessionTitleAutomaticMode
+  /** Target word count for non-CJK titles. */
+  readonly targetWords: number
+  /** Target character count for Chinese, Japanese, or Korean titles. */
+  readonly targetCjkCharacters: number
+  /** Maximum UTF-8 bytes in the final JSON-framed user prompt. */
+  readonly maxInputBytes: number
+  /** Auxiliary generation output-token cap. */
+  readonly maxOutputTokens: number
+  /** End-to-end auxiliary request deadline in milliseconds. */
+  readonly timeoutMs: number
+  /** Optional explicit provider route; must be paired with `model`. */
+  readonly provider?: string
+  /** Optional explicit model id; must be paired with `provider`. */
+  readonly model?: string
+}
 ```
 
-Depends on: [`SessionTitleLlmConfig`](../packages/session/session-title-llm/src/index.ts)
+Depends on: [`SessionTitleAutomaticMode`](../packages/session/session-title/src/index.ts)
 
-Source: [`packages/session/session-title-first-prompt-llm/src/index.ts:15`](../packages/session/session-title-first-prompt-llm/src/index.ts)
+Source: [`packages/session/session-title-llm/src/index.ts:51`](../packages/session/session-title-llm/src/index.ts)
 
 <a id="buckeyestudiotoh-settings-file"></a>
 
@@ -2994,6 +3008,41 @@ export type ToolPresentationMode = 'native' | 'code' | 'both'
 
 Source: [`packages/core/tools/src/index.ts:654`](../packages/core/tools/src/index.ts)
 
+<a id="buckeyestudiotoh-turn-budget-policy"></a>
+
+## `@buckeyestudio/toh-turn-budget-policy`
+
+```ts config-catalog
+/**
+ * Plugin config, re-checked by the load-time validation in `apply`
+ * (misconfiguration fails loud). Every limit is opt-in: omitting all three
+ * throws at plugin load, never a silent unbounded policy.
+ */
+export interface Config {
+  /**
+   * Step count that hard-cancels the turn. A turn reaching this many logged
+   * `step/start` records at its stop boundary is cancelled with a `hook`
+   * cause and `keepInbox`.
+   */
+  maxStepsPerTurn?: number
+  /**
+   * Per-turn token spend that hard-cancels the turn, measured as the sum of
+   * every request's reported usage across the open turn's logged
+   * `assistant/message` records. Requests whose adapter reported no usage
+   * contribute nothing to the sum.
+   */
+  maxTurnTokens?: number
+  /**
+   * Step count that delivers one advisory wrap-up steer. Must stay strictly
+   * below `maxStepsPerTurn` when both are set, so the model's single bounded
+   * chance to land the turn precedes the hard cancel.
+   */
+  warnAtSteps?: number
+}
+```
+
+Source: [`packages/guard/turn-budget-policy/src/index.ts:25`](../packages/guard/turn-budget-policy/src/index.ts)
+
 <a id="buckeyestudiotoh-typert-loader"></a>
 
 ## `@buckeyestudio/toh-typert-loader`
@@ -3110,10 +3159,12 @@ export interface Config {
   maxRedirects?: number
   /** `User-Agent` header sent on every request. */
   userAgent?: string
+  /** Permit loopback, private, and otherwise non-public destinations. Defaults to false. */
+  allowPrivateNetworks?: boolean
 }
 ```
 
-Source: [`packages/web/web-fetch-http/src/index.ts:34`](../packages/web/web-fetch-http/src/index.ts)
+Source: [`packages/web/web-fetch-http/src/index.ts:36`](../packages/web/web-fetch-http/src/index.ts)
 
 <a id="buckeyestudiotoh-web-search-deepseek"></a>
 
@@ -3247,6 +3298,7 @@ These load from a `cordis.yml` entry with no `config:` block; they declare no co
 - `@buckeyestudio/toh-client-ui-layout` ([`packages/client/ui-layout/src/index.ts`](../packages/client/ui-layout/src/index.ts))
 - `@buckeyestudio/toh-client-ui-message-feedback` ([`packages/client/ui-message-feedback/src/index.ts`](../packages/client/ui-message-feedback/src/index.ts))
 - `@buckeyestudio/toh-client-ui-model-selection` ([`packages/client/ui-model-selection/src/index.ts`](../packages/client/ui-model-selection/src/index.ts))
+- `@buckeyestudio/toh-client-ui-notify` ([`packages/client/ui-notify/src/index.ts`](../packages/client/ui-notify/src/index.ts))
 - `@buckeyestudio/toh-client-ui-permission-presets` ([`packages/client/ui-permission-presets/src/index.ts`](../packages/client/ui-permission-presets/src/index.ts))
 - `@buckeyestudio/toh-client-ui-plan` ([`packages/client/ui-plan/src/index.ts`](../packages/client/ui-plan/src/index.ts))
 - `@buckeyestudio/toh-client-ui-reference` ([`packages/client/ui-reference/src/index.ts`](../packages/client/ui-reference/src/index.ts))
@@ -3347,7 +3399,6 @@ Imported as libraries by other packages; a `cordis.yml` cannot load them.
 - `@buckeyestudio/toh-sdk-jsonrpc-demo` ([`packages/examples/jsonrpc-demo/src/index.ts`](../packages/examples/jsonrpc-demo/src/index.ts))
 - `@buckeyestudio/toh-sdk-protocol` ([`packages/sdk/protocol/src/index.ts`](../packages/sdk/protocol/src/index.ts))
 - `@buckeyestudio/toh-session-telemetry` ([`packages/session/session-telemetry/src/index.ts`](../packages/session/session-telemetry/src/index.ts))
-- `@buckeyestudio/toh-session-title-llm` ([`packages/session/session-title-llm/src/index.ts`](../packages/session/session-title-llm/src/index.ts))
 - `@buckeyestudio/toh-subagent-in-process-driver` ([`packages/subagent/subagent-in-process-driver/src/index.ts`](../packages/subagent/subagent-in-process-driver/src/index.ts))
 - `@buckeyestudio/toh-timeout` ([`packages/util/timeout/src/index.ts`](../packages/util/timeout/src/index.ts))
 - `@buckeyestudio/toh-typert-generator` ([`packages/typert/generator/src/index.ts`](../packages/typert/generator/src/index.ts))

@@ -1,0 +1,28 @@
+# Keyless replay keeps the MCP composition intact and replaces only the model adapter.
+- id: mcp-fixture
+  name: '@buckeyestudio/toh-mcp-client'
+  config:
+    transport: stdio
+    serverName: fixture
+    command: !!js process.execPath
+    args: ['./mcp-fixture-server.mjs']
+    failOnStartupError: true
+    reconnect:
+      enabled: true
+      initialDelayMs: 5
+      maxDelayMs: 40
+      maxAttempts: 5
+    prompts:
+      enabled: true
+
+- id: base
+  name: '@buckeyestudio/cordis-plugin-include'
+  config:
+    path: ../cordis.yml
+    patches:
+      - id: llm-deepseek
+        name: '@buckeyestudio/toh-llm-deepseek'
+        disabled: true
+      - insert:
+          - id: llm-replay
+            name: '@buckeyestudio/toh-llm-replay'

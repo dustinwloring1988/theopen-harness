@@ -116,7 +116,7 @@ describe('workspace browser rows', () => {
     const onCreate = vi.fn()
     const group: GroupNode = {
       key: 'project', workspaceId: wid('project'), cwd: '/projects/project', createdAt: 0, label: 'Project',
-      sessionCount: 1, expanded: true, containsCurrent: true, sessions: [],
+      sessionCount: 1, expanded: true, containsCurrent: true, pendingCount: 0, sessions: [],
     }
     render(<ProjectRowItem group={group} onToggle={onToggle} onCreate={onCreate} t={t} />)
 
@@ -126,6 +126,31 @@ describe('workspace browser rows', () => {
     expect(onToggle).not.toHaveBeenCalled()
     fireEvent.click(screen.getByText('Project'))
     expect(onToggle).toHaveBeenCalledOnce()
+  })
+
+  it('lights a folded group header while its members wait on the user, and hands back to row dots when expanded', () => {
+    const base = {
+      key: 'project', workspaceId: wid('project'), cwd: '/projects/project', createdAt: 0,
+      label: 'Project', sessionCount: 2, containsCurrent: false, sessions: [],
+    }
+    const folded = render(
+      <ProjectRowItem
+        group={{ ...base, expanded: false, pendingCount: 2 }}
+        onToggle={vi.fn()} onCreate={vi.fn()} t={t}
+      />,
+    )
+    const header = screen.getByRole('treeitem')
+    expect(header.querySelector('[data-state="warning"]')).not.toBeNull()
+    expect(screen.getByText('2 个会话等待处理')).toBeTruthy()
+
+    folded.rerender(
+      <ProjectRowItem
+        group={{ ...base, expanded: true, pendingCount: 2 }}
+        onToggle={vi.fn()} onCreate={vi.fn()} t={t}
+      />,
+    )
+    expect(screen.getByRole('treeitem').querySelector('[data-state="warning"]')).toBeNull()
+    expect(screen.queryByText('2 个会话等待处理')).toBeNull()
   })
 
   it('renders and opens a selected running Session row', () => {
@@ -255,7 +280,7 @@ describe('workspace browser rows', () => {
     const onToggle = vi.fn()
     const group: GroupNode = {
       key: 'project', workspaceId: wid('project'), cwd: '/projects/project', createdAt: 0, label: 'Project',
-      sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
+      sessionCount: 0, expanded: false, containsCurrent: false, pendingCount: 0, sessions: [],
     }
     render(<ProjectRowItem
       group={group} onToggle={onToggle} onCreate={vi.fn()}
@@ -286,7 +311,7 @@ describe('workspace browser rows', () => {
     try {
       const group: GroupNode = {
         key: 'project', workspaceId: wid('project'), cwd: '/projects/project', createdAt: 0, label: 'Project',
-        sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
+        sessionCount: 0, expanded: false, containsCurrent: false, pendingCount: 0, sessions: [],
       }
       render(<ProjectRowItem group={group} onToggle={vi.fn()} onCreate={vi.fn()} t={t} />)
       fireEvent.pointerEnter(screen.getByRole('treeitem').parentElement as HTMLElement)
@@ -311,7 +336,7 @@ describe('workspace browser rows', () => {
     try {
       const group: GroupNode = {
         key: 'project', workspaceId: wid('project'), cwd: '/home/u/Documents/project', createdAt: 0, label: 'Project',
-        sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
+        sessionCount: 0, expanded: false, containsCurrent: false, pendingCount: 0, sessions: [],
       }
       render(<ProjectRowItem group={group} home="/home/u" onToggle={vi.fn()} onCreate={vi.fn()} t={t} />)
       fireEvent.pointerEnter(screen.getByRole('treeitem').parentElement as HTMLElement)
@@ -331,7 +356,7 @@ describe('workspace browser rows', () => {
     try {
       const group: GroupNode = {
         key: 'project', workspaceId: wid('project'), cwd: undefined, createdAt: 0, label: 'Project',
-        sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
+        sessionCount: 0, expanded: false, containsCurrent: false, pendingCount: 0, sessions: [],
       }
       render(<ProjectRowItem group={group} home="/home/u" onToggle={vi.fn()} onCreate={vi.fn()} t={t} />)
       fireEvent.pointerEnter(screen.getByRole('treeitem').parentElement as HTMLElement)
@@ -349,7 +374,7 @@ describe('workspace browser rows', () => {
     try {
       const group: GroupNode = {
         key: 'project', workspaceId: wid('project'), cwd: 'C:\\Users\\u\\project', createdAt: 0, label: 'Project',
-        sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
+        sessionCount: 0, expanded: false, containsCurrent: false, pendingCount: 0, sessions: [],
       }
       render(<ProjectRowItem group={group} home="C:\\Users\\u" onToggle={vi.fn()} onCreate={vi.fn()} t={t} />)
       fireEvent.pointerEnter(screen.getByRole('treeitem').parentElement as HTMLElement)
@@ -363,7 +388,7 @@ describe('workspace browser rows', () => {
   it('ungrouped bucket renders no workspace menu', () => {
     const group: GroupNode = {
       key: '', workspaceId: undefined, cwd: undefined, createdAt: undefined, label: 'Ungrouped',
-      sessionCount: 0, expanded: false, containsCurrent: false, sessions: [],
+      sessionCount: 0, expanded: false, containsCurrent: false, pendingCount: 0, sessions: [],
     }
     render(<ProjectRowItem group={group} onToggle={vi.fn()} onCreate={vi.fn()} t={t} />)
     expect(screen.queryByRole('button', { name: /工作区/ })).toBeNull()

@@ -43,3 +43,11 @@
   - button "Queue":
     - text: Queue
     - img
+  - text: Desktop notifications Raise an OS notification when a turn finishes or an agent is blocked on approval; silent while the tab is focused.
+  - button "Ask on first event":
+    - text: Ask on first event
+    - img
+  - text: Quiet hours No OS notifications inside this window (optional). From
+  - textbox "From (Quiet hours)"
+  - text: To
+  - textbox "To (Quiet hours)"

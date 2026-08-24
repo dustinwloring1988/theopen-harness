@@ -11,14 +11,18 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
  * each body in memory, so this cap is also the per-request resident bound. */
 export const DEFAULT_MAX_REQUEST_BODY_BYTES = 300 * 1024 * 1024
 
-/** Transport-independent request handler consumed by the Host HTTP bridge. */
+/**
+ * Transport-independent request handler consumed by the Host HTTP bridge; the
+ * bridge threads each request's `req.socket.remoteAddress` alongside it.
+ */
 export interface FetchHandler {
   /**
    * Handle one standard Fetch request.
    * @param request - request produced by the active transport bridge.
+   * @param remoteAddress - socket peer address of the accepted connection; optional for transport-free callers (trust gates fail closed).
    * @returns complete or streaming Fetch response.
    */
-  fetch(request: Request): Promise<Response>
+  fetch(request: Request, remoteAddress?: string): Promise<Response>
 }
 
 /**
@@ -72,7 +76,7 @@ export async function bridge(
     ...chunks.length > 0 ? { body: Buffer.concat(chunks) } : {},
     signal: abort.signal,
   })
-  const response = await apiHandler.fetch(request)
+  const response = await apiHandler.fetch(request, req.socket.remoteAddress)
   res.writeHead(response.status, Object.fromEntries(response.headers.entries()))
   if (response.body === null) {
     res.end()

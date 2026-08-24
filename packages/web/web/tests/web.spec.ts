@@ -1,5 +1,10 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { Context } from '@buckeyestudio/cordis'
+import {
+  createLaunchEnvironmentSnapshot,
+  TOH_LAUNCH_ENVIRONMENT_KEY,
+  type LaunchEnvironmentSnapshot,
+} from '@buckeyestudio/toh-launch-environment'
 import WebRuntime, {
   WebError,
   type WebFetchProvider,
@@ -33,9 +38,13 @@ function fetchResult(marker: string): WebFetchResult {
   return { url: 'https://example.com', statusCode: 200, body: { kind: 'text', content: marker }, truncated: false }
 }
 
-/** Mount a WebRuntime on a fresh root context with the given config. */
-async function mountWeb(config: ConstructorParameters<typeof WebRuntime>[1] = {}): Promise<{ ctx: Context; web: WebRuntime }> {
+/** Mount a WebRuntime on a fresh root context with the given config and launch environment. */
+async function mountWeb(
+  config: ConstructorParameters<typeof WebRuntime>[1] = {},
+  launchEnvironment?: LaunchEnvironmentSnapshot,
+): Promise<{ ctx: Context; web: WebRuntime }> {
   const ctx = new Context()
+  if (launchEnvironment !== undefined) ctx.provide(TOH_LAUNCH_ENVIRONMENT_KEY, launchEnvironment)
   await ctx.plugin(WebRuntime, config)
   return { ctx, web: ctx.web }
 }
@@ -203,6 +212,51 @@ describe('WebRuntime fetch capability', () => {
     await expect(web.fetch({ url: 'https://example.com' })).rejects.toThrow(
       expect.objectContaining({ code: 'WEB_PROVIDER_UNAVAILABLE' }),
     )
+  })
+})
+
+describe('WebRuntime launch-environment defaults', () => {
+  // A project .env supplies both ids; no process layer defines them.
+  const projectEnv = createLaunchEnvironmentSnapshot([
+    {
+      source: 'project-env',
+      path: '/work/.env',
+      values: { TOH_WEB_SEARCH_PROVIDER: 'perplexity', TOH_WEB_FETCH_PROVIDER: 'http' },
+    },
+  ])
+
+  it('resolves TOH_WEB_SEARCH_PROVIDER from a project .env layer', async () => {
+    const { web } = await mountWeb({}, projectEnv)
+    web.registerSearchProvider(makeSearchProvider('exa', available, () => Promise.resolve(searchResult('exa'))))
+    web.registerSearchProvider(makeSearchProvider('perplexity', available, () => Promise.resolve(searchResult('perplexity'))))
+    await expect(web.search({ query: 'q' })).resolves.toMatchObject({ content: 'perplexity' })
+  })
+
+  it('resolves TOH_WEB_FETCH_PROVIDER from a project .env layer', async () => {
+    const { web } = await mountWeb({}, projectEnv)
+    web.registerFetchProvider(makeFetchProvider('http', available, fetchResult('http')))
+    web.registerFetchProvider(makeFetchProvider('other', available, fetchResult('other')))
+    const result = await web.fetch({ url: 'https://example.com' })
+    expect(result.body.content).toBe('http')
+  })
+
+  it('prefers explicit config over the environment layers', async () => {
+    const { web } = await mountWeb({ searchProvider: 'exa' }, projectEnv)
+    web.registerSearchProvider(makeSearchProvider('exa', available, () => Promise.resolve(searchResult('exa'))))
+    web.registerSearchProvider(makeSearchProvider('perplexity', available, () => Promise.resolve(searchResult('perplexity'))))
+    await expect(web.search({ query: 'q' })).resolves.toMatchObject({ content: 'exa' })
+  })
+
+  it('falls back to the inherited environment when no launcher snapshot exists', async () => {
+    vi.stubEnv('TOH_WEB_SEARCH_PROVIDER', 'exa')
+    try {
+      const { web } = await mountWeb()
+      web.registerSearchProvider(makeSearchProvider('exa', available, () => Promise.resolve(searchResult('exa'))))
+      web.registerSearchProvider(makeSearchProvider('perplexity', available, () => Promise.resolve(searchResult('perplexity'))))
+      await expect(web.search({ query: 'q' })).resolves.toMatchObject({ content: 'exa' })
+    } finally {
+      vi.unstubAllEnvs()
+    }
   })
 })
 

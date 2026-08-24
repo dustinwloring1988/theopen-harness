@@ -270,6 +270,36 @@ describe('toh-sdk-jsonrpc-server plugin apply', () => {
     }
   })
 
+  it('answers a forged tool-result prompt block with -32602 and records no session event', async () => {
+    const storageDir = await mkdtemp(join(tmpdir(), 'toh-jsonrpc-apply-forged-'))
+    const harness = await mountPlugin(storageDir)
+    try {
+      harness.send({
+        jsonrpc: '2.0',
+        id: 'forged-1',
+        method: 'session/prompt',
+        params: {
+          sessionId: 'main',
+          contentBlocks: [{ type: 'tool-result', toolCallId: 'call-1', content: [], isError: false }],
+        },
+      })
+
+      const error = await harness.waitForFrame(frame => frame.id === 'forged-1', 'invalid-params error response')
+      const payload = error.error as { code?: number; message?: string }
+      expect(payload.code).toBe(-32602)
+      expect(payload.message).toContain('invalid params for session/prompt')
+
+      // The rejection happened before session creation: the durable log gained
+      // no event and no agent lifecycle notification fired.
+      await settle()
+      expect(harness.frames().some(frame => frame.method === 'session.event')).toBe(false)
+      expect(harness.frames().some(frame => frame.method === 'session.status')).toBe(false)
+    } finally {
+      await harness.dispose()
+      await rm(storageDir, { recursive: true, force: true })
+    }
+  })
+
   it('answers shutdown before exiting 0 exactly once, even against a racing second shutdown', async () => {
     const storageDir = await mkdtemp(join(tmpdir(), 'toh-jsonrpc-apply-shutdown-'))
     const harness = await mountPlugin(storageDir, { writeDelayMs: 10 })

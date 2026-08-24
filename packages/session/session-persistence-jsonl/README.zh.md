@@ -41,6 +41,7 @@ JSONL 持久会话存储后端：`SessionPersistence` 的一个具体实现（`t
 
 - **绑定存储身份。** 查找要求可读项目目录中只有一个匹配会话目录，然后验证 header id 等于请求 id，且 header id/cwd 派生所选 transcript 路径。列表应用同一路径检查，并拒绝重复 id。身份失败发生在修复或 append 前。
 - **延迟实体化。**`create(meta)` 不写入；第一次 `append` 将编码 header 和第一批写入临时文件并执行 `fsync`。POSIX 通过硬链接无覆盖发布，并对父目录 `fsync`。Windows 通过 `MoveFileExW(..., MOVEFILE_WRITE_THROUGH)` 无覆盖发布，并通过同一 write-through pattern 创建缺失目录。已创建但从未 append 的会话不留下磁盘内容，不在 `list` 中。
+- **启动时孤儿临时文件清扫。** 后端挂载时会删除根目录下每个会话目录内修改时间早于本进程启动的所有 `*.tmp` 文件：发布从不指向这些名称，因此陈旧的临时文件证明其写入进程在临时写入与发布之间崩溃，而较新的文件可能属于共享根目录的存活进程，将留待下次挂载。非匹配文件和日志不受影响；清扫是尽力而为的——成功的清扫以 debug 记录数量，枚举失败以 debug 记录错误且绝不拒绝挂载，单文件失败则跳过留待下次启动重试。
 - **仅追加。** 已 flush 事件绝不重写。后续原始批次 append 行；压缩批次 append 一个 frame。两条路径都执行 `fsync`，并在捕获到写入或同步失败时回滚到之前字节长度。
 - **崩溃恢复：保留有效尾部工作。**`load` 验证每个完整压缩 frame，并扫描解压 JSONL。最后 frame 结构不完整时，读取器保留其完整解码记录，从 frame 开头截断，并使用共享[持久化约定](../../../.agents/notes/implemented/architecture/2026-06-14-session-persistence.zh.md) 需要的合成工具、步骤和轮次 closer 重新编码这些记录。原始 mode 从第一个不完整行截断。已经存在却没有完整 header frame 的压缩工件、完整 frame 中的 checksum/解压失败，或位于最后已提交的 `turn/end` 处或之前的缺陷都属于损坏，会被拒绝。
 - **非修改式检查。**`inspect()` 返回不可变、平衡的逻辑视图，并可在内存中合成恢复 closer，但不会截断不完整尾部或更改轻量修订。
