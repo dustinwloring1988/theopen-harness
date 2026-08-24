@@ -3,7 +3,9 @@
  * WHATWG Request->Response function. Two-level parse: full form (type/rpcId/method +
  * path==method) -> payload dispatched per method. HTTP status expresses only the carrier
  * (404 unknown path / 415 non-JSON media type / 400 non-JSON body / 500 handler crash);
- * business errors are always 200 + ServerResponse.
+ * business errors are always 200 + ServerResponse. A handler-crash 500 answers the fixed
+ * body `handler failure (id <uuid>)` — a generated correlation id, never the thrown error
+ * text; the full error is logged server-side under that id.
  */
 
 import { randomUUID } from 'node:crypto'

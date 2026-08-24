@@ -1,4 +1,7 @@
-/** Host registry and HTTP adapter for generic Connection RPC channels. */
+/**
+ * Host registry and HTTP adapter for generic Connection RPC channels; a handler-crash 500
+ * answers `handler failure (id <uuid>)` with the full error logged server-side under that id.
+ */
 
 import { randomUUID } from 'node:crypto'
 import { Context, Service } from '@buckeyestudio/cordis'
