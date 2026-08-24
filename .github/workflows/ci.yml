@@ -33,7 +33,10 @@ jobs:
   # vm-backup pool and re-running the failed jobs is the entire switch —
   # see .agents/notes/implemented/process/2026-07-26-ci-failover-runbook.md. The
   # in-house pool's readiness is re-proven on every master push by the
-  # serial-linux-selfhosted standby lane in ci-master.yml. The Windows failover
+  # serial-linux-selfhosted standby lane in ci-master.yml. Dependabot and fork
+  # pull requests are excluded from the self-hosted pools (untrusted code must
+  # not reach the persistent VMs and their durable caches) — they keep
+  # resolving the hosted pool while the switch is on. The Windows failover
   # switch is the separate TOH_CI_FAILOVER_WINDOWS variable on the windows-native
   # job below.
   node-24:
@@ -41,6 +44,7 @@ jobs:
     runs-on: >-
       ${{ vars.TOH_CI_FAILOVER_LINUX == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
+          && github.event.pull_request.head.repo.fork == false
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
           || 'toh-ubuntu-24-04-16core' }}
     name: node 24 / static
@@ -73,7 +77,7 @@ jobs:
       # compression and upload on the paid latency-critical path. Skipped
       # under failover — see the coverage lane's identical rationale.
       - uses: actions/cache/restore@v6
-        if: vars.TOH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]'
+        if: vars.TOH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.head.repo.fork
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
           key: ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
@@ -93,6 +97,7 @@ jobs:
     runs-on: >-
       ${{ vars.TOH_CI_FAILOVER_LINUX == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
+          && github.event.pull_request.head.repo.fork == false
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
           || 'toh-ubuntu-24-04-16core' }}
     name: node 24 / coverage
@@ -127,7 +132,7 @@ jobs:
       # already serves warm installs, while restoring the hosted archive
       # would spend ~52 s pulling ~180 MB into that populated store.
       - uses: actions/cache/restore@v6
-        if: vars.TOH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]'
+        if: vars.TOH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.head.repo.fork
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
           key: ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
@@ -155,6 +160,7 @@ jobs:
     runs-on: >-
       ${{ vars.TOH_CI_FAILOVER_LINUX == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
+          && github.event.pull_request.head.repo.fork == false
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
           || 'toh-ubuntu-24-04-16core' }}
     name: node 24 / snapshots and artifacts
@@ -165,7 +171,7 @@ jobs:
       TOH_PUBLINT_CONCURRENCY: '8'
       TOH_WEB_SNAPSHOT_WORKERS: '6'
       # Failover halves snapshot concurrency for the shared 64-core VM.
-      TOH_SNAPSHOT_MAX_CONCURRENCY: ${{ vars.TOH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && '12' || '32' }}
+      TOH_SNAPSHOT_MAX_CONCURRENCY: ${{ vars.TOH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.head.repo.fork == false && '12' || '32' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -193,7 +199,7 @@ jobs:
       # entry until it evicts, after which the store is cold. Skipped under failover
       # — the self-hosted VM's persistent store is already warm.
       - uses: actions/cache/restore@v6
-        if: vars.TOH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]'
+        if: vars.TOH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.head.repo.fork
         with:
           path: ${{ steps.pnpm-store.outputs.path }}
           key: ${{ runner.os }}-node-${{ env.PRIMARY_NODE_VERSION }}-pnpm-${{ hashFiles('pnpm-lock.yaml') }}
@@ -202,7 +208,7 @@ jobs:
 
       # Skipped under failover: the VM's persistent browser cache is already warm.
       - uses: actions/cache/restore@v6
-        if: vars.TOH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]'
+        if: vars.TOH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.head.repo.fork
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-playwright-${{ hashFiles('pnpm-lock.yaml') }}
@@ -223,13 +229,13 @@ jobs:
           exit "$sandbox_status"
 
       - name: Install Playwright Chromium and hosted dependencies
-        if: vars.TOH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]'
+        if: vars.TOH_CI_FAILOVER_LINUX != 'selfhosted' || github.event.pull_request.user.login == 'dependabot[bot]' || github.event.pull_request.head.repo.fork
         run: pnpm --filter @buckeyestudio/toh-web-frontend exec playwright install --with-deps chromium
 
       # The persistent VM image owns Playwright's Linux system packages; do
       # not mutate the shared host with apt on every failover run.
       - name: Install Playwright Chromium on the failover VM
-        if: vars.TOH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]'
+        if: vars.TOH_CI_FAILOVER_LINUX == 'selfhosted' && github.event.pull_request.user.login != 'dependabot[bot]' && github.event.pull_request.head.repo.fork == false
         run: pnpm --filter @buckeyestudio/toh-web-frontend exec playwright install chromium
 
       - name: Run compatibility, snapshot, and artifact gates
@@ -401,8 +407,8 @@ jobs:
   # all-checks-passed.needs, so it never delays or changes that required
   # verdict. Under normal operation it runs on the hosted larger runner; under
   # Windows failover (TOH_CI_FAILOVER_WINDOWS=selfhosted) it retargets onto the
-  # in-house self-hosted Windows pool. Dependabot PRs are excluded from the
-  # self-hosted pool and stay queued for the hosted runner — see the failover
+  # in-house self-hosted Windows pool. Dependabot and fork PRs are excluded from
+  # the self-hosted pool and stay queued for the hosted runner — see the failover
   # runbook. This Windows switch is independent of the Linux
   # TOH_CI_FAILOVER_LINUX variable that retargets the three required Linux jobs
   # and the all-checks-passed verdict above.
@@ -411,6 +417,7 @@ jobs:
     runs-on: >-
       ${{ vars.TOH_CI_FAILOVER_WINDOWS == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
+          && github.event.pull_request.head.repo.fork == false
           && fromJSON('["self-hosted", "toh-win-ci", "windows"]')
           || 'toh-windows-2025-16core' }}
     name: windows node 24 / native complete
@@ -476,6 +483,7 @@ jobs:
     runs-on: >-
       ${{ vars.TOH_CI_FAILOVER_LINUX == 'selfhosted'
           && github.event.pull_request.user.login != 'dependabot[bot]'
+          && github.event.pull_request.head.repo.fork == false
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
           || 'ubuntu-latest' }}
     needs: [node-24, node-24-coverage, node-24-consumers, node-compat, python-sdk, python-runtime, windows]
