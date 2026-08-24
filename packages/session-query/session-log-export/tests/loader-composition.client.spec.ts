@@ -58,11 +58,16 @@ describe('session-log-download real Loader composition', () => {
       .create(SessionId('loader-session-export'), { meta: { createdAt: 1 } })
     const agent = { session, status: 'idle', options: {} } as unknown as Agent
     expect(context.commands.list(agent)).toContainEqual({
-      name: 'export', description: 'Download this Session log as a ZIP archive',
+      name: 'export',
+      description: 'Download this Session log as a ZIP archive, or "md" for Markdown',
     })
     const execution = await context.commands.execute(agent, '/export', [], new AbortController().signal)
     expect(execution?.result).toEqual({ kind: 'success', text: 'Session log download requested.' })
-    expect(session.events.map(event => event.type)).toEqual(['command/run', 'command/done'])
+    const markdown = await context.commands.execute(agent, '/export md', [], new AbortController().signal)
+    expect(markdown?.result).toEqual({ kind: 'success', text: 'Markdown transcript download requested.' })
+    expect(session.events.map(event => event.type)).toEqual([
+      'command/run', 'command/done', 'command/run', 'command/done',
+    ])
     expect(session.deriveMessages()).toEqual([])
   })
 })

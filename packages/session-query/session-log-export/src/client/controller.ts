@@ -1,15 +1,24 @@
-/** Browser download state shared by the Session Header button and `/export`. */
+/** Browser download state shared by the Session Header buttons and `/export`. */
 
 import { createSnapshotStore, type SessionId, type SnapshotStore } from '@buckeyestudio/toh-client-runtime/client'
 
 /** Download phases presented by the shared modal. */
 export type SessionLogDownloadStatus = 'downloading' | 'success' | 'error'
 
+/** Artifact variants one Session's shared download dialog presents. */
+export type SessionLogDownloadFormat = 'zip' | 'markdown'
+
+/** One download request: the raw ZIP stream, or a client-built Markdown document. */
+export type SessionLogDownloadRequest =
+  | { readonly format: 'zip' }
+  | { readonly format: 'markdown'; readonly document: string }
+
 /** One Session's current download-dialog state. */
 export interface SessionLogDownloadEntry {
   readonly open: boolean
   readonly status: SessionLogDownloadStatus
   readonly error: string | null
+  readonly format: SessionLogDownloadFormat
 }
 
 /** Download states keyed by the Session whose Header owns the dialog. */
@@ -22,13 +31,34 @@ type Save = (url: string, filename: string) => void
 
 const INITIAL: SessionLogDownloadState = { bySession: {} }
 
+const DEFAULT_REQUEST: SessionLogDownloadRequest = { format: 'zip' }
+
 /**
- * Collapse an untrusted Session id into the filename convention owned by the host endpoint.
+ * Collapse an untrusted Session id into the filename token convention shared
+ * by both artifact filenames.
+ * @param sessionId - Session whose artifact is downloaded.
+ * @returns one safe filename token.
+ */
+function sessionIdToken(sessionId: SessionId): string {
+  return String(sessionId).replace(/[^A-Za-z0-9_-]/g, '_')
+}
+
+/**
+ * Collapse an untrusted Session id into the archive filename owned by the host endpoint.
  * @param sessionId - Session whose archive is downloaded.
  * @returns one safe browser download filename.
  */
 export function sessionLogZipFilename(sessionId: SessionId): string {
-  return `toh-session-${String(sessionId).replace(/[^A-Za-z0-9_-]/g, '_')}.zip`
+  return `toh-session-${sessionIdToken(sessionId)}.zip`
+}
+
+/**
+ * Collapse an untrusted Session id into the Markdown transcript filename.
+ * @param sessionId - Session whose transcript is downloaded.
+ * @returns one safe browser download filename.
+ */
+export function sessionMarkdownFilename(sessionId: SessionId): string {
+  return `toh-session-${sessionIdToken(sessionId)}.md`
 }
 
 /**
@@ -71,16 +101,20 @@ export class SessionLogDownloadController {
   ) {}
 
   /**
-   * Download one Session tree; concurrent gestures for the same Session share one operation.
-   * @param sessionId - root Session whose ZIP includes descendants and attachments.
+   * Download one Session artifact; concurrent gestures for the same Session share one operation.
+   * @param sessionId - root Session whose artifact is downloaded.
+   * @param request - artifact selection; defaults to the raw ZIP.
    * @returns after the browser save starts, an error state is published, or a late post-disposal request is ignored.
    */
-  download(sessionId: SessionId): Promise<void> {
+  download(
+    sessionId: SessionId,
+    request: SessionLogDownloadRequest = DEFAULT_REQUEST,
+  ): Promise<void> {
     const existing = this.active.get(sessionId)
     if (existing !== undefined) return existing.done
     if (this.disposed) return Promise.resolve()
     const abort = new AbortController()
-    const done = this.run(sessionId, abort.signal).finally(() => {
+    const done = this.run(sessionId, request, abort.signal).finally(() => {
       this.active.delete(sessionId)
     })
     this.active.set(sessionId, { abort, done })
@@ -108,24 +142,52 @@ export class SessionLogDownloadController {
     await Promise.allSettled(active.map(operation => operation.done))
   }
 
-  private async run(sessionId: SessionId, signal: AbortSignal): Promise<void> {
-    this.publish(sessionId, { open: true, status: 'downloading', error: null })
+  private async run(
+    sessionId: SessionId,
+    request: SessionLogDownloadRequest,
+    signal: AbortSignal,
+  ): Promise<void> {
+    this.publish(sessionId, { open: true, status: 'downloading', error: null, format: request.format })
     try {
-      const url = new URL('/api/session.export', hostBase())
-      url.searchParams.set('sessionId', sessionId)
-      url.searchParams.set('includeDescendants', 'true')
-      const response = await this.fetcher(url, { method: 'HEAD', signal })
-      if (!response.ok) {
-        const detail = await response.text().catch(() => '')
-        throw new Error(`Export failed: HTTP ${response.status}${detail === '' ? '' : ` ${detail}`}`)
-      }
-      this.save(url.toString(), sessionLogZipFilename(sessionId))
+      if (request.format === 'markdown') this.saveMarkdown(sessionId, request.document)
+      else await this.saveZip(sessionId, signal)
       const open = this.store.getSnapshot().bySession[String(sessionId)]?.open ?? true
-      this.publish(sessionId, { open, status: 'success', error: null })
+      this.publish(sessionId, { open, status: 'success', error: null, format: request.format })
     } catch (error: unknown) {
       if (signal.aborted) return
       const open = this.store.getSnapshot().bySession[String(sessionId)]?.open ?? true
-      this.publish(sessionId, { open, status: 'error', error: messageOf(error) })
+      this.publish(sessionId, { open, status: 'error', error: messageOf(error), format: request.format })
+    }
+  }
+
+  /**
+   * Preflight the host endpoint, then hand the GET URL to the browser download manager.
+   * @param sessionId - root Session whose ZIP includes descendants and attachments.
+   * @param signal - cancellation from controller disposal.
+   */
+  private async saveZip(sessionId: SessionId, signal: AbortSignal): Promise<void> {
+    const url = new URL('/api/session.export', hostBase())
+    url.searchParams.set('sessionId', sessionId)
+    url.searchParams.set('includeDescendants', 'true')
+    const response = await this.fetcher(url, { method: 'HEAD', signal })
+    if (!response.ok) {
+      const detail = await response.text().catch(() => '')
+      throw new Error(`Export failed: HTTP ${response.status}${detail === '' ? '' : ` ${detail}`}`)
+    }
+    this.save(url.toString(), sessionLogZipFilename(sessionId))
+  }
+
+  /**
+   * Save a client-built Markdown document through a short-lived object URL.
+   * @param sessionId - Session whose transcript is saved.
+   * @param document - complete Markdown text.
+   */
+  private saveMarkdown(sessionId: SessionId, document: string): void {
+    const url = URL.createObjectURL(new Blob([document], { type: 'text/markdown' }))
+    try {
+      this.save(url, sessionMarkdownFilename(sessionId))
+    } finally {
+      URL.revokeObjectURL(url)
     }
   }
 

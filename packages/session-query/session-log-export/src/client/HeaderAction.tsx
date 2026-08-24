@@ -4,12 +4,13 @@ import { SessionLogDownloadDialog, type SessionLogDownloadDialogProps } from './
 import css from './HeaderAction.module.css'
 
 /**
- * Render the Session Header export capsule and its shared result dialog.
- * @param props - Session runtime, download controller, and localized dialog copy.
- * @returns the persistent Header action and Session-scoped dialog.
+ * Render the Session Header export capsules (raw ZIP and Markdown transcript)
+ * and their shared result dialog.
+ * @param props - Session runtime, download controller, transcript builder, and localized dialog copy.
+ * @returns the persistent Header actions and Session-scoped dialog.
  */
 export function SessionLogDownloadHeaderAction(props: SessionLogDownloadDialogProps): ReactNode {
-  const { sessionId, useSessionLogDownload, request } = props
+  const { sessionId, useSessionLogDownload, request, buildMarkdown } = props
   const entry = useSessionLogDownload(state => state.bySession[String(sessionId)])
   const busy = entry?.status === 'downloading'
 
@@ -23,6 +24,18 @@ export function SessionLogDownloadHeaderAction(props: SessionLogDownloadDialogPr
         onClick={() => { void request(sessionId) }}
       >
         <span>Session log</span>
+        <IconDownloadOutline16 size={12} />
+      </button>
+      <button
+        type="button"
+        className={css.sessionLogButton}
+        disabled={busy}
+        aria-busy={busy}
+        onClick={() => {
+          void request(sessionId, { format: 'markdown', document: buildMarkdown(sessionId) })
+        }}
+      >
+        <span>Markdown</span>
         <IconDownloadOutline16 size={12} />
       </button>
       <SessionLogDownloadDialog {...props} />
