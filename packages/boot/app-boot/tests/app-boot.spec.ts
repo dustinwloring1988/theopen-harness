@@ -187,6 +187,28 @@ describe('loadLayeredEnv', () => {
     }
   })
 
+  it('resolves a lowercase provider-selection spelling through the uppercase id end-to-end', () => {
+    const home = tmp()
+    const project = tmp()
+    writeFileSync(join(project, '.env'), 'toh_web_search_provider=perplexity\n')
+    clear()
+    Reflect.deleteProperty(process.env, 'TOH_WEB_SEARCH_PROVIDER')
+    vi.stubEnv('TOH_HOME', home)
+    const warn = vi.fn()
+    try {
+      const snapshot = loadLayeredEnv(NAME, project, warn)
+      // The snapshot entry and the materialized variable both carry the
+      // canonical spelling WebRuntime resolves, with the file's layer kept.
+      expect(snapshot.get('TOH_WEB_SEARCH_PROVIDER')).toEqual({ value: 'perplexity', source: 'project-env', path: join(project, '.env') })
+      expect(process.env.TOH_WEB_SEARCH_PROVIDER).toBe('perplexity')
+      expect(warn).not.toHaveBeenCalled()
+    } finally {
+      Reflect.deleteProperty(process.env, 'TOH_WEB_SEARCH_PROVIDER')
+      clear()
+      vi.unstubAllEnvs()
+    }
+  })
+
   it('reports each file value with its absolute path', () => {
     const home = tmp()
     const project = tmp()
