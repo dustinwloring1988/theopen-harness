@@ -19,7 +19,7 @@ with DeepSeekHarness() as harness:
     result = harness.run("Say hi.")
 ```
 
-`DeepSeekHarness` 会保留其按需启动的运行时子进程，以便在多次调用之间复用。请像上例一样将其用作上下文管理器，或在使用完毕后显式调用 `close()`。`close()` 会把 `shutdown_timeout_seconds` 的预算用于关闭请求与进程退出（配置值一律钳制到 [0, 30] 秒区间，`None` 表示采用 30 秒上限而非无限等待），超时后从 terminate 升级到 kill，因此即使运行时卡死该调用也总会返回。
+`DeepSeekHarness` 会保留其按需启动的运行时子进程，以便在多次调用之间复用。请像上例一样将其用作上下文管理器，或在使用完毕后显式调用 `close()`。`close()` 会把 `shutdown_timeout_seconds` 的预算用于等待进行中的生命周期转换、关闭请求与进程退出（配置值一律钳制到 [0, 30] 秒区间，`None` 表示采用 30 秒上限而非无限等待；如果该等待耗尽预算，`close()` 会抛出 `TimeoutError` 且不做任何拆除，重试将获得一份全新预算），超时后从 terminate 升级到 kill，因此即使运行时卡死该调用也总会返回。`close()` 是终态操作：之后再调用 `start()` 会抛出 `RuntimeError`，需要运行其他工作负载时请构造新实例。
 
 默认情况下，SDK 会启动 `theopen-harness-runtime-bin` 包内置的单文件可执行程序 `toh-jsonrpc-agent`，并通过 `TOH_CORDIS_CONFIG` 注入该包的默认配置，其中包括 stdio JSON-RPC 服务器、agent core（智能体核心）、预载的 DeepSeek 适配器、采用显式组合语义检查点策略的 JSONL 会话持久化，以及本地 bash。要运行自己的插件组合，请在配置中保留 `@buckeyestudio/toh-sdk-jsonrpc-server` 配置项，并传入 Cordis 配置文件路径。
 

@@ -49,6 +49,7 @@ class HarnessClient:
     def __init__(self, config: HarnessConfig | None = None) -> None:
         self.config = config or HarnessConfig()
         self._proc: subprocess.Popen[str] | None = None
+        self._closed = False
         self._lifecycle_lock = threading.Lock()
         self._lock = threading.Lock()
         self._write_lock = threading.Lock()
@@ -71,8 +72,15 @@ class HarnessClient:
         self.close()
 
     def start(self) -> None:
+        """Spawn the runtime subprocess once per client; concurrent callers share one spawn.
+
+        close() is terminal: after it returns, start() raises RuntimeError and
+        never launches or stores a runtime.
+        """
         with self._lifecycle_lock:
             with self._lock:
+                if self._closed:
+                    raise RuntimeError("TheOpen Harness SDK client is closed")
                 if self._proc is not None:
                     return
                 self._session_parents.clear()
@@ -96,11 +104,26 @@ class HarnessClient:
             self._start_stderr_thread()
 
     def close(self) -> None:
-        with self._lifecycle_lock:
+        """Tear down the runtime within one clamped shutdown budget and mark the client closed.
+
+        The monotonic deadline is fixed before waiting on the lifecycle lock, so
+        contention with an in-flight transition counts against the same budget;
+        when that wait exhausts it, close() raises TimeoutError without tearing
+        anything down or marking the client closed, leaving a retried close() a
+        fresh budget. Repeated calls are idempotent, including on a client that
+        never started.
+        """
+        deadline = time.monotonic() + self._clamped_shutdown_timeout()
+        if not self._lifecycle_lock.acquire(timeout=max(deadline - time.monotonic(), 0.0)):
+            raise TimeoutError(
+                "Timed out waiting for an in-flight HarnessClient lifecycle transition; "
+                "the runtime was left untouched and close() can be retried"
+            )
+        try:
+            self._closed = True
             proc = self._proc
             if proc is None:
                 return
-            deadline = time.monotonic() + self._clamped_shutdown_timeout()
             self._send_shutdown_bounded(deadline)
             if proc.stdin:
                 try:
@@ -134,6 +157,8 @@ class HarnessClient:
                 self._reader_thread.join(timeout=0.5)
             if self._stderr_thread and self._stderr_thread.is_alive():
                 self._stderr_thread.join(timeout=0.5)
+        finally:
+            self._lifecycle_lock.release()
 
     def _send_shutdown_bounded(self, deadline: float) -> None:
         """Send the shutdown request without letting its write block past deadline.
