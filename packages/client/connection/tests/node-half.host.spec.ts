@@ -36,23 +36,42 @@ function fakeHttpServer(
 }
 
 /** Bodyless GET carrying the given headers (enough for the trust fence + bridge). */
-function fakeRequest(headers: Record<string, string>, url = `${API_PATH}/session.list`): IncomingMessage {
+function fakeRequest(
+  headers: Record<string, string>,
+  url = `${API_PATH}/session.list`,
+  remoteAddress = '127.0.0.1',
+): IncomingMessage {
   const request = Readable.from([]) as unknown as IncomingMessage
-  Object.assign(request, { url, method: 'GET', headers })
+  Object.assign(request, { url, method: 'GET', headers, socket: { remoteAddress } })
   return request
 }
 
 /** JSON POST carrying a complete client-request envelope. */
-function fakePost(headers: Record<string, string>, url: string, body: unknown): IncomingMessage {
+function fakePost(
+  headers: Record<string, string>,
+  url: string,
+  body: unknown,
+  remoteAddress = '127.0.0.1',
+): IncomingMessage {
   const request = Readable.from([Buffer.from(JSON.stringify(body))]) as unknown as IncomingMessage
-  Object.assign(request, { url, method: 'POST', headers: { 'content-type': 'application/json', ...headers } })
+  Object.assign(request, {
+    url,
+    method: 'POST',
+    headers: { 'content-type': 'application/json', ...headers },
+    socket: { remoteAddress },
+  })
   return request
 }
 
 /** Raw POST for malformed-body and media-type boundary cases. */
-function fakeRawPost(headers: Record<string, string>, url: string, body: string): IncomingMessage {
+function fakeRawPost(
+  headers: Record<string, string>,
+  url: string,
+  body: string,
+  remoteAddress = '127.0.0.1',
+): IncomingMessage {
   const request = Readable.from([Buffer.from(body)]) as unknown as IncomingMessage
-  Object.assign(request, { url, method: 'POST', headers })
+  Object.assign(request, { url, method: 'POST', headers, socket: { remoteAddress } })
   return request
 }
 
@@ -198,6 +217,67 @@ describe('connection node half', () => {
     await dispose()
   })
 
+  it('denies a privileged method whose Host claims loopback but whose socket peer is a LAN address', async () => {
+    // The issue-46 repro: over plain HTTP a non-browser caller puts any Host
+    // on the wire, so on an all-interfaces composition `Host: localhost` from
+    // a LAN socket passed the old header-only pin. The socket peer address,
+    // which the caller does not choose, must agree with the loopback claim.
+    const { routes, dispose } = await mounted({ trustedHosts: ['harness.example'] })
+    for (const host of ['localhost', 'localhost:3080', '127.0.0.1', '[::1]']) {
+      const denied = fakeResponse()
+      await routes[0]!.handler(
+        fakeRequest({ host }, `${API_PATH}/credentials.describe`, '192.168.1.5'),
+        denied.response,
+      )
+      expect(denied.state.status).toBe(403)
+      expect(denied.state.body).toBe('forbidden')
+    }
+    await dispose()
+  })
+
+  it('admits privileged methods when the loopback Host and the socket peer agree', async () => {
+    const { routes, dispose } = await mounted()
+    // Every loopback spelling Node reports for a same-machine peer (IPv4
+    // 127/8, IPv6 ::1, and the dual-stack ::ffff:-mapped form) passes; the
+    // carrier answers 404 for the GET unary path — proof the pin released.
+    for (const remoteAddress of ['127.0.0.1', '127.9.9.9', '::1', '::ffff:127.0.0.1']) {
+      const admitted = fakeResponse()
+      await routes[0]!.handler(fakeRequest({ host: 'localhost:3080' }, `${API_PATH}/credentials.describe`, remoteAddress), admitted.response)
+      expect(admitted.state.status).toBe(404)
+    }
+    // A LAN peer never releases the pin, even with a perfect loopback Host —
+    // in direct or dual-stack spelling, and link-local IPv6 likewise.
+    for (const remoteAddress of ['192.168.1.5', '::ffff:192.168.1.5', 'fe80::1']) {
+      const denied = fakeResponse()
+      await routes[0]!.handler(fakeRequest({ host: 'localhost' }, `${API_PATH}/credentials.set`, remoteAddress), denied.response)
+      expect(denied.state.status).toBe(403)
+    }
+    // Neither does a socket with no reported peer address: the pin fails closed.
+    const unreported = Readable.from([]) as unknown as IncomingMessage
+    Object.assign(unreported, {
+      url: `${API_PATH}/credentials.set`,
+      method: 'GET',
+      headers: { host: 'localhost' },
+      socket: { remoteAddress: undefined },
+    })
+    const deniedUnreported = fakeResponse()
+    await routes[0]!.handler(unreported, deniedUnreported.response)
+    expect(deniedUnreported.state.status).toBe(403)
+    await dispose()
+  })
+
+  it('keeps non-privileged methods on the Host fence alone, without a socket-peer requirement', async () => {
+    // The model catalog serves legitimate LAN clients: a declared authority
+    // reaches it regardless of the peer address — no new pin here.
+    const { routes, dispose } = await mounted({ trustedHosts: ['harness.example'] })
+    for (const method of ['llm.providers', 'llm.models', 'agentPreset.list', 'session.list']) {
+      const lan = fakeResponse()
+      await routes[0]!.handler(fakeRequest({ host: 'harness.example' }, `${API_PATH}/${method}`, '192.168.1.5'), lan.response)
+      expect(lan.state.status).toBe(404)
+    }
+    await dispose()
+  })
+
   it('passes loopback and declared-authority requests through to the bridge', async () => {
     const { routes, dispose } = await mounted({ trustedHosts: ['harness.example:3080', '192.168.1.5'] })
     // Loopback, no browser markers (curl shape): the fence passes; the carrier
@@ -339,6 +419,20 @@ describe('connection node half', () => {
     const loopbackOnly = fakeResponse()
     await route.handler(fakePost({ host: 'harness.example' }, '/api/goals/create', request), loopbackOnly.response)
     expect(loopbackOnly.state.status).toBe(403)
+    // The loopback interceptor pins by socket peer too: a forged loopback
+    // Host from a LAN socket is refused before the handler runs.
+    const spoofedPeer = fakeResponse()
+    await route.handler(fakePost({ host: '127.0.0.1:3080' }, '/api/goals/create', request, '10.0.0.9'), spoofedPeer.response)
+    expect(spoofedPeer.state.status).toBe(403)
+    const localPeer = fakeResponse()
+    await route.handler(fakePost({ host: '127.0.0.1:3080' }, '/api/goals/create', request, '::ffff:127.0.0.1'), localPeer.response)
+    expect(localPeer.state.status).toBe(200)
+    expect(JSON.parse(String(localPeer.state.body))).toEqual({
+      type: 'server-response',
+      rpcId: 'rpc-shared',
+      result: { ok: true, value: null },
+    })
+    expect(calls).toHaveLength(1)
     await removeLoopback()
     await fiber.dispose()
   })
@@ -430,6 +524,20 @@ describe('connection node half', () => {
       type: 'client-request', rpcId: 'rpc-public', method: 'read', payload: {},
     }), publicResponse.response)
     expect(publicResponse.state.status).toBe(403)
+    // Dedicated loopback channels pin by socket peer as well as Host.
+    const spoofedPeer = fakeResponse()
+    await loopbackRoute.handler(fakePost({ host: 'localhost' }, '/loopback/read', {
+      type: 'client-request', rpcId: 'rpc-spoofed', method: 'read', payload: {},
+    }, '192.168.1.5'), spoofedPeer.response)
+    expect(spoofedPeer.state.status).toBe(403)
+    const localResponse = fakeResponse()
+    await loopbackRoute.handler(fakePost({ host: '[::1]:3080' }, '/loopback/read', {
+      type: 'client-request', rpcId: 'rpc-local', method: 'read', payload: {},
+    }, '::1'), localResponse.response)
+    expect(localResponse.state.status).toBe(200)
+    expect(JSON.parse(String(localResponse.state.body))).toMatchObject({
+      rpcId: 'rpc-local', result: { ok: true },
+    })
     await removeLoopback()
     await remove()
     await fiber.dispose()
@@ -504,6 +612,9 @@ describe('connection node half over a real HTTP server', () => {
       }
       // Loopback reaches everything, configuration included.
       expect(await call(port, 'settings.describe', `127.0.0.1:${String(port)}`)).toBe(404)
+      // So does a loopback-named Host: the pin reads the real socket peer
+      // (Node reports 127.0.0.1 here), which agrees with the header.
+      expect(await call(port, 'credentials.describe', `localhost:${String(port)}`)).toBe(404)
     } finally {
       await close()
       await dispose()

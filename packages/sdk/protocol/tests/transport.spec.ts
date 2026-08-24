@@ -60,6 +60,133 @@ describe('JsonRpcLineTransport', () => {
     b.close()
   })
 
+  it('writes a handler-thrown JsonRpcResponseError back verbatim with its wire code and data', async () => {
+    const { a, b } = transportPair()
+    a.onRequest(async () => {
+      throw new JsonRpcResponseError(-32602, 'invalid params for session/prompt', { issues: [{ path: ['contentBlocks'], message: 'invalid input' }] })
+    })
+    a.start()
+    b.start()
+
+    const failure = await b.request('session/prompt', {}).then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({
+      code: -32602,
+      message: 'invalid params for session/prompt',
+      data: { issues: [{ path: ['contentBlocks'], message: 'invalid input' }] },
+    })
+
+    a.close()
+    b.close()
+  })
+
+  it('maps a thrown JsonRpcResponseError without a wire code to the internal-error fallback', async () => {
+    const { a, b } = transportPair()
+    a.onRequest(async () => {
+      throw new JsonRpcResponseError(undefined, 'no wire code')
+    })
+    a.start()
+    b.start()
+
+    await expect(b.request('explode', {})).rejects.toMatchObject({ code: -32603, message: 'no wire code', data: undefined })
+
+    a.close()
+    b.close()
+  })
+
+  it('drops circular error data and still answers the peer with the error frame', async () => {
+    const { a, b } = transportPair()
+    const circular: Record<string, unknown> = {}
+    circular.self = circular
+    a.onRequest(async () => {
+      throw new JsonRpcResponseError(-32000, 'circular data', circular)
+    })
+    a.start()
+    b.start()
+
+    const failure = await b.request('explode-circular', {}).then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({ code: -32000, message: 'circular data', data: undefined })
+
+    a.close()
+    b.close()
+  })
+
+  it('drops BigInt error data and still answers the peer with the error frame', async () => {
+    const { a, b } = transportPair()
+    a.onRequest(async () => {
+      throw new JsonRpcResponseError(-32000, 'bigint data', { tokens: 1n })
+    })
+    a.start()
+    b.start()
+
+    const failure = await b.request('explode-bigint', {}).then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({ code: -32000, message: 'bigint data', data: undefined })
+
+    a.close()
+    b.close()
+  })
+
+  it('serializes error data exactly once when its toJSON succeeds only on the first pass', async () => {
+    const { a, b } = transportPair()
+    let serializations = 0
+    const stateful = {
+      toJSON() {
+        serializations += 1
+        if (serializations > 1) throw new Error('stateful toJSON exhausted')
+        return { ok: true }
+      },
+    }
+    a.onRequest(async () => {
+      throw new JsonRpcResponseError(-32000, 'stateful data', stateful)
+    })
+    a.start()
+    b.start()
+
+    const failure = await b.request('explode-stateful', {}).then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({ code: -32000, message: 'stateful data', data: { ok: true } })
+    expect(serializations).toBe(1)
+
+    a.close()
+    b.close()
+  })
+
+  it.each([
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+  ] as const)('maps a non-finite (%s) wire code to the internal-error fallback without data', async (_label, code) => {
+    const { a, b } = transportPair()
+    a.onRequest(async () => {
+      throw new JsonRpcResponseError(code, 'non-finite wire code', { issues: [] })
+    })
+    a.start()
+    b.start()
+
+    const failure = await b.request('explode-nonfinite', {}).then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({ code: -32603, message: 'non-finite wire code', data: undefined })
+
+    a.close()
+    b.close()
+  })
+
   it('rejects immediately on a pre-aborted signal without registering pending state', async () => {
     const { b } = transportPair()
     b.start()

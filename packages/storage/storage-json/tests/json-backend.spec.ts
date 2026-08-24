@@ -1,13 +1,45 @@
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@buckeyestudio/cordis'
 import Storage, { storageBackendServiceKey } from '@buckeyestudio/toh-storage'
 import InvariantRegistry from '@buckeyestudio/toh-invariants'
 import { runKvBackendContract } from '../../storage/tests/contract.ts'
 import { Config, JsonStorageBackend, apply } from '../src/index.ts'
 import * as InvariantCompanion from '../src/invariant.ts'
+
+// The atomic write is the gated hold point inside a publish: the gate arms a
+// one-shot hold on the NEXT call only, so an earlier write can be parked while
+// a later one is issued, reproducing the overlapping-publish interleavings
+// deterministically. Real replacements still run once the hold lifts.
+vi.mock('../src/atomic.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/atomic.ts')>()
+  let holdOnce: Promise<void> | undefined
+  return {
+    ...actual,
+    writeAtomic: async (path: string, data: string) => {
+      const held = holdOnce
+      holdOnce = undefined
+      if (held !== undefined) await held
+      return actual.writeAtomic(path, data)
+    },
+    __setHoldOnce: (next: Promise<void> | undefined) => {
+      holdOnce = next
+    },
+  }
+})
+
+async function setHoldOnce(next: Promise<void> | undefined): Promise<void> {
+  const mocked = await import('../src/atomic.ts') as unknown as {
+    __setHoldOnce: (next: Promise<void> | undefined) => void
+  }
+  mocked.__setHoldOnce(next)
+}
+
+afterEach(async () => {
+  await setHoldOnce(undefined)
+})
 
 const roots: string[] = []
 
@@ -109,6 +141,37 @@ describe('json backend specifics', () => {
     await backend.close()
   })
 
+  it('publishes overlapping un-awaited writes in call order without losing a record', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    const path = join(root, 'shape.json')
+    let release!: () => void
+    await setHoldOnce(new Promise<void>((resolveHold) => { release = resolveHold }))
+    const first = unit.putRecord('t', 'a', { v: 'first' })
+    const second = unit.putRecord('t', 'b', { v: 'second' })
+    // While the first publish holds the medium, the second waits on the
+    // unit's publish chain instead of racing it with its own snapshot: the
+    // file is still absent when the second call has been issued.
+    await expect(readFile(path, 'utf8')).rejects.toMatchObject({ code: 'ENOENT' })
+    release()
+    await expect(first).resolves.toBeUndefined()
+    await expect(second).resolves.toBeUndefined()
+    const onDisk = JSON.parse(await readFile(path, 'utf8')) as {
+      tables: Record<string, Record<string, unknown>>
+    }
+    expect(onDisk.tables['t']).toEqual({ a: { v: 'first' }, b: { v: 'second' } })
+    // A re-opened medium observes every acknowledged record.
+    const reopened = new JsonStorageBackend(root)
+    const reopenedUnit = await reopened.kv.open(descriptor)
+    expect(await reopenedUnit.loadAll()).toEqual({
+      tables: { t: { a: { v: 'first' }, b: { v: 'second' } } },
+      global: null,
+    })
+    await reopened.close()
+    await backend.close()
+  })
+
   it('rejects undeclared table and global access as caller errors', async () => {
     const root = await freshRoot()
     const backend = new JsonStorageBackend(root)
@@ -205,6 +268,340 @@ describe('json backend specifics', () => {
     // Disposal releases the reservation: a fresh mount succeeds.
     await fiber.dispose()
     await ctx.plugin(InvariantCompanion)
+  })
+
+  it('close drains queued publishes so the file matches memory', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    let release!: () => void
+    await setHoldOnce(new Promise<void>((resolveHold) => { release = resolveHold }))
+    const writes = [unit.putRecord('t', 'a', { v: 'first' }), unit.putRecord('t', 'b', { v: 'second' })]
+    const closing = unit.close()
+    release()
+    await closing
+    await Promise.all(writes)
+    const onDisk = JSON.parse(await readFile(join(root, 'shape.json'), 'utf8')) as {
+      tables: Record<string, Record<string, unknown>>
+    }
+    expect(onDisk.tables['t']).toEqual({ a: { v: 'first' }, b: { v: 'second' } })
+    await backend.close()
+  })
+
+  it('drops a rejected overlapping write from the medium when close drains', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    const path = join(root, 'shape.json')
+    const backup = join(root, 'shape.committed.json')
+    let releaseFirst!: () => void
+    let releaseSecond!: () => void
+    let releaseThird!: () => void
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseFirst = resolveHold }))
+    const first = unit.putRecord('t', 'a', { v: 'first' })
+    const second = unit.putRecord('t', 'b', { v: 'second' })
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseSecond = resolveHold }))
+    releaseFirst()
+    await first
+    // The first slot serializes full state at its turn, so the still-pending
+    // second record already reached the medium; park its own slot and break
+    // the target so only that slot's replacement fails.
+    await rename(path, backup)
+    await mkdir(path)
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseThird = resolveHold }))
+    const closing = unit.close()
+    releaseSecond()
+    await expect(second).rejects.toThrow()
+    // The rollback appended one replacement of the restored state; close
+    // keeps draining until the tail stops growing.
+    await rm(path, { recursive: true })
+    await rename(backup, path)
+    releaseThird()
+    await closing
+    const onDisk = JSON.parse(await readFile(path, 'utf8')) as {
+      tables: Record<string, Record<string, unknown>>
+    }
+    expect(onDisk.tables['t']).toEqual({ a: { v: 'first' } })
+    const reopened = new JsonStorageBackend(root)
+    const reopenedUnit = await reopened.kv.open(descriptor)
+    expect(await reopenedUnit.loadAll()).toEqual({
+      tables: { t: { a: { v: 'first' } } },
+      global: null,
+    })
+    await reopened.close()
+    await backend.close()
+  })
+
+  it('preserves a later overlapping put when an earlier put on the record fails', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    await unit.putRecord('t', 'k', { v: 'committed' })
+    const path = join(root, 'shape.json')
+    const backup = join(root, 'shape.committed.json')
+    let releaseFirst!: () => void
+    let releaseSecond!: () => void
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseFirst = resolveHold }))
+    const first = unit.putRecord('t', 'k', { v: 'first' })
+    const second = unit.putRecord('t', 'k', { v: 'second' })
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseSecond = resolveHold }))
+    // A directory at the publish target rejects atomic replacement on every host.
+    await rename(path, backup)
+    await mkdir(path)
+    releaseFirst()
+    await expect(first).rejects.toThrow()
+    // The failed write rolls back only itself: the queued second put must
+    // still serialize and resolve with its own value, never the restored one.
+    await rm(path, { recursive: true })
+    await rename(backup, path)
+    releaseSecond()
+    await expect(second).resolves.toBeUndefined()
+    await backend.close()
+    const onDisk = JSON.parse(await readFile(path, 'utf8')) as {
+      tables: Record<string, Record<string, unknown>>
+    }
+    expect(onDisk.tables['t']).toEqual({ k: { v: 'second' } })
+    const reopened = new JsonStorageBackend(root)
+    const reopenedUnit = await reopened.kv.open(descriptor)
+    expect(await reopenedUnit.loadAll()).toEqual({
+      tables: { t: { k: { v: 'second' } } },
+      global: null,
+    })
+    await reopened.close()
+  })
+
+  it('preserves a later overlapping write when an earlier delete on the record fails', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    await unit.putRecord('t', 'k', { v: 'committed' })
+    const path = join(root, 'shape.json')
+    const backup = join(root, 'shape.committed.json')
+    let releaseDeletion!: () => void
+    let releaseWrite!: () => void
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseDeletion = resolveHold }))
+    const deletion = unit.deleteRecord('t', 'k')
+    const write = unit.putRecord('t', 'k', { v: 'written' })
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseWrite = resolveHold }))
+    await rename(path, backup)
+    await mkdir(path)
+    releaseDeletion()
+    await expect(deletion).rejects.toThrow()
+    await rm(path, { recursive: true })
+    await rename(backup, path)
+    releaseWrite()
+    await expect(write).resolves.toBeUndefined()
+    await backend.close()
+    const onDisk = JSON.parse(await readFile(path, 'utf8')) as {
+      tables: Record<string, Record<string, unknown>>
+    }
+    expect(onDisk.tables['t']).toEqual({ k: { v: 'written' } })
+    const reopened = new JsonStorageBackend(root)
+    const reopenedUnit = await reopened.kv.open(descriptor)
+    expect(await reopenedUnit.loadAll()).toEqual({
+      tables: { t: { k: { v: 'written' } } },
+      global: null,
+    })
+    await reopened.close()
+  })
+
+  it('preserves a later overlapping delete when an earlier write on the record fails', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    await unit.putRecord('t', 'k', { v: 'committed' })
+    const path = join(root, 'shape.json')
+    const backup = join(root, 'shape.committed.json')
+    let releaseWrite!: () => void
+    let releaseDeletion!: () => void
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseWrite = resolveHold }))
+    const write = unit.putRecord('t', 'k', { v: 'written' })
+    const deletion = unit.deleteRecord('t', 'k')
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseDeletion = resolveHold }))
+    await rename(path, backup)
+    await mkdir(path)
+    releaseWrite()
+    await expect(write).rejects.toThrow()
+    await rm(path, { recursive: true })
+    await rename(backup, path)
+    releaseDeletion()
+    await expect(deletion).resolves.toBeUndefined()
+    await backend.close()
+    const onDisk = JSON.parse(await readFile(path, 'utf8')) as {
+      tables: Record<string, Record<string, unknown>>
+    }
+    expect(onDisk.tables['t']).toEqual({})
+    const reopened = new JsonStorageBackend(root)
+    const reopenedUnit = await reopened.kv.open(descriptor)
+    expect(await reopenedUnit.loadAll()).toEqual({
+      tables: { t: {} },
+      global: null,
+    })
+    await reopened.close()
+  })
+
+  it('resolves an overlapping absent-key delete only after an earlier failed delete rolls back', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    await unit.putRecord('t', 'k', { v: 'committed' })
+    const path = join(root, 'shape.json')
+    const backup = join(root, 'shape.committed.json')
+    let releaseDeletion!: () => void
+    let releaseRollback!: () => void
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseDeletion = resolveHold }))
+    const deletion = unit.deleteRecord('t', 'k')
+    let noOpSettled = false
+    const noOp = unit.deleteRecord('t', 'k').finally(() => { noOpSettled = true })
+    // The second hold parks the rollback's replacement publish, so the
+    // restored record stays observable until after the failure settles.
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseRollback = resolveHold }))
+    // A directory at the publish target rejects atomic replacement on every host.
+    await rename(path, backup)
+    await mkdir(path)
+    releaseDeletion()
+    await expect(deletion).rejects.toThrow()
+    // The failed deletion rolled back by deferring its restore to the
+    // no-op delete's ticket: memory stays without the record and the
+    // no-op delete stays unresolved until it settles that queue.
+    expect(await unit.loadAll()).toEqual({
+      tables: { t: {} },
+      global: null,
+    })
+    expect(noOpSettled).toBe(false)
+    await rm(path, { recursive: true })
+    await rename(backup, path)
+    releaseRollback()
+    await expect(noOp).resolves.toBeUndefined()
+    await backend.close()
+    const onDisk = JSON.parse(await readFile(path, 'utf8')) as {
+      tables: Record<string, Record<string, unknown>>
+    }
+    expect(onDisk.tables['t']).toEqual({})
+    const reopened = new JsonStorageBackend(root)
+    const reopenedUnit = await reopened.kv.open(descriptor)
+    expect(await reopenedUnit.loadAll()).toEqual({
+      tables: { t: {} },
+      global: null,
+    })
+    await reopened.close()
+  })
+
+  it('rejects an overlapping absent-key delete when the absent-state replacement fails to publish', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    const path = join(root, 'shape.json')
+    let releasePut!: () => void
+    // A failed first-ever put starts from an absent key: its rollback hands
+    // an absent restore to the overlapping delete's ticket.
+    await setHoldOnce(new Promise<void>((resolveHold) => { releasePut = resolveHold }))
+    const put = unit.putRecord('t', 'k', { v: 'first' })
+    const deletion = unit.deleteRecord('t', 'k')
+    const noOp = unit.deleteRecord('t', 'k')
+    // A directory at the publish target rejects atomic replacement on every host.
+    await mkdir(path)
+    releasePut()
+    await expect(put).rejects.toThrow()
+    await expect(deletion).rejects.toThrow()
+    // The failed put deferred its absent restore to the no-op delete's
+    // ticket; memory stays without the record across the drained queue.
+    expect(await unit.loadAll()).toEqual({
+      tables: { t: {} },
+      global: null,
+    })
+    // Every recovery publish lands in the same breakage, including the
+    // delete's own required empty-state replacement: the delete must reject
+    // instead of resolving before the empty state is durable.
+    await expect(noOp).rejects.toThrow()
+    // Every publish so far was rejected, so the medium never materialized:
+    // only the breakage directory sits at the publish target.
+    await expect(readFile(path, 'utf8')).rejects.toMatchObject({ code: 'EISDIR' })
+    // Once the target works again, the next successful publish converges.
+    await rm(path, { recursive: true })
+    await unit.putRecord('t', 'after', { v: 'ok' })
+    const reopened = new JsonStorageBackend(root)
+    const reopenedUnit = await reopened.kv.open(descriptor)
+    expect(await reopenedUnit.loadAll()).toEqual({
+      tables: { t: { after: { v: 'ok' } } },
+      global: null,
+    })
+    await reopened.close()
+    await backend.close()
+  })
+
+  it('rolls stacked overlapping failures back to the last acknowledged value', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    await unit.putRecord('t', 'k', { v: 'committed' })
+    const path = join(root, 'shape.json')
+    const backup = join(root, 'shape.committed.json')
+    let releaseFirst!: () => void
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseFirst = resolveHold }))
+    const first = unit.putRecord('t', 'k', { v: 'first' })
+    const second = unit.putRecord('t', 'k', { v: 'second' })
+    const third = unit.putRecord('t', 'k', { v: 'third' })
+    // A directory at the publish target rejects atomic replacement on every host.
+    await rename(path, backup)
+    await mkdir(path)
+    releaseFirst()
+    await expect(first).rejects.toThrow()
+    await expect(second).rejects.toThrow()
+    await expect(third).rejects.toThrow()
+    // Each rejected write rolls back past the rejected values issued after
+    // it, so the drained medium holds only the last acknowledged value.
+    await rm(path, { recursive: true })
+    await rename(backup, path)
+    expect(await unit.loadAll()).toEqual({
+      tables: { t: { k: { v: 'committed' } } },
+      global: null,
+    })
+    await backend.close()
+    const onDisk = JSON.parse(await readFile(path, 'utf8')) as {
+      tables: Record<string, Record<string, unknown>>
+    }
+    expect(onDisk.tables['t']).toEqual({ k: { v: 'committed' } })
+    const reopened = new JsonStorageBackend(root)
+    const reopenedUnit = await reopened.kv.open(descriptor)
+    expect(await reopenedUnit.loadAll()).toEqual({
+      tables: { t: { k: { v: 'committed' } } },
+      global: null,
+    })
+    await reopened.close()
+  })
+
+  it('preserves a later overlapping setGlobal when an earlier setGlobal fails', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    await unit.setGlobal({ g: 'committed' })
+    const path = join(root, 'shape.json')
+    const backup = join(root, 'shape.committed.json')
+    let releaseFirst!: () => void
+    let releaseSecond!: () => void
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseFirst = resolveHold }))
+    const first = unit.setGlobal({ g: 'first' })
+    const second = unit.setGlobal({ g: 'second' })
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseSecond = resolveHold }))
+    await rename(path, backup)
+    await mkdir(path)
+    releaseFirst()
+    await expect(first).rejects.toThrow()
+    await rm(path, { recursive: true })
+    await rename(backup, path)
+    releaseSecond()
+    await expect(second).resolves.toBeUndefined()
+    await backend.close()
+    const onDisk = JSON.parse(await readFile(path, 'utf8')) as { global: unknown }
+    expect(onDisk.global).toEqual({ g: 'second' })
+    const reopened = new JsonStorageBackend(root)
+    const reopenedUnit = await reopened.kv.open(descriptor)
+    expect(await reopenedUnit.loadAll()).toEqual({
+      tables: { t: {} },
+      global: { g: 'second' },
+    })
+    await reopened.close()
   })
 
   it('close drains in-flight writes and blocks in-flight opens', async () => {
