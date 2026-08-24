@@ -1444,6 +1444,33 @@ export interface ReconnectConfig {
 
 来源：[`packages/mcp/mcp-client/src/index.ts:98`](../packages/mcp/mcp-client/src/index.ts)
 
+<a id="buckeyestudiotoh-memory"></a>
+
+## `@buckeyestudio/toh-memory`
+
+```ts config-catalog
+/** Registry configuration. */
+export interface Config {
+  /** Explicit provider id. Omitted = auto-select when exactly one provider is registered. */
+  readonly provider?: string
+}
+```
+
+Source: [`packages/memory/memory/src/index.ts:41`](../packages/memory/memory/src/index.ts)
+
+<a id="buckeyestudiotoh-memory-local"></a>
+
+## `@buckeyestudio/toh-memory-local`
+
+Requires: `memory` · `storageDomain`
+
+```ts config-catalog
+/** Plugin config (none today; domain routing belongs to `ctx.storageDomain`). */
+export interface Config {}
+```
+
+Source: [`packages/memory/memory-local/src/index.ts:33`](../packages/memory/memory-local/src/index.ts)
+
 <a id="buckeyestudiotoh-message-feedback"></a>
 
 ## `@buckeyestudio/toh-message-feedback`
@@ -2674,6 +2701,22 @@ export interface Config {
 ```
 
 来源：[`packages/lsp/tool-lsp/src/index.ts:58`](../packages/lsp/tool-lsp/src/index.ts)
+
+<a id="buckeyestudiotoh-tool-memory"></a>
+
+## `@buckeyestudio/toh-tool-memory`
+
+Requires: `tools` · `memory` · `systemPrompt`
+
+```ts config-catalog
+/** Model-facing memory tool configuration. */
+export interface Config {
+  /** Maximum facts one `memory_recall` result may list; minimum 1. */
+  maxRecallResults?: number
+}
+```
+
+Source: [`packages/memory/tool-memory/src/index.ts:21`](../packages/memory/tool-memory/src/index.ts)
 
 <a id="buckeyestudiotoh-tool-pwsh"></a>
 

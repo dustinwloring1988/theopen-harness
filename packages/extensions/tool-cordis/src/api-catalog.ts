@@ -1053,6 +1053,37 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     ],
   },
   {
+    key: 'memory',
+    summary: 'Provider registry for durable cross-session facts.',
+    description: 'Provider registry for durable cross-session facts. One instance per context; providers register under unique names and dispose with their fiber. Every operation resolves the serving provider at call time with the selection rules on Config, so composition can add or remove a backend without touching consumers.',
+    methods: [
+      {
+        signature: 'registerProvider(provider: MemoryProvider): () => void',
+        description: 'Register a borrowed same-process provider. Duplicate names throw. Fiber disposal unregisters the provider.',
+        parameters: [{ name: 'provider', description: 'the provider; its `name` is the registry key.' }],
+        returns: 'the disposer that unregisters the provider.',
+      },
+      {
+        signature: 'async remember(input: RememberInput): Promise<MemoryFact>',
+        description: 'Persist one fact through the selected provider and emit `memory/changed` after the commit. Blank or whitespace-only text is rejected here, in the operation that owns fact semantics, so every provider and consumer shares one rule.',
+        parameters: [{ name: 'input', description: 'the text, optional tags, and storage scope to persist.' }],
+        returns: 'the committed fact, including the provider-minted id.',
+      },
+      {
+        signature: 'async recall(query: string, options: RecallOptions = {}): Promise<readonly MemoryFact[]>',
+        description: 'Query stored facts through the selected provider. Matching semantics are the provider\'s; the options narrow by scope and tag conjunction before the backend matches.',
+        parameters: [{ name: 'query', description: 'free-form query text.' }, { name: 'options', description: 'scope and tag-conjunction narrowing.' }],
+        returns: 'the matching facts.',
+      },
+      {
+        signature: 'async forget(id: MemoryFactId): Promise<boolean>',
+        description: 'Delete one fact through the selected provider. An unknown id is a definite `false`; storage faults propagate as themselves.',
+        parameters: [{ name: 'id', description: 'the fact to delete.' }],
+        returns: 'whether a stored fact was removed.',
+      },
+    ],
+  },
+  {
     key: 'messageFeedback',
     summary: 'Storage-domain sidecar service.',
     description: 'Storage-domain sidecar service. It inspects persisted Session history and never creates or resumes an Agent or Session.',
@@ -2622,6 +2653,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'options', description: 'the full request. A LOOP-built request carries the process-local {@link markAgentLoopRequest} identity and arrives deep-frozen (mutation throws): its content is a pure function of the session log (the reconstructability Agent Note), so listeners read it, never rewrite it. Hand-built calls do not carry that marker; their messages already obey the immutable creation contract.' }],
   },
   {
+    name: 'memory/changed',
+    mode: 'emit',
+    signature: '\'memory/changed\'(change: MemoryChanged): void',
+    summary: 'A stored fact was created or deleted.',
+    description: 'A stored fact was created or deleted. Emitted once per committed mutation, strictly after the provider acknowledged durability; a failed or no-op mutation emits nothing.',
+    parameters: [{ name: 'change', description: 'operation discriminant, owning provider name, and the fact id.' }],
+  },
+  {
     name: 'session-telemetry/record',
     mode: 'waterfall',
     signature: '\'session-telemetry/record\'(record: SessionTelemetryRecord, next: () => SessionTelemetryRecord): SessionTelemetryRecord',
@@ -3686,6 +3725,22 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ManualCompactAgentContext extends CompactionAgentContext {\n    runMaintenance<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T>;\n}',
   },
   {
+    name: 'MemoryChanged',
+    declaration: 'export interface MemoryChanged {\n    readonly operation: \'remember\' | \'forget\';\n    readonly provider: string;\n    readonly factId: MemoryFactId;\n}',
+  },
+  {
+    name: 'MemoryFact',
+    declaration: 'export interface MemoryFact {\n    readonly id: MemoryFactId;\n    readonly text: string;\n    readonly tags: readonly string[];\n    readonly scope: string;\n    readonly createdAt: number;\n}',
+  },
+  {
+    name: 'MemoryFactId',
+    declaration: 'export type MemoryFactId = Branded<\'MemoryFactId\'>;',
+  },
+  {
+    name: 'MemoryProvider',
+    declaration: 'export interface MemoryProvider {\n    readonly name: string;\n    readonly remember: (input: RememberInput) => Promise<MemoryFact>;\n    readonly recall: (query: string, options: RecallOptions) => Promise<readonly MemoryFact[]>;\n    readonly forget: (id: MemoryFactId) => Promise<boolean>;\n}',
+  },
+  {
     name: 'Message',
     declaration: 'export interface Message {\n    readonly id: MessageId;\n    readonly role: \'system\' | \'user\' | \'assistant\';\n    readonly content: ContentBlock[];\n    readonly source: MessageSource;\n}',
   },
@@ -3902,8 +3957,16 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export type ReasoningEffortId = Branded<\'ReasoningEffortId\'>;',
   },
   {
+    name: 'RecallOptions',
+    declaration: 'export interface RecallOptions {\n    readonly scope?: string | undefined;\n    readonly tags?: readonly string[] | undefined;\n}',
+  },
+  {
     name: 'RedactedSecret',
     declaration: 'export interface RedactedSecret {\n    path: string[];\n    set: boolean;\n}',
+  },
+  {
+    name: 'RememberInput',
+    declaration: 'export interface RememberInput {\n    readonly text: string;\n    readonly tags?: readonly string[] | undefined;\n    readonly scope: string;\n}',
   },
   {
     name: 'ReplayEnvelope',

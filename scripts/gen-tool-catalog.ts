@@ -38,6 +38,8 @@ import * as ToolSubagentListAgents from '@buckeyestudio/toh-tool-subagent-contro
 import * as ToolSubagentReport from '@buckeyestudio/toh-tool-subagent-report'
 import SkillRegistry from '@buckeyestudio/toh-skill'
 import * as SkillFileSystem from '@buckeyestudio/toh-skill-filesystem'
+import MemoryRegistry from '@buckeyestudio/toh-memory'
+import * as ToolMemory from '@buckeyestudio/toh-tool-memory'
 import LocalJobRegistry from '@buckeyestudio/toh-jobs-local'
 import * as ToolAskUser from '@buckeyestudio/toh-tool-ask-user'
 import * as ToolBash from '@buckeyestudio/toh-tool-bash'
@@ -421,6 +423,17 @@ const TOOL_PACKAGES: ToolPackage[] = [
     },
     note:
       'A fixed foreground workflow starts one fresh structured child per round; the model selects only the immutable objective and an optional round cap.',
+  },
+  {
+    pkg: '@buckeyestudio/toh-tool-memory',
+    dir: 'tool-memory',
+    source: 'packages/memory/tool-memory/src/index.ts',
+    requires: ['ctx.tools', 'ctx.systemPrompt', 'ctx.memory', 'a calling Agent whose session header carries a cwd'],
+    writes: ['tool/call', 'tool/result', 'memory/changed via ctx.memory'],
+    async mount(ctx) {
+      await ctx.plugin(MemoryRegistry)
+      await ctx.plugin(ToolMemory)
+    },
   },
   {
     pkg: '@buckeyestudio/toh-tool-skill',
