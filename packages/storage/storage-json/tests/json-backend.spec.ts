@@ -1,13 +1,34 @@
 import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@buckeyestudio/cordis'
 import Storage, { storageBackendServiceKey } from '@buckeyestudio/toh-storage'
 import InvariantRegistry from '@buckeyestudio/toh-invariants'
 import { runKvBackendContract } from '../../storage/tests/contract.ts'
 import { Config, JsonStorageBackend, apply } from '../src/index.ts'
 import * as InvariantCompanion from '../src/invariant.ts'
+
+// Publications cannot be timed or failed from outside; this wrapper gates each
+// `writeAtomic` call in invocation order and records every snapshot that lands.
+const publications = vi.hoisted(() => ({
+  written: [] as string[],
+  plans: [] as Array<{ holdUntil?: Promise<void>; failWith?: Error }>,
+}))
+
+vi.mock('../src/atomic.ts', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../src/atomic.ts')>()
+  return {
+    ...actual,
+    writeAtomic: async (path: string, data: string) => {
+      const plan = publications.plans.shift()
+      await plan?.holdUntil
+      if (plan?.failWith) throw plan.failWith
+      publications.written.push(data)
+      return actual.writeAtomic(path, data)
+    },
+  }
+})
 
 const roots: string[] = []
 
@@ -16,6 +37,25 @@ async function freshRoot(): Promise<string> {
   roots.push(root)
   return root
 }
+
+function stagePublications(plans: typeof publications.plans): string[] {
+  publications.written.length = 0
+  publications.plans.push(...plans)
+  return publications.written
+}
+
+function deferred(): { promise: Promise<void>; resolve: () => void } {
+  let resolve!: () => void
+  const promise = new Promise<void>((resolveOnce) => {
+    resolve = resolveOnce
+  })
+  return { promise, resolve }
+}
+
+afterEach(() => {
+  publications.written.length = 0
+  publications.plans.length = 0
+})
 
 afterAll(async () => {
   for (const root of roots) await rm(root, { recursive: true, force: true })
@@ -231,12 +271,21 @@ describe('json backend specifics', () => {
     const backend = new JsonStorageBackend(root)
     const unit = await backend.kv.open(descriptor)
     // Overlapping un-awaited writes stage independent temp files; renames must
-    // not complete out of call order and strand a stale snapshot.
+    // not complete out of call order and strand a stale snapshot. Holding the
+    // first publication until every later write is queued proves each slot
+    // publishes only committed earlier slots plus its own mutation.
+    const hold = deferred()
+    const written = stagePublications([{ holdUntil: hold.promise }])
     const pending: Promise<void>[] = []
     for (let index = 0; index < 24; index += 1) {
       pending.push(unit.putRecord('t', 'shared', { v: index }))
     }
+    hold.resolve()
     await Promise.all(pending)
+    expect(written).toHaveLength(24)
+    expect((JSON.parse(written[0]!) as {
+      tables: Record<string, Record<string, unknown>>
+    }).tables['t']?.['shared']).toEqual({ v: 0 })
     const onDisk = JSON.parse(await readFile(join(root, 'shape.json'), 'utf8')) as {
       tables: Record<string, Record<string, unknown>>
     }
@@ -248,13 +297,45 @@ describe('json backend specifics', () => {
     const root = await freshRoot()
     const backend = new JsonStorageBackend(root)
     const unit = await backend.kv.open(descriptor)
+    const hold = deferred()
+    const written = stagePublications([{ holdUntil: hold.promise }])
     const first = unit.putRecord('t', 'a', { v: 'first' })
     const second = unit.putRecord('t', 'b', { v: 'second' })
+    hold.resolve()
     await Promise.all([first, second])
+    expect(written).toHaveLength(2)
+    // The first slot's snapshot predates the second put entirely.
+    expect((JSON.parse(written[0]!) as {
+      tables: Record<string, Record<string, unknown>>
+    }).tables['t']).toEqual({ a: { v: 'first' } })
     const onDisk = JSON.parse(await readFile(join(root, 'shape.json'), 'utf8')) as {
       tables: Record<string, Record<string, unknown>>
     }
     expect(onDisk.tables['t']).toEqual({ a: { v: 'first' }, b: { v: 'second' } })
+    await backend.close()
+  })
+
+  it('keeps a rejected overlapping write out of memory and off disk', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    await unit.putRecord('t', 'a', { v: 'committed' })
+    const rejection = new Error('publish rejected')
+    const written = stagePublications([{}, { failWith: rejection }])
+    const kept = unit.putRecord('t', 'b', { v: 'kept' })
+    const rejected = unit.putRecord('t', 'c', { v: 'rejected' })
+    await expect(rejected).rejects.toBe(rejection)
+    await expect(kept).resolves.toBeUndefined()
+    expect(written).toHaveLength(1)
+    // The surviving slot's snapshot carries no trace of the rejected write.
+    expect((JSON.parse(written[0]!) as {
+      tables: Record<string, Record<string, unknown>>
+    }).tables['t']).toEqual({ a: { v: 'committed' }, b: { v: 'kept' } })
+    const onDisk = JSON.parse(await readFile(join(root, 'shape.json'), 'utf8')) as {
+      tables: Record<string, Record<string, unknown>>
+    }
+    expect(onDisk.tables['t']).toEqual({ a: { v: 'committed' }, b: { v: 'kept' } })
+    expect((await unit.loadAll()).tables['t']).toEqual(onDisk.tables['t'])
     await backend.close()
   })
 

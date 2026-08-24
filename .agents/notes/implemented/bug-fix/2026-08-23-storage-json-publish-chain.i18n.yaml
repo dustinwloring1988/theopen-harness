@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-23-storage-json-publish-chain.md
-2026-08-23-storage-json-publish-chain.md: e86a19618f200d435b06e8cbffa8b9279bf969ab
-2026-08-23-storage-json-publish-chain.zh.md: f328452f87533458bc87d0fa3139c17a0dd7d913
+2026-08-23-storage-json-publish-chain.md: 3bb3c1dd8c23ac12c9d43d0aa6dac0339e41c52a
+2026-08-23-storage-json-publish-chain.zh.md: 07037e83af016c863aebfaad6817b0b90ac18a55

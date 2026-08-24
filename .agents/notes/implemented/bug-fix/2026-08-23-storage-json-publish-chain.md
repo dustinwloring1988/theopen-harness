@@ -10,7 +10,7 @@ Each write primitive in the JSON storage unit mutated memory synchronously and i
 
 ## Decision
 
-The unit chains every publish onto one internal promise tail and snapshots state when the slot runs, so the final rename always carries the newest acknowledged state. Rollback of a failed publish runs inside its failing slot, so the next slot never snapshots a rejected mutation. `close()` drains the chain tail instead of tracking individual in-flight writes. The public `KvUnit` API is unchanged, and the shared contract text now permits a unit to serialize overlapping publications while ordering across separately awaited calls stays the caller's concern.
+The unit chains every publish onto one internal promise tail, and each slot captures the previous value, applies only its own mutation, serializes, and rolls that mutation back if its write fails: every published snapshot carries exactly the committed earlier slots plus its own mutation, so the final rename always lands the newest acknowledged state and a rejected write survives nowhere. `close()` drains the chain tail instead of tracking individual in-flight writes. The public `KvUnit` API is unchanged, and the shared contract text now permits a unit to serialize overlapping publications while ordering across separately awaited calls stays the caller's concern.
 
 ## Alternatives considered
 
@@ -23,8 +23,8 @@ The unit chains every publish onto one internal promise tail and snapshots state
 ## Consequences
 
 - Concurrent writers to one unit proceed one publication at a time; throughput matches the whole-file model's single-writer stance rather than racing independent temp files.
-- A failed publish can no longer leak its rolled-back mutation into the next successful publish.
-- Regression coverage drives overlapping un-awaited `putRecord` calls and asserts the medium ends with the newest payload and both sibling records, alongside sequential-order coverage.
+- A failed publish can no longer leak its rolled-back mutation into a later publication or leave it on the medium.
+- Regression coverage holds publications behind injected gates and captures each slot's snapshot: overlapping un-awaited `putRecord` calls land the newest payload with both sibling records, each snapshot excludes later pending writes, and a rejected overlapping write survives in neither memory nor the file, alongside sequential-order coverage.
 
 ## Testing
 

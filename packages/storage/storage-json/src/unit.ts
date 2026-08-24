@@ -1,12 +1,15 @@
 /**
  * One opened JSON unit. The in-memory state is authoritative; every write
- * primitive mutates it synchronously and republishes the whole file atomically.
- * Publications chain onto one per-unit queue and snapshot the state current at
- * their slot: overlapping calls stage independent temp files whose renames
- * complete in arbitrary order, so unchained publications let an older snapshot
- * rename last and discard an already-resolved newer write. Ordering across
- * separately awaited calls remains the caller's responsibility (the domain
- * layer's write chain).
+ * primitive republishes the whole file atomically. Each primitive enqueues one
+ * publication on a per-unit chain, and its queue slot captures the previous
+ * value, applies only its own mutation, serializes, and rolls that mutation
+ * back if its write fails: a slot publishes exactly the committed earlier
+ * slots plus its own mutation, never a later pending one. Publications chain
+ * because overlapping unchained calls stage independent temp files whose
+ * renames complete in arbitrary order, letting an older snapshot rename last
+ * and discard an already-resolved newer write. Ordering across separately
+ * awaited calls remains the caller's responsibility (the domain layer's write
+ * chain).
  * @module @buckeyestudio/toh-storage-json/src/unit
  */
 
@@ -72,34 +75,32 @@ class JsonKvUnit implements KvUnit {
   async putRecord(table: string, key: string, value: unknown): Promise<void> {
     this.assertOpen()
     const records = this.records(table)
-    const hadKey = records.has(key)
-    const previous = records.get(key)
-    records.set(key, value)
-    // Roll back on a failed publish: memory is authoritative, so a rejected
-    // write must not survive in memory (or ride along with the next publish).
-    // The rollback runs inside the chain slot so the next publish never
-    // snapshots the rejected mutation.
-    return this.enqueuePublish(() =>
-      writeAtomic(this.path, serialize(this.descriptor.name, this.state)).catch((error: unknown) => {
+    return this.enqueuePublish(() => {
+      // Capture, mutation, and rollback live inside the slot so no pending
+      // later write leaks into this publication and no rejected write lingers
+      // in memory past it.
+      const hadKey = records.has(key)
+      const previous = records.get(key)
+      records.set(key, value)
+      return writeAtomic(this.path, serialize(this.descriptor.name, this.state)).catch((error: unknown) => {
         if (hadKey) records.set(key, previous)
         else records.delete(key)
         throw error
-      }),
-    )
+      })
+    })
   }
 
   async deleteRecord(table: string, key: string): Promise<void> {
     this.assertOpen()
     const records = this.records(table)
-    if (!records.has(key)) return
-    const previous = records.get(key)
-    records.delete(key)
-    return this.enqueuePublish(() =>
-      writeAtomic(this.path, serialize(this.descriptor.name, this.state)).catch((error: unknown) => {
+    return this.enqueuePublish(() => {
+      const previous = records.get(key)
+      if (!records.delete(key)) return undefined
+      return writeAtomic(this.path, serialize(this.descriptor.name, this.state)).catch((error: unknown) => {
         records.set(key, previous)
         throw error
-      }),
-    )
+      })
+    })
   }
 
   async setGlobal(value: unknown): Promise<void> {
@@ -107,14 +108,14 @@ class JsonKvUnit implements KvUnit {
     if (!this.descriptor.hasGlobal) {
       throw new Error(`unit '${this.descriptor.name}' does not declare a global slot`)
     }
-    const previous = this.state.global
-    this.state.global = value
-    return this.enqueuePublish(() =>
-      writeAtomic(this.path, serialize(this.descriptor.name, this.state)).catch((error: unknown) => {
+    return this.enqueuePublish(() => {
+      const previous = this.state.global
+      this.state.global = value
+      return writeAtomic(this.path, serialize(this.descriptor.name, this.state)).catch((error: unknown) => {
         this.state.global = previous
         throw error
-      }),
-    )
+      })
+    })
   }
 
   async close(): Promise<void> {
@@ -141,8 +142,12 @@ class JsonKvUnit implements KvUnit {
     return records
   }
 
-  /** Chain one publish behind the previous one; rejections stay observed exactly once by the caller's returned promise. */
-  private enqueuePublish(publish: () => Promise<void>): Promise<void> {
+  /**
+   * Chain one publish behind the previous one; rejections stay observed exactly
+   * once by the caller's returned promise. A slot callback may resolve without
+   * writing when it has nothing to publish.
+   */
+  private enqueuePublish(publish: () => Promise<void> | undefined): Promise<void> {
     const write = this.tail.then(publish)
     this.tail = write.then(() => undefined, () => undefined)
     return write
