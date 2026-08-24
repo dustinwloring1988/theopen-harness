@@ -334,35 +334,54 @@ describe('JsonRpcLineTransport', () => {
       (error: unknown) => error,
     )
     expect(failure).toBeInstanceOf(JsonRpcResponseError)
-    expect(failure).toMatchObject({ code: -32700, message: 'JSON-RPC frame exceeded 64 bytes before a newline' })
+    expect(failure).toMatchObject({ code: -32700, message: 'JSON-RPC frame exceeded 64 bytes' })
     expect(input.destroyed).toBe(true)
 
-    const internals = transport as unknown as { buffer: string }
-    expect(internals.buffer).toBe('')
+    const internals = transport as unknown as { chunks: Buffer[] }
+    expect(internals.chunks).toEqual([])
     input.write('z'.repeat(100))
     await new Promise(resolve => setTimeout(resolve, 10))
-    expect(internals.buffer).toBe('')
+    expect(internals.chunks).toEqual([])
 
     transport.close()
   })
 
-  it('delivers frames under the cap and keeps the stream usable across complete lines larger than the cap', async () => {
+  it('fails a complete frame larger than the cap like an unterminated one', async () => {
     const input = new PassThrough()
     const output = new PassThrough()
     const notifications: Record<string, unknown>[] = []
-    const transport = new JsonRpcLineTransport(input, output, { maxFrameBytes: 16 })
+    const transport = new JsonRpcLineTransport(input, output, { maxFrameBytes: 64 })
     transport.onNotification((method, params) => { notifications.push({ method, params }) })
     transport.start()
 
+    // Complete frames within the cap keep batching valid before the overflow.
     input.write('{"jsonrpc":"2.0","method":"tick"}\n')
-    // Two complete lines whose combined buffered total exceeds the cap stay
-    // valid: the cap bounds one unterminated frame, not the drain backlog.
-    input.write(`${'x'.repeat(20)}\n`)
-    input.write('{"jsonrpc":"2.0","method":"tock"}\n')
-    await new Promise(resolve => setTimeout(resolve, 10))
+    const pending = transport.request('never-replies', {})
+    input.write(`${'x'.repeat(80)}\n`)
 
-    expect(notifications.map(notification => notification.method)).toEqual(['tick', 'tock'])
-    expect((transport as unknown as { buffer: string }).buffer).toBe('')
+    const failure = await pending.then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({ code: -32700, message: 'JSON-RPC frame exceeded 64 bytes' })
+    expect(input.destroyed).toBe(true)
+    expect(notifications.map(notification => notification.method)).toEqual(['tick'])
+    transport.close()
+  })
+
+  it('trips the cap over malformed UTF-8 lines whose decoding outgrows their raw bytes', async () => {
+    const input = new PassThrough()
+    const output = new PassThrough()
+    const transport = new JsonRpcLineTransport(input, output, { maxFrameBytes: 64 })
+    transport.start()
+
+    const pending = transport.request('never-replies', {})
+    for (let index = 0; index < 100; index += 1) input.write(Buffer.from([0xff, 0x0a]))
+    input.write(Buffer.alloc(80, 0x7a))
+
+    await expect(pending).rejects.toMatchObject({ code: -32700 })
+    expect(input.destroyed).toBe(true)
     transport.close()
   })
 
@@ -382,7 +401,7 @@ describe('JsonRpcLineTransport', () => {
     input.write('a'.repeat(8))
     await new Promise(resolve => setTimeout(resolve, 10))
     expect(settled).toEqual([])
-    expect((transport as unknown as { buffer: string }).buffer).toBe('a'.repeat(8))
+    expect((transport as unknown as { bufferedBytes: number }).bufferedBytes).toBe(8)
 
     // Completing the frame exactly at the cap delivers it normally.
     input.write('\n')

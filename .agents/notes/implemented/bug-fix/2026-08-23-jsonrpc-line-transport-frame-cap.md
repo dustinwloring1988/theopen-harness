@@ -1,4 +1,4 @@
-# Agent Note: The JSON-RPC line transport caps an unterminated frame and fails the peer past it
+# Agent Note: The JSON-RPC line transport caps a frame and fails the peer past it
 
 Status: implemented
 
@@ -10,11 +10,11 @@ English | [中文](2026-08-23-jsonrpc-line-transport-frame-cap.zh.md)
 
 ## Decision
 
-The transport now takes an optional `maxFrameBytes` (`JsonRpcLineTransportOptions`) defaulting to `DEFAULT_MAX_FRAME_BYTES` = 16 MiB, validated at construction as a positive safe integer. The cap is measured in UTF-8 bytes across chunk boundaries: the transport tracks the byte length of undrained input alongside its decoded string, so multibyte characters split across `Buffer` chunks cannot hide size from the meter.
+The transport takes an optional `maxFrameBytes` (`JsonRpcLineTransportOptions`) defaulting to `DEFAULT_MAX_FRAME_BYTES` = 16 MiB, validated at construction as a positive safe integer. Inbound bytes queue as raw `Buffer`s and the cap is measured in those raw bytes across chunk boundaries: complete frames are cut at `\n` byte offsets and decoded whole per line, so multibyte characters split across chunks cannot hide size from the meter and malformed sequences cannot skew it — the meter counts exactly what is retained.
 
-When input exceeds the cap with no newline pending, the transport drops the buffered frame, destroys the caller's input stream with a `JsonRpcResponseError` carrying code `-32700` (parse error), and lets the stream error reject every pending request through the existing `onInputError` path. Destroying the input stops further delivery at the stream layer; the connection cannot resume mid-frame, so teardown — not resynchronization — is the correct response. Later chunks are never retained. The cap bounds one partial frame only: complete lines awaiting dispatch may legitimately exceed it in total, and draining them first keeps batching valid.
+When any frame exceeds the cap — while still waiting for its `\n`, or as a complete line in the same drain pass — the transport drops the buffered bytes, destroys the caller's input stream with a `JsonRpcResponseError` carrying code `-32700` (parse error), and lets the stream error reject every pending request through the existing `onInputError` path. Destroying the input stops further delivery at the stream layer; the connection cannot resume mid-frame, so teardown — not resynchronization — is the correct response. Later chunks are never retained. The cap bounds each single frame; several complete within-cap lines awaiting dispatch may still exceed it in total, and draining them keeps batching valid. Leaving complete frames unbounded was rejected because a single terminated line would then bypass the bound entirely.
 
-16 MiB sits far above any legitimate SDK frame today (session events, prompts, tool payloads), and decoded retention stays within the configured value because UTF-8 bytes never outnumber their UTF-16 code units by more than one to one.
+16 MiB sits far above any legitimate SDK frame today (session events, prompts, tool payloads), and retention between chunk events stays within the configured value because the meter reads the queued bytes themselves rather than re-measuring decoded text.
 
 ## Alternatives considered
 
@@ -29,8 +29,8 @@ When input exceeds the cap with no newline pending, the transport drops the buff
 - A peer can no longer grow the runtime process's memory through newline-free streaming; retention per direction is bounded by construction.
 - An SDK session hit by the cap sees its outstanding `request()` promises reject with `JsonRpcResponseError` code `-32700` and the child's stdout destroyed — the same closure surface as any other stream death, so clients recover through their existing exit handling rather than a new path.
 - A legitimate single frame larger than 16 MiB now fails instead of succeeding slowly; a consumer that needs larger frames raises `maxFrameBytes` at construction, and no current consumer needs to.
-- The byte meter adds one number of state and one subtraction per drained line; chunked multibyte accounting stays exact without re-scanning buffers.
+- The receive side keeps one byte counter plus the queued chunks; complete frames are cut from raw byte spans, so accounting stays exact under malformed UTF-8 without re-measuring decoded text.
 
 ## Testing
 
-`packages/sdk/protocol/tests/transport.spec.ts` pins the default value, rejects invalid options at construction, proves an oversized newline-free stream rejects pendings with `-32700` and retains no later input, proves complete lines above the cap still dispatch, exercises the exact-cap boundary (buffering allowed at the cap, overflow strictly past it), and pins byte-based measurement with a multibyte frame under a 5-byte cap.
+`packages/sdk/protocol/tests/transport.spec.ts` pins the default value, rejects invalid options at construction, proves an oversized newline-free stream rejects pendings with `-32700` and retains no later input, proves a complete frame above the cap fails the peer like an unterminated one while within-cap lines keep batching valid, proves malformed UTF-8 lines cannot drive the meter away from retained bytes so the cap still trips, exercises the exact-cap boundary (buffering allowed at the cap, overflow strictly past it), and pins byte-based measurement with a multibyte frame under a 5-byte cap.

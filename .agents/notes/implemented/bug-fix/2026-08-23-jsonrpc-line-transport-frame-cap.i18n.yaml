@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-23-jsonrpc-line-transport-frame-cap.md
-2026-08-23-jsonrpc-line-transport-frame-cap.md: 87ea4556e74261f12c673a64d1e4b083046817be
-2026-08-23-jsonrpc-line-transport-frame-cap.zh.md: e178a527ef2998976b940b2e54165be28b8d22a4
+2026-08-23-jsonrpc-line-transport-frame-cap.md: c3bf3b4b4541955f0daa91437e09b44e2589cbd2
+2026-08-23-jsonrpc-line-transport-frame-cap.zh.md: af5825f80793c778f26fe5d0f955eb5ddabe7bde
