@@ -448,14 +448,22 @@ describe('AclSandbox piped-capture byte budget', () => {
     expect(stderr.length).toBe(0)
   })
 
-  it('fails loud on a non-positive or non-finite maxOutputBytes before spawning', async () => {
+  it('fails loud on an invalid piped maxOutputBytes before spawning', async () => {
     const workspace = scratch()
     const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-21', mode: 'workspace-write' })
     await sandbox.init()
-    for (const invalid of [0, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+    for (const invalid of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
       expect(() => sandbox.spawn({ command: 'probe.exe', maxOutputBytes: invalid }))
-        .toThrow(/maxOutputBytes must be a positive finite number/u)
+        .toThrow(/maxOutputBytes must be a positive integer/u)
     }
+  })
+
+  it('does not validate maxOutputBytes under inherit stdio, which captures nothing', async () => {
+    const workspace = scratch()
+    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-22', mode: 'workspace-write' })
+    await sandbox.init()
+    const child = sandbox.spawn({ command: 'probe.exe', stdio: 'inherit', maxOutputBytes: -1 })
+    await expect(child.wait()).resolves.toEqual({ stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), exitCode: 42 })
   })
 })
 

@@ -12,11 +12,11 @@ Status: implemented
 
 `drainPipe` 接收一个必填的保留字节上限并保留有界的尾部：一旦到达的字节超过 `maxBytes`，就丢弃整个头部数据块（或裁剪单个超限数据块的头部），直到恰好剩下最近的 `maxBytes`——即 subprocess seam 的 `OutputCollector` tail-keep 形态，采纳它的理由是其记录在案的依据：错误和最终结果集中在命令输出的末尾。无论子进程如何分块或产出多少字节，保留量都不会超过上限，且管道句柄在每条路径上仍然关闭。
 
-`AclSandboxSpawnOptions` 新增 `maxOutputBytes`：单流预算，分别独立作用于 stdout 与 stderr，与 subprocess seam 的按流收集器一致。默认值为 64_000（`DEFAULT_MAX_OUTPUT_BYTES`），即仓库标准的单流输出预算（`toh-bash-local`/`toh-pwsh-local` 的 `maxOutputBytes` 配置）。`spawn()` 把默认值作为显式步骤解析，并在 spawn 之前拒绝非正数或非有限数值——NaN 或 Infinity 预算会静默禁用尾部裁剪，因此配置错误在边界处响亮失败。`stdio: 'inherit'` 忽略该选项：字节直接透传，没有任何缓冲。
+`AclSandboxSpawnOptions` 新增 `maxOutputBytes`：单流预算，分别独立作用于 stdout 与 stderr，与 subprocess seam 的按流收集器一致。默认值为 64_000（`DEFAULT_MAX_OUTPUT_BYTES`），即仓库标准的单流输出预算（`toh-bash-local`/`toh-pwsh-local` 的 `maxOutputBytes` 配置）。管道路径把默认值作为显式步骤解析，并在 spawn 之前拒绝任何不是正整数的值——NaN 或 Infinity 预算会静默禁用尾部裁剪，小数预算会让裁剪的分块记账失配（subarray 向整字节截断而记账减去的是小数），保留窗口可能超出上限；配置错误在边界处响亮失败。`stdio: 'inherit'` 完全忽略该选项——没有捕获自然也没有校验——继承式 spawn 绝不会因它被拒绝。
 
 ## 验证
 
-`tests/drain-bound.spec.ts` 钉住排空层的 tail-keep（低于上限的输出跨轮询保持完整、两条头部丢弃路径都得到按字节精确的最后 `maxBytes` 窗口、单个超限数据块被裁剪为尾部），并在 win32 宿主上驱动真实的被隔离子进程：一个在小显式上限下超量产出的子进程和一个使用默认预算的子进程。`tests/index-failure-paths.spec.ts` 的桩测试台钉住 spawn 侧解析：显式上限作用于两个流、省略选项时应用默认值，以及在任何 spawn 之前响亮拒绝非法值。
+`tests/drain-bound.spec.ts` 钉住排空层的 tail-keep（低于上限的输出跨轮询保持完整、两条头部丢弃路径都得到按字节精确的最后 `maxBytes` 窗口、单个超限数据块被裁剪为尾部），并在 win32 宿主上驱动真实的被隔离子进程：一个在小显式上限下超量产出的子进程、一个使用默认预算的子进程，以及小数预算在 spawn 前被拒绝。`tests/index-failure-paths.spec.ts` 的桩测试台钉住 spawn 侧解析：显式上限作用于两个流、省略选项时应用默认值、非法管道值在任何 spawn 之前响亮拒绝，以及继承式 stdio 接受非法预算而不受影响。
 
 ## 已考虑的替代方案
 

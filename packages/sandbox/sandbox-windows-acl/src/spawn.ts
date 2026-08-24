@@ -183,8 +183,10 @@ export function spawnSandboxed(
  * much the confined child writes.
  * @param api - the binding table.
  * @param handle - the pipe read end to drain (closed when done).
- * @param maxBytes - retained-bytes cap; resolved by the caller (the AclSandbox
- *   spawn path applies {@link DEFAULT_MAX_OUTPUT_BYTES} unless overridden).
+ * @param maxBytes - retained-bytes cap, a positive integer (the trim's
+ *   chunk accounting assumes whole-byte arithmetic); resolved by the caller
+ *   (the AclSandbox spawn path applies {@link DEFAULT_MAX_OUTPUT_BYTES} unless
+ *   overridden).
  * @returns the most recent pipe contents, never longer than `maxBytes`.
  */
 export async function drainPipe(api: Win32Bindings, handle: NativePtr, maxBytes: number): Promise<Buffer> {

@@ -135,4 +135,19 @@ describe.skipIf(!isWin32)('bounded capture from a real confined child', () => {
       sandbox.dispose()
     }
   }, 30_000)
+
+  it('rejects a fractional maxOutputBytes before spawning', async () => {
+    const sandbox = await initializedSandbox()
+    try {
+      expect(() => sandbox.spawn({
+        command: process.execPath,
+        args: ['-e', 'process.stdout.write("o")'],
+        cwd: process.cwd(),
+        stdio: 'pipe',
+        maxOutputBytes: 4096.5,
+      })).toThrow(/maxOutputBytes must be a positive integer/u)
+    } finally {
+      sandbox.dispose()
+    }
+  }, 30_000)
 })

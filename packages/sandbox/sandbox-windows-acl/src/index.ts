@@ -120,7 +120,8 @@ export interface AclSandboxSpawnOptions {
    * exceeds it, only its most recent `maxOutputBytes` bytes are kept and the
    * earlier head is dropped (the subprocess seam's OutputCollector tail-keep),
    * so a chatty or runaway child cannot grow host memory without bound.
-   * Ignored under 'inherit'. Must be positive and finite; defaults to 64_000
+   * Ignored under 'inherit' — including its validation, since nothing is
+   * captured there. Must be a positive integer; defaults to 64_000
    * ({@link DEFAULT_MAX_OUTPUT_BYTES}).
    */
   maxOutputBytes?: number
@@ -363,12 +364,6 @@ export class AclSandbox {
     if (api === undefined || token === undefined) throw new Error('AclSandbox is not initialized: call init() first')
     const args = options.args ?? []
     const cwd = options.cwd ?? process.cwd()
-    const maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES
-    // A non-finite budget would silently disable the drains' tail-keep trim:
-    // fail loud here instead of growing host memory without bound.
-    if (!Number.isFinite(maxOutputBytes) || maxOutputBytes <= 0) {
-      throw new Error('AclSandbox maxOutputBytes must be a positive finite number')
-    }
 
     if (options.stdio === 'inherit') {
       const native = spawnSandboxedInherited(api, token, { command: options.command, args, cwd })
@@ -382,6 +377,17 @@ export class AclSandbox {
           return { stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), exitCode }
         },
       }
+    }
+
+    // Piped capture only: 'inherit' captures nothing, so the option (and its
+    // validation) does not apply there. A non-integer budget would desync the
+    // drains' tail-keep trim — subarray truncates toward a whole byte while
+    // the bookkeeping subtracts the fraction, letting the result exceed the
+    // cap — and a non-finite one would silently disable the trim entirely:
+    // fail loud instead of mis-bounding host memory.
+    const maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES
+    if (!Number.isInteger(maxOutputBytes) || maxOutputBytes <= 0) {
+      throw new Error('AclSandbox maxOutputBytes must be a positive integer')
     }
 
     const native = spawnSandboxed(api, token, { command: options.command, args, cwd })
