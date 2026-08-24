@@ -154,8 +154,20 @@ class JsonKvUnit implements KvUnit {
       this.targetMutations.delete(target)
       if (deferred === undefined) return
       restoreRecord(records, key)(deferred)
-      this.republishCurrentState()
-      if (!deferred.present) return
+      if (!deferred.present) {
+        // Absence is the required restore target, so this publish is the
+        // durable empty state a resolved delete promises: await it and
+        // propagate its failure instead of leaving the replacement
+        // best-effort.
+        const revision = this.beginMutation(target)
+        records.delete(key)
+        await this.publish().catch((error: unknown) => {
+          this.rollbackMutation(target, revision, deferred, restoreRecord(records, key))
+          throw error
+        })
+        this.acknowledgeMutation(target, revision)
+        return
+      }
     }
     const revision = this.beginMutation(target)
     const prior: PriorValue = { present: true, value: records.get(key) }

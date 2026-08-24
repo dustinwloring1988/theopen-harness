@@ -487,6 +487,49 @@ describe('json backend specifics', () => {
     await reopened.close()
   })
 
+  it('rejects an overlapping absent-key delete when the absent-state replacement fails to publish', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    const path = join(root, 'shape.json')
+    let releasePut!: () => void
+    // A failed first-ever put starts from an absent key: its rollback hands
+    // an absent restore to the overlapping delete's ticket.
+    await setHoldOnce(new Promise<void>((resolveHold) => { releasePut = resolveHold }))
+    const put = unit.putRecord('t', 'k', { v: 'first' })
+    const deletion = unit.deleteRecord('t', 'k')
+    const noOp = unit.deleteRecord('t', 'k')
+    // A directory at the publish target rejects atomic replacement on every host.
+    await mkdir(path)
+    releasePut()
+    await expect(put).rejects.toThrow()
+    await expect(deletion).rejects.toThrow()
+    // The failed put deferred its absent restore to the no-op delete's
+    // ticket; memory stays without the record across the drained queue.
+    expect(await unit.loadAll()).toEqual({
+      tables: { t: {} },
+      global: null,
+    })
+    // Every recovery publish lands in the same breakage, including the
+    // delete's own required empty-state replacement: the delete must reject
+    // instead of resolving before the empty state is durable.
+    await expect(noOp).rejects.toThrow()
+    // Every publish so far was rejected, so the medium never materialized:
+    // only the breakage directory sits at the publish target.
+    await expect(readFile(path, 'utf8')).rejects.toMatchObject({ code: 'EISDIR' })
+    // Once the target works again, the next successful publish converges.
+    await rm(path, { recursive: true })
+    await unit.putRecord('t', 'after', { v: 'ok' })
+    const reopened = new JsonStorageBackend(root)
+    const reopenedUnit = await reopened.kv.open(descriptor)
+    expect(await reopenedUnit.loadAll()).toEqual({
+      tables: { t: { after: { v: 'ok' } } },
+      global: null,
+    })
+    await reopened.close()
+    await backend.close()
+  })
+
   it('rolls stacked overlapping failures back to the last acknowledged value', async () => {
     const root = await freshRoot()
     const backend = new JsonStorageBackend(root)
