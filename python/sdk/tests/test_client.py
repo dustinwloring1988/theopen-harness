@@ -1079,6 +1079,7 @@ def test_close_waits_for_in_progress_start_before_tearing_down_runtime(
     spawn_entered = threading.Event()
     spawn_released = threading.Event()
     created: list[_GatedSpawnRuntimeProc] = []
+    order: list[str] = []
 
     def gated_popen(*_args: object, **_kwargs: object) -> _GatedSpawnRuntimeProc:
         spawn_entered.set()
@@ -1086,17 +1087,16 @@ def test_close_waits_for_in_progress_start_before_tearing_down_runtime(
             raise AssertionError("gated spawn was never released")
         proc = _GatedSpawnRuntimeProc()
         created.append(proc)
+        order.append("start")
         return proc
 
     monkeypatch.setattr(sdk_client.subprocess, "Popen", gated_popen)
 
     client = HarnessClient(HarnessConfig(launch_args_override=("unused",)))
-    order: list[str] = []
     close_done = threading.Event()
 
     def run_start() -> None:
         client.start()
-        order.append("start")
 
     def run_close() -> None:
         client.close()
