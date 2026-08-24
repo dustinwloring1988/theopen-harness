@@ -114,9 +114,9 @@ const homeAndGuide = pairedPages([
     order: 0,
   },
   {
-    source: 'docs/user/guide/index.md',
+    source: 'docs/user/guide/quickstart.md',
     route: 'guide/quickstart.md',
-    label: { root: '使用 Web UI', en: 'Use the Web UI' },
+    label: { root: '快速开始', en: 'Quickstart' },
     sidebar: { root: 'zh-guide', en: 'en-guide' },
     section: { root: '入门', en: 'Guide' },
     order: 1,
@@ -409,6 +409,13 @@ const reference = [
     sidebar: { root: 'zh-reference', en: 'en-reference' },
     section: { root: '开发手册', en: 'Cookbook' },
     order: 5,
+  }, {
+    source: 'docs/cookbook/writing-tests-and-snapshots-for-a-seam.md',
+    route: 'reference/cookbook/writing-tests-and-snapshots-for-a-seam.md',
+    label: { root: '为能力 Seam 编写测试与快照', en: 'Writing tests and snapshots for a seam' },
+    sidebar: { root: 'zh-reference', en: 'en-reference' },
+    section: { root: '开发手册', en: 'Cookbook' },
+    order: 6,
   }]),
 ]
 

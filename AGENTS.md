@@ -11,41 +11,57 @@ TheOpen Harness is a plugin-based agent harness on vendored Cordis: **everything
 ```
 vendor/      Vendored Cordis source — manifest + sync procedure in vendor/README.md
 packages/    @buckeyestudio/toh-<pkg> workspaces at packages/<group>/<pkg>/
-  core/        product API spine: session, system-prompt, tools, agent, agent-loop
-  api/         Remote BFF assembly and Typert RPC gateway
-  typert/      type graph generator, loader, and runtime registry
-  llm/         LLM capability: Service Definition/Consumer + DeepSeek providers
-  e2b/         E2B POC: sandbox + FS/subprocess adapters
+  core/         product API spine: session, system-prompt, tools, agent, agent-loop
+  api/          Remote BFF assembly and Typert RPC gateway
+  typert/       type graph generator, loader, and runtime registry
+  llm/          LLM capability: Service Definition/Consumer + DeepSeek providers
+  e2b/          E2B POC: sandbox + FS/subprocess adapters
   shell/        bash capability: Service Definition + local/pwsh providers + shell Consumers
-  subprocess/  subprocess capability + local process-tree provider
-  terminal/         persistent sessions
-  fs/          filesystem capability + policy
-  lsp/         language-server capability
-  skill/       skill provider registry + local impl + catalog/loader tool
-  web/         web capability: Service Definition + search/fetch providers + tool Consumer
-  compaction/     compaction capability + basic provider
-  context/     request-context plugins
-  subagent/    subagent capability: Service Definition + providers + delegation Consumers
-  bundle/      installable toh --profile patch-layer bundles
-  workflow/    workflow capability + worker-thread provider + tool Consumer
-  todo/        todo_write tool
-  plan/        plan mode as logged state
-  preset/      per-session agent composition from preset cordis.yml files
-  guard/       loop-hygiene + tool-timeout plugins
-  self-modification/  the agent inspects/mounts its own plugins
-  hooks/       Claude Code/Codex hook bridges + wire-protocol library
-  session/     durable session data: persistence, projection, titles, telemetry
-  identity/    anonymous identity
-  settings/    user-settings capability + file provider
-  credentials/ credential/authorization capabilities + env/.env provider
-  acp/         automation-only Agent Client Protocol server
-  interaction/ approval/interaction capabilities, permission, commands, ask-user
-  boot/        shared app-bin glue
-  sdk/         JSON-RPC protocol, server, and TypeScript client
-  examples/    demo bundles (agent-spine + CLI/ACP/JSON-RPC bins)
+  subprocess/   subprocess capability + local process-tree provider
+  terminal/     persistent PTY sessions
+  fs/           filesystem capability + policy
+  lsp/          language-server capability
+  code-runtime/ code-execution capability + worker-thread/python providers + Code Mode Consumer
+  sandbox/      process-confinement seam; bwrap/Landlock/Seatbelt/Windows-ACL backends
+  skill/        skill provider registry + local impl + catalog/loader tool
+  web/          web capability: Service Definition + search/fetch providers + tool Consumer
+  mcp/          MCP client bridge registering external server tools on ctx.tools
+  compaction/   compaction capability + basic provider
+  context/      request-context plugins
+  subagent/     subagent capability: Service Definition + providers + delegation Consumers
+  bundle/       installable toh --profile patch-layer bundles
+  workflow/     workflow capability + worker-thread provider + tool Consumer
+  todo/         todo_write tool
+  plan/         plan mode as logged state
+  preset/       per-session agent composition from preset cordis.yml files
+  goal/         same-session goals: state, tools, command, round driver
+  jobs/         background-job runtime + model-facing job_* control tools
+  schedule/     session-local scheduled follow-ups
+  feedback/     human feedback: message ratings + slash command
+  attachment/   durable attachment storage + local content-addressed backend
+  guard/        loop-hygiene + tool-timeout plugins
+  extensions/   the agent inspects/mounts its own plugins
+  hooks/        Claude Code/Codex hook bridges + wire-protocol library
+  session/      durable session data: persistence, projection, titles, telemetry
+  session-query/  session retrieval: reads, traces, filters, search
+  identity/     anonymous identity
+  settings/     user-settings capability + file provider
+  credentials/  credential/authorization capabilities + env/.env provider
+  spill/        oversized tool-result storage + spill policy
+  storage/      non-session storage hub + backends + domain form
+  workspace/    workspace entity registry
+  acp/          automation-only Agent Client Protocol server
+  interaction/  approval/interaction capabilities, permission, commands, ask-user
+  boot/         shared app-bin glue
+  sdk/          JSON-RPC protocol, server, and TypeScript client
+  host/         Web-GUI host half: API gateway, HTTP routes, static frontend, directory picker
+  client/       Web-GUI browser half: boot kernel, modules, and ui-* plugins
+  examples/     demo bundles (agent-spine + CLI/ACP/JSON-RPC bins)
   experimental/ private prototypes excluded from official releases
-  support/     dev/test infrastructure
-  util/        zero-dependency utilities
+  test-support/ dev/test infrastructure
+  runtime-diagnostics/  package-owned runtime-invariant registry service
+  util/         zero-dependency utilities
+apps/        shipped app bins: cli (the toh launcher), web (frontend dist), desktop (Electron shell)
 python/      Python SDK and bundled runtime (see python/README.md)
 native/      @buckeyestudio/node-addon-landlock-run source of record (see native/README.md)
 examples/    Runnable cordis.yml leaves over packages/examples bundles (see examples/AGENTS.md)
@@ -123,7 +139,7 @@ Real-API tests and demos read `DEEPSEEK_API_KEY`, optional `DEEPSEEK_BASE_URL`, 
 - **Non-trivial changes MUST include an Agent Note in the same PR;** only mechanical/local edits are exempt ([scope](.agents/notes/README.md#when-to-write-one)). Archived notes are frozen: never edit or treat them as current authority ([archive policy](.agents/notes/README.md#archiving-and-deletion)).
 - **Testing policy** — [docs/testing.md](docs/testing.md). Every non-trivial model- or product-user-visible behavior change adds or updates a keyless snapshot through a real runnable example in the same PR; package tests, e2e-only assertions, and mock-only fixtures do not substitute for the assembled application transcript. Fixtures must replay on macOS/Linux; fix fixtures, not normalizers.
 - **A tool's UI render intent is part of its design**, decided up front (`generic`/`terminal`/`diff`, `locations`); presentation methods are pure functions of `args` ([cookbook](docs/cookbook/adding-a-tool.md)).
-- **Plan unit, e2e, and snapshot coverage** for capability seams, lifecycle paths, and transcript output; include missing snapshot-harness support in the same change.
+- **Plan unit, e2e, and snapshot coverage** for capability seams, lifecycle paths, and transcript output ([recipe](docs/cookbook/writing-tests-and-snapshots-for-a-seam.md)); include missing snapshot-harness support in the same change.
 - **Both SDKs project the loop.** Agent-loop, session-lifecycle, and `SessionEventMap` changes update the TypeScript and Python SDK expected outputs in the same PR; `pnpm run test` covers neither ([surfaces](docs/testing.md#when-a-snapshot-test-is-required)).
 - **Choose PR history deliberately.** Split independent changes; fix the introducing PR before propagation. Standalone PRs and official stacks may merge-forward or rebase after review. Rewrites use `--force-with-lease`, abort on remote movement, never raw `--force`; an in-progress merge-forward preserves its checkpoint before taking a newer base ([rationale](.agents/notes/implemented/process/2026-08-02-native-github-stacks-and-optional-rebases.md)).
 - **Labels:** one PR `kind/*`, all material `area/*`, and native Issue Type ([taxonomy](.agents/notes/implemented/process/2026-08-08-unified-github-label-taxonomy.md)).

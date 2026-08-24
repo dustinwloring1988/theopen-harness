@@ -16,13 +16,31 @@ TheOpen Harness 目前处于 _开发者预览_ 阶段，正在快速迭代。**�
 
 ### 通过 `npm` 运行
 
-安装 `Node.js`，然后运行：
+安装 Node.js `^22.19 || >=24`，然后运行：
 
 ```sh
 npx @buckeyestudio/toh web
 ```
 
-该命令默认会在 `http://127.0.0.1:3080` 启动 Web UI，本机启动时还会用默认浏览器打开页面。通过 SSH 启动时只打印宿主机 URL，因为本地转发地址由 SSH 客户端或编辑器持有。传入 `--no-open` 可仅运行服务器而不打开浏览器。详见 [Web UI 指南](docs/user/guide/index.zh.md)。
+该命令默认会在 `http://127.0.0.1:3080` 启动 Web UI，本机启动时还会用默认浏览器打开页面。通过 SSH 启动时只打印宿主机 URL，因为本地转发地址由 SSH 客户端或编辑器持有。传入 `--no-open` 可仅运行服务器而不打开浏览器。详见[快速开始](docs/user/guide/quickstart.zh.md)。
+
+<a id="headless-one-shot"></a>
+
+### 单次 headless 运行
+
+在环境变量或 `.env` 中配置 `DEEPSEEK_API_KEY` 后：
+
+```sh
+npx @buckeyestudio/toh --profile headless "summarize this workspace"
+```
+
+它会在一个新建的持久会话中运行单个任务，打印最终 assistant 文本，然后退出——无需浏览器。
+
+<a id="python-sdk"></a>
+
+### Python SDK
+
+[Python SDK](python/README.zh.md) 让你通过 `pip` 以编程方式驱动 harness；其内置运行时仅支持 Linux x64/arm64 和 macOS arm64。
 
 <a id="run-from-source"></a>
 

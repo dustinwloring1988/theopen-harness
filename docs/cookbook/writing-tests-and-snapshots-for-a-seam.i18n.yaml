@@ -1,0 +1,6 @@
+# Bilingual-pair consistency record (docs/i18n/README.md): the git blob hash of each
+# side as of the last confirmed-consistent state. Both languages carry equal authority;
+# after editing either side, bring the other along and re-record with:
+#   pnpm run verify-translation-pairing --write docs/cookbook/writing-tests-and-snapshots-for-a-seam.md
+writing-tests-and-snapshots-for-a-seam.md: b222b0925bb3ceeaedadea716f25cb06ac725d24
+writing-tests-and-snapshots-for-a-seam.zh.md: 0e55b6fb1571a9278a43ed2ec18663635ef22a5e

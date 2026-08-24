@@ -682,6 +682,7 @@ function docSyncLeafGates(options: {
       label: 'documentation site checks',
     }),
     pnpmScript('package-readme-limitations', 'verify-package-readme-limitations', { label: 'package README limitations' }),
+    pnpmScript('package-inventory', 'verify-package-inventory', { label: 'package inventory' }),
   ]
 }
 

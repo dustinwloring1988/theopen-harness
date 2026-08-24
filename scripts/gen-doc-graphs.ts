@@ -664,7 +664,7 @@ function renderCapabilitySeams(pkgs: Pkg[], services: readonly ServiceEntry[]): 
   const addEdge = (from: string, to: string): void => { edges.add(`  ${from} --> ${to}`) }
   const lines = generatedHeader('Capability Seams And Core Services')
   lines.push(
-    'A service can be a core spine service, a swappable capability seam, or a bundle/composition point. The graph shows the package that owns the service declaration, known implementation packages, and packages that consume the service directly.',
+    'A service can be a core spine service, a swappable capability seam, or a bundle/composition point. The graph shows the package that owns the service declaration, known implementation packages, and packages that consume the service directly. The [glossary](./glossary.md#capability-seam) owns the canonical seam definition.',
     '',
     '```mermaid',
     'flowchart LR',

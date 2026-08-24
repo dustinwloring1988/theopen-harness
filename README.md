@@ -14,13 +14,27 @@ TheOpen Harness is currently in _developer preview_ and is iterating rapidly. **
 
 ### Run from `npm`
 
-Install `Node.js`, then run:
+Install Node.js `^22.19 || >=24`, then run:
 
 ```sh
 npx @buckeyestudio/toh web
 ```
 
-The command starts the Web UI at `http://127.0.0.1:3080` by default and opens it in the default browser for a local launch. An SSH launch only prints the host URL because the SSH client or editor owns the local forwarded address. Pass `--no-open` to run the server without opening a browser. See [Web UI guide](docs/user/guide/index.md).
+The command starts the Web UI at `http://127.0.0.1:3080` by default and opens it in the default browser for a local launch. An SSH launch only prints the host URL because the SSH client or editor owns the local forwarded address. Pass `--no-open` to run the server without opening a browser. See the [quickstart](docs/user/guide/quickstart.md).
+
+### One-shot headless run
+
+With `DEEPSEEK_API_KEY` in the environment or `.env`:
+
+```sh
+npx @buckeyestudio/toh --profile headless "summarize this workspace"
+```
+
+It runs one task in a fresh persisted session, prints the final assistant text, and exits — no browser.
+
+### Python SDK
+
+The [Python SDK](python/README.md) drives the harness programmatically from `pip`; its bundled runtime supports Linux x64/arm64 and macOS arm64 only.
 
 ### Run from source
 

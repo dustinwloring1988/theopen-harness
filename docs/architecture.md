@@ -62,7 +62,7 @@ The [event map](event-producer-consumer.md) lists every event's producers and co
 
 ## Turn flow
 
-A **step** is one model request plus the tools it calls. A **turn** is zero or more steps: it opens before its first input is claimed and closes once nothing is owed.
+A **step** is one model request plus the tools it calls. A **turn** is zero or more steps: it opens before its first input is claimed and closes once nothing is owed ([loop-hierarchy definitions](glossary.md#loop-hierarchy)).
 
 ```text
 turn/start
@@ -97,7 +97,7 @@ The session log is the source of the context the model sees. `deriveMessages()` 
 
 ## Capability seams
 
-A **seam** is a swappable capability with three roles: a **Service Definition** declaring the interface, a **Service Provider** implementing it, and a **Consumer** using it, commonly a model-facing tool. A package may combine roles, but one role alone is not a seam; adding a capability means designing all three ([capability graph](capability-seams.md)).
+A **seam** is a swappable capability with three roles: a **Service Definition** (the Cordis `Service` that owns its `ctx.<key>` and vocabulary types), a **Service Provider** implementing it, and a **Consumer** using it, commonly a model-facing tool. A package may combine roles, but one role alone is not a seam; adding a capability means designing all three ([capability graph](capability-seams.md); [canonical definition](glossary.md#capability-seam)).
 
 Seams are why one provider swap changes the whole product. Filesystem and subprocess providers share one execution world, so pointing them at a remote sandbox moves Bash, PTY, and LSP with them, with no provider forks. [Subagent providers](subsystems/subagent.md) vary just as widely behind one interface, from a fresh child agent to a delegated turn in another product.
 
@@ -111,7 +111,7 @@ New behavior attaches to a documented extension point. Changing the loop itself 
 |---|---|
 | Add a model provider | register its adapter on `ctx.llm` |
 | Add a model-facing capability | register on `ctx.tools`; its schema joins prompt assembly |
-| Give one session a different capability set | compose an agent preset; a service row there needs an `isolate` realm |
+| Give one session a different capability set | compose an agent preset; a service row there needs an [`isolate` realm](cordis-primer.md#scopes-and-realms) |
 | Add shell execution | register a `ctx.shell` backend; the local one spawns through `ctx.subprocess` |
 | Add persistent terminal execution | register a `ctx.terminals` backend plus `toh-tool-terminal` |
 | Add a human command | register on `ctx.commands`; it dispatches without a model turn |
@@ -128,4 +128,4 @@ New behavior attaches to a documented extension point. Changing the loop itself 
 | Fork a live session | `ctx.sessions.fork(source, boundary?, childSessionId?)` |
 | Scope a registration to one agent | use that agent's `agent.ctx` |
 
-The [extension cookbook](cookbook/extension-cookbook.md) maps features to capabilities and indexes the step-by-step guides for [packages](cookbook/adding-a-package.md), [tools](cookbook/adding-a-tool.md), [LLM adapters](cookbook/adding-an-llm-adapter.md), [Chat nodes](cookbook/adding-a-conversation-node.md), and [settings cards](cookbook/adding-a-settings-card.md).
+The [extension cookbook](cookbook/extension-cookbook.md) maps features to capabilities and indexes the step-by-step guides for [packages](cookbook/adding-a-package.md), [tools](cookbook/adding-a-tool.md), [LLM adapters](cookbook/adding-an-llm-adapter.md), [Chat nodes](cookbook/adding-a-conversation-node.md), [settings cards](cookbook/adding-a-settings-card.md), and [seam testing](cookbook/writing-tests-and-snapshots-for-a-seam.md).

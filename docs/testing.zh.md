@@ -12,6 +12,22 @@
 - **快照**（`pnpm run test:snapshot`）：无密钥预期输出覆盖对外行为（传输约定与呈现），持久化日志则固定组装后的后端行为。ACP 启动真实的自动化服务器示例、回放录制会话，并对归一化 JSON-RPC 与重新持久化的日志执行 diff（[ACP 快照 Agent Note](../.agents/notes/implemented/testing/2026-06-19-acp-snapshot-tests.zh.md)）；headless 后端场景通过未导出的 JSONL 测试 driver 启动各自显式的示例组装，而 `apps/cli` 则单独负责产品 CLI（命令行界面）`toh --profile headless` 的验收。当模型 transcript（文本记录）发生变化时使用 `pnpm run test:snapshot:record`，回放输入仍然有效时使用 `pnpm run test:snapshot:refresh`；请审查每一处 JSONL 与预期输出差异。一个 ACP 场景（`text-turn`）固定完整的系统提示词与工具 schema 内容；其他 fixture（测试前置数据）将其 token 化，因此修改只会扰动一行（[pinned-header Agent Note](../.agents/notes/archived/testing/2026-07-06-pin-request-header-content-in-one-scenario.md)）。
 - **Web 浏览器快照**（`pnpm run test:web`；必需的 Linux PR（Pull Request）门禁）：Chromium 将回放后的浏览器输出与 `apps/web/tests/snapshots/` 比较。CI 强制只读的 `TOH_SNAPSHOT=replay`，绝不写入预期输出；record/refresh 留在本地，每处 diff 都须评审（[web e2e 车道](../.agents/notes/implemented/testing/2026-07-24-web-gui-browser-e2e-lane.zh.md)、[CI 门禁决策](../.agents/notes/implemented/testing/2026-07-30-web-browser-snapshot-ci-gate.zh.md)）。`test:web` 会[先构建](../.agents/notes/implemented/bug-fix/2026-07-28-themed-scrollbars-and-reserved-gutter.zh.md)以交付插件 CSS。
 
+## 在本地录制快照
+
+包脚本会自行设置 `TOH_SNAPSHOT`（`pnpm run test:snapshot:record`、`pnpm run test:snapshot:refresh`、`pnpm run test:web:refresh`）。直接调用 vitest 时，请按 shell 分别设置——POSIX 环境变量前缀：
+
+```sh
+TOH_SNAPSHOT=record pnpm exec vitest run --config vitest.snapshot.config.ts -t <scenario-name> --update
+```
+
+PowerShell 不支持环境变量前缀形式；请显式设置并清除该变量：
+
+```powershell
+$env:TOH_SNAPSHOT = 'record'
+pnpm exec vitest run --config vitest.snapshot.config.ts -t <scenario-name> --update
+Remove-Item Env:TOH_SNAPSHOT
+```
+
 会话 fixture 保留 header 与 payload，但省略正文序号／时间 envelope。回放会合成这些字段；运行时持久化不变。fixture 使用规范打包行；[迁移器](../scripts/migrate-packed-session-fixtures.ts)会改写旧布局。
 
 ## 带密钥策略：推理（inference）在这里很便宜
@@ -46,4 +62,4 @@ e2e 断言应重新运行命令或从外部重新读取文件；对 agent 自身
 
 ## 何时需要快照测试
 
-每项非平凡的模型可见、协议可见或人类可见变更，都必须在同一 PR 中，通过可运行示例所属的快照套件添加或更新无密钥场景。包测试、e2e 断言、mock 与仅测试组合、PR 理由都不能取代组装后的 transcript；必要时应扩展 harness。ACP 自动化场景使用 `examples/<name>/tests/snapshots/`，即基于 [`toh-acp-snapshot`](../packages/test-support/acp-snapshot/README.zh.md) 套件工厂的场景表（`examples/acp-agent` 为主套件）；`examples/headless-agent` 拥有内部规范事件 JSONL 快照与回放 fixture。`pwsh-tool-turn` ACP 场景启动真实 `pwsh`，在无 `pwsh` 的主机上跳过。已完成的交互式终端旅程使用 `apps/cli/tests/snapshots/` 下由 JSONL 驱动的场景；瞬态呈现使用包内语义矩阵，输入、Loader 选择或终端清理发生变化时还要添加 PTY 用例。浏览器渲染的 Web GUI 旅程使用上述 Web 应用快照套件。两个 SDK 各自独立地投影 agent loop、会话生命周期与 `SessionEventMap`，因此改动其中任何一项都要同时更新两者：`examples/jsonrpc-agent/tests/snapshots/` 拥有 TypeScript 客户端；`scripts/snapshots/python-sdk-single-exe/` 拥有 Python 客户端，且只有必需的 `python-runtime` CI 作业会运行它。新的能力 seam、生命周期变体或 transcript 呈现接口在计划阶段就要列出每个覆盖层级，并在实现前验证 harness 能够表达它们。
+每项非平凡的模型可见、协议可见或人类可见变更，都必须在同一 PR 中，通过可运行示例所属的快照套件添加或更新无密钥场景。包测试、e2e 断言、mock 与仅测试组合、PR 理由都不能取代组装后的 transcript；必要时应扩展 harness。新的能力 seam、生命周期变体或 transcript 呈现接口在计划阶段就要列出每个覆盖层级，并在实现前验证 harness 能够表达它们。从套件到表面的路由、场景表、本地过滤运行以及录制／评审步骤，见[能力 seam 测试演练](cookbook/writing-tests-and-snapshots-for-a-seam.zh.md)。
