@@ -7,7 +7,7 @@ import type { WebRoute, WebUpgradeRoute } from '@buckeyestudio/toh-host-webserve
 import { toFetchHandler } from '@buckeyestudio/toh-host-apiproxy'
 import { API_PATH, HOST_EVENTS_PATH, MUX_EVENTS_PATH } from './api-path.ts'
 import { bridge, DEFAULT_MAX_REQUEST_BODY_BYTES } from './http-bridge.ts'
-import { assertTrustedAuthority, isTrustedApiRequest } from './api-request-trust.ts'
+import { assertTrustedAuthority, isLocalApiRequest, isTrustedApiRequest } from './api-request-trust.ts'
 import { HostConnectionService } from './rpc-host.ts'
 import { rejectWebSocketUpgrade, WebSocketDownlinks } from './websocket-downlink.ts'
 
@@ -76,7 +76,11 @@ export const Config: z<ConnectionConfig> = z.object({
  * reconnaissance no anonymous caller should have. `trustedHosts` is a
  * DNS-rebinding fence, explicitly not authentication, so the whole
  * configuration plane stays loopback-same-origin until a real authentication
- * layer exists. `llm.discoverModels` belongs to that plane on both counts: it
+ * layer exists. Because that fence alone reads client-controlled headers, the
+ * pin also requires the accepted connection's socket peer address to be
+ * loopback ([isLocalApiRequest](./api-request-trust.ts)): a non-browser LAN
+ * caller on an all-interfaces composition can otherwise put
+ * `Host: localhost` on the wire and pass. `llm.discoverModels` belongs to that plane on both counts: it
  * carries a draft credential, and it makes the HOST issue a GET to a URL the
  * caller chose and reports back the status or the parsed body — an anonymous
  * LAN caller would have a probe for whatever the host can reach and the
@@ -122,8 +126,11 @@ const PRIVILEGED_METHODS = new Set([
  * Mounts the API gateway under the browser transport prefix. Every request on
  * the prefix passes the browser-trust fence first (DNS-rebinding and
  * cross-site defense — [api-request-trust](./api-request-trust.ts));
- * privileged methods additionally pass it with an empty trust list, which
- * pins them to loopback.
+ * privileged methods additionally pass it with an empty trust list AND a
+ * loopback socket peer address, which pins them to the local operator: the
+ * empty-list Host fence alone is forgeable by a non-browser LAN caller over
+ * plain HTTP, while the socket peer address is read from the accepted
+ * connection.
  * @param ctx - Host plugin context.
  * @param config - resolved plugin config (schema defaults applied).
  */
@@ -137,14 +144,14 @@ export function apply(ctx: Context, config?: ConnectionConfig): void {
   if (ctx.get('apiProxy') !== undefined) assertImageBodyCapacity(ctx, maxRequestBodyBytes)
   const connection = new HostConnectionService(ctx, trustedHosts)
   const fetchHandler = connection.createSharedFetchHandler(API_PATH, {
-    async fetch(request) {
+    async fetch(request, remoteAddress) {
       const pathname = new URL(request.url).pathname
       const method = pathname.startsWith(`${API_PATH}/`)
         ? pathname.slice(API_PATH.length + 1)
         : undefined
       if (method !== undefined
         && PRIVILEGED_METHODS.has(method)
-        && !isTrustedApiRequest(request, [])) {
+        && !isLocalApiRequest(request, remoteAddress)) {
         return new Response('forbidden', { status: 403 })
       }
       if (request.method === 'GET' && (pathname === MUX_EVENTS_PATH || pathname === HOST_EVENTS_PATH)) {
