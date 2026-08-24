@@ -1,7 +1,7 @@
 import { once } from 'node:events'
 import { PassThrough, Writable } from 'node:stream'
 import { describe, expect, it } from 'vitest'
-import { JsonRpcLineTransport, JsonRpcResponseError } from '../src/index.ts'
+import { DEFAULT_MAX_FRAME_BYTES, JsonRpcLineTransport, JsonRpcResponseError } from '../src/index.ts'
 
 function transportPair() {
   const aToB = new PassThrough()
@@ -55,6 +55,133 @@ describe('JsonRpcLineTransport', () => {
     )
     expect(failure).toBeInstanceOf(JsonRpcResponseError)
     expect(failure).toMatchObject({ message: 'handler boom', code: -32603, data: undefined })
+
+    a.close()
+    b.close()
+  })
+
+  it('writes a handler-thrown JsonRpcResponseError back verbatim with its wire code and data', async () => {
+    const { a, b } = transportPair()
+    a.onRequest(async () => {
+      throw new JsonRpcResponseError(-32602, 'invalid params for session/prompt', { issues: [{ path: ['contentBlocks'], message: 'invalid input' }] })
+    })
+    a.start()
+    b.start()
+
+    const failure = await b.request('session/prompt', {}).then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({
+      code: -32602,
+      message: 'invalid params for session/prompt',
+      data: { issues: [{ path: ['contentBlocks'], message: 'invalid input' }] },
+    })
+
+    a.close()
+    b.close()
+  })
+
+  it('maps a thrown JsonRpcResponseError without a wire code to the internal-error fallback', async () => {
+    const { a, b } = transportPair()
+    a.onRequest(async () => {
+      throw new JsonRpcResponseError(undefined, 'no wire code')
+    })
+    a.start()
+    b.start()
+
+    await expect(b.request('explode', {})).rejects.toMatchObject({ code: -32603, message: 'no wire code', data: undefined })
+
+    a.close()
+    b.close()
+  })
+
+  it('drops circular error data and still answers the peer with the error frame', async () => {
+    const { a, b } = transportPair()
+    const circular: Record<string, unknown> = {}
+    circular.self = circular
+    a.onRequest(async () => {
+      throw new JsonRpcResponseError(-32000, 'circular data', circular)
+    })
+    a.start()
+    b.start()
+
+    const failure = await b.request('explode-circular', {}).then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({ code: -32000, message: 'circular data', data: undefined })
+
+    a.close()
+    b.close()
+  })
+
+  it('drops BigInt error data and still answers the peer with the error frame', async () => {
+    const { a, b } = transportPair()
+    a.onRequest(async () => {
+      throw new JsonRpcResponseError(-32000, 'bigint data', { tokens: 1n })
+    })
+    a.start()
+    b.start()
+
+    const failure = await b.request('explode-bigint', {}).then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({ code: -32000, message: 'bigint data', data: undefined })
+
+    a.close()
+    b.close()
+  })
+
+  it('serializes error data exactly once when its toJSON succeeds only on the first pass', async () => {
+    const { a, b } = transportPair()
+    let serializations = 0
+    const stateful = {
+      toJSON() {
+        serializations += 1
+        if (serializations > 1) throw new Error('stateful toJSON exhausted')
+        return { ok: true }
+      },
+    }
+    a.onRequest(async () => {
+      throw new JsonRpcResponseError(-32000, 'stateful data', stateful)
+    })
+    a.start()
+    b.start()
+
+    const failure = await b.request('explode-stateful', {}).then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({ code: -32000, message: 'stateful data', data: { ok: true } })
+    expect(serializations).toBe(1)
+
+    a.close()
+    b.close()
+  })
+
+  it.each([
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+  ] as const)('maps a non-finite (%s) wire code to the internal-error fallback without data', async (_label, code) => {
+    const { a, b } = transportPair()
+    a.onRequest(async () => {
+      throw new JsonRpcResponseError(code, 'non-finite wire code', { issues: [] })
+    })
+    a.start()
+    b.start()
+
+    const failure = await b.request('explode-nonfinite', {}).then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({ code: -32603, message: 'non-finite wire code', data: undefined })
 
     a.close()
     b.close()
@@ -303,5 +430,127 @@ describe('JsonRpcLineTransport', () => {
     await new Promise(resolve => setTimeout(resolve, 10))
 
     b.close()
+  })
+
+  it('defaults the frame cap to 16 MiB', () => {
+    expect(DEFAULT_MAX_FRAME_BYTES).toBe(16 * 1024 * 1024)
+  })
+
+  it('rejects invalid maxFrameBytes values at construction', () => {
+    const input = new PassThrough()
+    for (const maxFrameBytes of [0, -1, 1.5, Number.NaN]) {
+      expect(() => new JsonRpcLineTransport(input, new PassThrough(), { maxFrameBytes }),
+        `maxFrameBytes ${String(maxFrameBytes)}`).toThrow(TypeError)
+      expect(() => new JsonRpcLineTransport(input, new PassThrough(), { maxFrameBytes }),
+        `maxFrameBytes ${String(maxFrameBytes)}`).toThrow('maxFrameBytes must be a positive safe integer')
+    }
+  })
+
+  it('fails pending requests and stops buffering when an unterminated frame exceeds the cap', async () => {
+    const input = new PassThrough()
+    const output = new PassThrough()
+    const transport = new JsonRpcLineTransport(input, output, { maxFrameBytes: 64 })
+    transport.start()
+
+    const pending = transport.request('never-replies', {})
+    input.write('x'.repeat(40))
+    input.write('y'.repeat(40))
+
+    const failure = await pending.then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({ code: -32700, message: 'JSON-RPC frame exceeded 64 bytes' })
+    expect(input.destroyed).toBe(true)
+
+    const internals = transport as unknown as { chunks: Buffer[] }
+    expect(internals.chunks).toEqual([])
+    input.write('z'.repeat(100))
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(internals.chunks).toEqual([])
+
+    transport.close()
+  })
+
+  it('fails a complete frame larger than the cap like an unterminated one', async () => {
+    const input = new PassThrough()
+    const output = new PassThrough()
+    const notifications: Record<string, unknown>[] = []
+    const transport = new JsonRpcLineTransport(input, output, { maxFrameBytes: 64 })
+    transport.onNotification((method, params) => { notifications.push({ method, params }) })
+    transport.start()
+
+    // Complete frames within the cap keep batching valid before the overflow.
+    input.write('{"jsonrpc":"2.0","method":"tick"}\n')
+    const pending = transport.request('never-replies', {})
+    input.write(`${'x'.repeat(80)}\n`)
+
+    const failure = await pending.then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({ code: -32700, message: 'JSON-RPC frame exceeded 64 bytes' })
+    expect(input.destroyed).toBe(true)
+    expect(notifications.map(notification => notification.method)).toEqual(['tick'])
+    transport.close()
+  })
+
+  it('trips the cap over malformed UTF-8 lines whose decoding outgrows their raw bytes', async () => {
+    const input = new PassThrough()
+    const output = new PassThrough()
+    const transport = new JsonRpcLineTransport(input, output, { maxFrameBytes: 64 })
+    transport.start()
+
+    const pending = transport.request('never-replies', {})
+    for (let index = 0; index < 100; index += 1) input.write(Buffer.from([0xff, 0x0a]))
+    input.write(Buffer.alloc(80, 0x7a))
+
+    await expect(pending).rejects.toMatchObject({ code: -32700 })
+    expect(input.destroyed).toBe(true)
+    transport.close()
+  })
+
+  it('keeps buffering at exactly the cap and overflows only past it', async () => {
+    const input = new PassThrough()
+    const output = new PassThrough()
+    const transport = new JsonRpcLineTransport(input, output, { maxFrameBytes: 8 })
+    transport.start()
+
+    const settled: string[] = []
+    const pending = transport.request('never-replies', {})
+    pending.then(
+      () => { settled.push('resolved') },
+      (error: unknown) => { settled.push(String(error)) },
+    )
+
+    input.write('a'.repeat(8))
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(settled).toEqual([])
+    expect((transport as unknown as { bufferedBytes: number }).bufferedBytes).toBe(8)
+
+    // Completing the frame exactly at the cap delivers it normally.
+    input.write('\n')
+    await new Promise(resolve => setTimeout(resolve, 10))
+    expect(settled).toEqual([])
+
+    const overflowing = transport.request('never-replies-2', {})
+    input.write('b'.repeat(9))
+    await expect(overflowing).rejects.toMatchObject({ code: -32700 })
+    transport.close()
+  })
+
+  it('measures the frame cap in UTF-8 bytes, not characters', async () => {
+    const input = new PassThrough()
+    const output = new PassThrough()
+    const transport = new JsonRpcLineTransport(input, output, { maxFrameBytes: 5 })
+    transport.start()
+
+    const pending = transport.request('never-replies', {})
+    // '你好' is 6 UTF-8 bytes but only 2 string characters.
+    input.write(Buffer.from('你好'))
+    await expect(pending).rejects.toMatchObject({ code: -32700 })
+    transport.close()
   })
 })

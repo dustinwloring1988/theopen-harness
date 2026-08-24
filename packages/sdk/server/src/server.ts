@@ -24,6 +24,7 @@ import type {
   SubagentFinishedNotification,
   SubagentStartedNotification,
 } from '@buckeyestudio/toh-sdk-protocol'
+import { initializeParamsSchema, parseWireParams, sessionPromptParamsSchema, shutdownParamsSchema } from './wire.ts'
 
 interface SessionRecord {
   handle: AgentHandle
@@ -261,7 +262,9 @@ export class HarnessSdkJsonRpcServer {
   }
 
   /**
-   * Dispatch one incoming JSON-RPC request to its typed handler. Throws (→ a
+   * Dispatch one incoming JSON-RPC request to its typed handler. Params are
+   * schema-validated first; a failure rejects with a `-32602`
+   * {@link JsonRpcResponseError} naming each invalid field. Throws (→ a
    * JSON-RPC error response) on an unknown method.
    * @param method - the JSON-RPC method name.
    * @param params - the raw params object from the wire.
@@ -270,10 +273,11 @@ export class HarnessSdkJsonRpcServer {
   async handleRequest(method: string, params: Record<string, unknown> | undefined): Promise<unknown> {
     switch (method) {
       case 'initialize':
-        return this.initialize(params as unknown as InitializeParams)
+        return this.initialize(parseWireParams(initializeParamsSchema, method, params))
       case 'session/prompt':
-        return this.prompt(params as unknown as SessionPromptParams)
+        return this.prompt(parseWireParams(sessionPromptParamsSchema, method, params))
       case 'shutdown':
+        parseWireParams(shutdownParamsSchema, method, params)
         return this.shutdown()
       default:
         throw new Error(`unknown TheOpen Harness SDK runtime method: ${method}`)

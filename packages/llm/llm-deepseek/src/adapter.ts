@@ -345,6 +345,65 @@ export function httpErrorCode(status: number, error?: WireError['error']): strin
 }
 
 /**
+ * Non-2xx error bodies larger than this are refused. The endpoint is whatever
+ * URL the user configured, so the ceiling holds on the bytes actually read
+ * rather than on the length the server claims; a successful call streams its
+ * SSE body through `parseSse` and never buffers it here.
+ */
+const MAX_ERROR_BODY_BYTES = 4 * 1024 * 1024
+
+/* jscpd:ignore-start */
+/**
+ * Read a non-2xx body for provider-error detail, refusing one that outgrows
+ * {@link MAX_ERROR_BODY_BYTES}. A declared length is checked first so an honest
+ * server is turned away without transferring anything; the accumulated total is
+ * what actually enforces the bound, because a server that under-declares (or
+ * streams) tells us nothing up front. Cancellation propagates as the signal's
+ * own rejection, matching the previous unbounded `response.text()` read.
+ */
+async function readErrorBody(response: Response): Promise<string> {
+  const refused = (): LlmError =>
+    new LlmError(
+      `DeepSeek answered with an error body larger than ${MAX_ERROR_BODY_BYTES} bytes`,
+      httpErrorCode(response.status),
+      { status: response.status },
+    )
+  const declared = Number(response.headers.get('content-length') ?? Number.NaN)
+  if (Number.isFinite(declared) && declared > MAX_ERROR_BODY_BYTES) {
+    await response.body?.cancel()
+    throw refused()
+  }
+  /* v8 ignore next -- fetch always exposes a body stream on a Response; the null guard is defensive. */
+  if (response.body === null) return ''
+  const reader = response.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  try {
+    for (;;) {
+      const { done, value } = await reader.read()
+      if (done) break
+      total += value.byteLength
+      if (total > MAX_ERROR_BODY_BYTES) throw refused()
+      chunks.push(value)
+    }
+  } finally {
+    /* v8 ignore next 4 -- cancel() after a completed or abandoned read settles without rejecting; unobserved best-effort cleanup. */
+    await reader.cancel().catch(() => {
+      // Cancel after a drained read, or after this function walked away from an
+      // oversized one, is cleanup; the reply is already decided either way.
+    })
+  }
+  const body = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) {
+    body.set(chunk, offset)
+    offset += chunk.byteLength
+  }
+  return new TextDecoder().decode(body)
+}
+/* jscpd:ignore-end */
+
+/**
  * The first real `LlmAdapter`. One instance serves every model name it was
  * registered under (the harness model name IS the wire model name).
  *
@@ -622,7 +681,7 @@ export class DeepSeekAdapter extends LlmAdapter {
       if (!response.ok) {
         let message = `DeepSeek API error (HTTP ${response.status})`
         let providerError: WireError['error']
-        const rawResponse = await response.text()
+        const rawResponse = await readErrorBody(response)
         try {
           const parsed = JSON.parse(rawResponse) as WireError
           providerError = parsed.error

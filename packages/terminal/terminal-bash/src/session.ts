@@ -22,6 +22,7 @@ import type {
 } from '@buckeyestudio/toh-terminal'
 import type { ResolvedConfig } from './config.ts'
 import { CONTROLLED_PROMPT, TerminalSanitizer } from './sanitize.ts'
+import { BoundedOutputBuffer } from './scrollback.ts'
 
 function utf8Tail(text: string, maxBytes: number): { text: string; truncated: boolean } {
   if (Buffer.byteLength(text) <= maxBytes) return { text, truncated: false }
@@ -37,45 +38,8 @@ function utf8Tail(text: string, maxBytes: number): { text: string; truncated: bo
   return { text: chars.slice(start).join(''), truncated: true }
 }
 
-class BoundedTextBuffer {
-  private value = ''
-  private dropped = false
-
-  constructor(
-    private readonly maxBytes: number,
-    private readonly maxLines?: number,
-  ) {}
-
-  append(text: string): void {
-    if (text.length === 0) return
-    this.value += text
-    if (this.maxLines !== undefined) {
-      const lines = this.value.split('\n')
-      if (lines.length > this.maxLines) {
-        this.value = lines.slice(lines.length - this.maxLines).join('\n')
-        this.dropped = true
-      }
-    }
-    const tail = utf8Tail(this.value, this.maxBytes)
-    this.value = tail.text
-    this.dropped ||= tail.truncated
-  }
-
-  consume(): TerminalSendRead {
-    const delta = this.value
-    const truncated = this.dropped
-    this.value = ''
-    this.dropped = false
-    return { delta, truncated }
-  }
-
-  snapshot(): { text: string; truncated: boolean } {
-    return { text: this.value, truncated: this.dropped }
-  }
-}
-
 class LocalSendOperation implements TerminalSendOperation {
-  private readonly output: BoundedTextBuffer
+  private readonly output: BoundedOutputBuffer
   private readonly promise: PromiseWithResolvers<TerminalSendResult>
   private finished = false
   private cancellationRequested = false
@@ -87,7 +51,7 @@ class LocalSendOperation implements TerminalSendOperation {
     readonly startedAt: number,
     private readonly onCancel: () => void,
   ) {
-    this.output = new BoundedTextBuffer(maxBytes)
+    this.output = new BoundedOutputBuffer(maxBytes, undefined)
     this.promise = Promise.withResolvers<TerminalSendResult>()
     this.initialForegroundLeftWait = true
   }
@@ -158,7 +122,7 @@ export class LocalPtySession implements TerminalBackendSession {
   readonly pid: number
   private readonly decoder = new TextDecoder()
   private readonly sanitizer: TerminalSanitizer
-  private readonly scrollback: BoundedTextBuffer
+  private readonly scrollback: BoundedOutputBuffer
   private readonly outputEnded = Promise.withResolvers<void>()
   private readonly completion: Promise<void>
   private statusValue: TerminalSessionStatus = { kind: 'running' }
@@ -191,7 +155,7 @@ export class LocalPtySession implements TerminalBackendSession {
   ) {
     this.pid = terminal.pid
     this.sanitizer = new TerminalSanitizer(config.maxReadBytes)
-    this.scrollback = new BoundedTextBuffer(config.scrollbackMaxBytes, config.scrollbackLines)
+    this.scrollback = new BoundedOutputBuffer(config.scrollbackMaxBytes, config.scrollbackLines)
     terminal.output.on('data', this.onTerminalData)
     terminal.output.once('end', this.onTerminalEnd)
     terminal.output.once('error', this.onTerminalError)
@@ -449,7 +413,7 @@ export class LocalPtySession implements TerminalBackendSession {
         return
       }
       const elapsed = Date.now() - operation.startedAt
-      const startupHasOutput = !this.initializing || this.scrollback.snapshot().text.length > 0
+      const startupHasOutput = !this.initializing || !this.scrollback.empty
       const acceptsStdinWait = startupHasOutput && foreground !== undefined
         && operation.acceptsStdinWait(foreground.processGroupId, foreground.inputWaiting)
       if (elapsed >= this.config.exactProbeAfterMs && acceptsStdinWait) {
@@ -478,7 +442,7 @@ export class LocalPtySession implements TerminalBackendSession {
   private settleActive(waitReason: TerminalWaitReason, retainOwnership = false): void {
     const operation = this.active
     if (operation === undefined) return
-    const scrollbackTruncated = this.scrollback.snapshot().truncated
+    const scrollbackTruncated = this.scrollback.truncated
     if (retainOwnership) {
       this.stopPolling()
       this.activeAbort?.()

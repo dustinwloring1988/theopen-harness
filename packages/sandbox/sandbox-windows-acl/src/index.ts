@@ -48,7 +48,7 @@ import { Win32Error } from './errors.ts'
 import { allocPtrSlot, decodePtr, isNullPtr, throwLastError, win32 } from './ffi.ts'
 import type { NativePtr, Win32Bindings } from './ffi.ts'
 import { assertPrivateTempDisjoint } from './path-boundary.ts'
-import { drainPipe, spawnSandboxed, spawnSandboxedInherited, waitForExit } from './spawn.ts'
+import { DEFAULT_MAX_OUTPUT_BYTES, drainPipe, spawnSandboxed, spawnSandboxedInherited, waitForExit } from './spawn.ts'
 import { createRestrictedToken, findLogonSid, makeWellKnownSid, openCurrentProcessToken, setTokenDefaultDaclGrant } from './token.ts'
 import * as abi from './win32-abi.ts'
 
@@ -115,6 +115,16 @@ export interface AclSandboxSpawnOptions {
    * child dies with the caller; stdout/stderr in the result are empty.
    */
   stdio?: 'pipe' | 'inherit'
+  /**
+   * Per-stream capture budget under `stdio: 'pipe'`: once either piped stream
+   * exceeds it, only its most recent `maxOutputBytes` bytes are kept and the
+   * earlier head is dropped (the subprocess seam's OutputCollector tail-keep),
+   * so a chatty or runaway child cannot grow host memory without bound.
+   * Ignored under 'inherit' — including its validation, since nothing is
+   * captured there. Must be a positive integer; defaults to 64_000
+   * ({@link DEFAULT_MAX_OUTPUT_BYTES}).
+   */
+  maxOutputBytes?: number
 }
 
 /** A settled confined child: captured stdio and the exit code. */
@@ -345,7 +355,7 @@ export class AclSandbox {
    * placed in a kill-on-close job (dies with the caller). Call dispose() only
    * after all children have exited — revoking grants under a live child
    * removes its remaining write allowance.
-   * @param options - the program, argv/cwd, and stdio shape.
+   * @param options - the program, argv/cwd, stdio shape, and capture budget.
    * @returns the running child.
    */
   spawn(options: AclSandboxSpawnOptions): AclSandboxChild {
@@ -369,9 +379,20 @@ export class AclSandbox {
       }
     }
 
+    // Piped capture only: 'inherit' captures nothing, so the option (and its
+    // validation) does not apply there. A non-integer budget would desync the
+    // drains' tail-keep trim — subarray truncates toward a whole byte while
+    // the bookkeeping subtracts the fraction, letting the result exceed the
+    // cap — and a non-finite one would silently disable the trim entirely:
+    // fail loud instead of mis-bounding host memory.
+    const maxOutputBytes = options.maxOutputBytes ?? DEFAULT_MAX_OUTPUT_BYTES
+    if (!Number.isInteger(maxOutputBytes) || maxOutputBytes <= 0) {
+      throw new Error('AclSandbox maxOutputBytes must be a positive integer')
+    }
+
     const native = spawnSandboxed(api, token, { command: options.command, args, cwd })
-    const stdout = drainPipe(api, native.stdoutRead)
-    const stderr = drainPipe(api, native.stderrRead)
+    const stdout = drainPipe(api, native.stdoutRead, maxOutputBytes)
+    const stderr = drainPipe(api, native.stderrRead, maxOutputBytes)
     // waitForExit is deliberately NOT started here: WaitForSingleObject blocks
     // the thread and would starve the drains while the child is still running
     // (pipe-buffer deadlock). The drains resolve only after the child closed
