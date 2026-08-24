@@ -38,6 +38,7 @@
   "peerDependencies": {
     "@buckeyestudio/toh-agent": "workspace:^",
     "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-llm": "workspace:^",
     "@buckeyestudio/toh-session": "workspace:^",
     "@buckeyestudio/cordis": "workspace:^"
   },

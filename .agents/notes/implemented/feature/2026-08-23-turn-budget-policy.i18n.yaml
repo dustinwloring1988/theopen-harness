@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-23-turn-budget-policy.md
-2026-08-23-turn-budget-policy.md: 26896ed5292d7e824d959e15bdcb766ba2df10b0
-2026-08-23-turn-budget-policy.zh.md: cb12b52a8b942fcba665f1c6c2cf2d3b831b86b7
+2026-08-23-turn-budget-policy.md: 590880e82345f05794fa3bca518d73094575dba2
+2026-08-23-turn-budget-policy.zh.md: 2a0137c84a47e3ea022a883c1ff3b1290d28948e

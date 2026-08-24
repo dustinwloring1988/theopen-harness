@@ -24,7 +24,7 @@
 - **步数从会话日志折叠。** 在每次关闭尝试时，监听器统计自最近一条 `turn/start` 以来的 `step/start` 记录数，因此计数如实反映持久日志中本轮的开销——包括更早 steering 强制出来的步骤。
 - **Token 支出对每个请求上报的 usage 求和。** 在每次关闭尝试时，监听器折叠本轮已记录的 `assistant/message`，把每个请求各自不相交的 usage 桶（`inputTokens` 加上 cache-read、cache-write 与 output）累加起来，因此重复请求各自贡献完整的输入与输出成本，而不是共享表面的差值。
 - **硬限 → 取消。** `agent.cancel({ kind: 'hook', reason }, { keepInbox: true })` 中止活动轮次，同时保留排队与 steering 收件箱；持久的 `turn/end` 记录 `aborted`/`hook` 原因，原因字符串携带观测数值。
-- **建议线 → 每轮一次 steer。** 越过 `warnAtSteps` 后，策略每轮调用恰好一次 `agent.steer(...)`；机器重读收件箱并再跑一步。按 turn id 键控的闩锁保证第二次关闭尝试不会再被引导——若模型把机会花在了又一次工具调用上，下一次关闭尝试就会撞上硬限。
+- **建议线 → 每轮一次 steer。** 越过 `warnAtSteps` 后，策略每轮调用恰好一次 `agent.steer(...)`；机器重读收件箱并再跑一步。按 turn id 键控的闩锁保证第二次关闭尝试不会再被引导，而建议与硬限之间的后续关闭尝试仍会被放行——如 `warnAtSteps: 3` 且 `maxStepsPerTurn: 6` 时，第 4 步的关闭尝试会正常关闭——直到某次尝试达到或越过硬限。
 - **按轮重置。** 状态按存活 agent 对象与 turn 号键控：后续轮次从零步数和清空的 steer 闩锁开始。被取消的一轮不会污染下一轮。
 
 ## Reminder delivery
@@ -56,6 +56,6 @@ Append-only；新可见内容跟随可复用的请求前缀，不会使既有 KV
 ## Known Limitations and Deferred Work
 
 - **只在关闭尝试时生效** — 从不停下流式输出工具调用的轮次永远到不了 `agent/turn-stopping`，两条臂在模型尝试关闭前都无法触发；约束这类运行中的轮次需要改动循环本身，而本策略刻意不做。
-- **未上报的 usage 不可见** — 适配器未报告 `usage` 的请求对 `maxTurnTokens` 零贡献，因此完全由这类提供方服务的轮次永远不会触发 token 臂（步数臂仍然约束它）。
+- **未上报的 usage 不可见** — 适配器未报告 `usage` 的请求对 `maxTurnTokens` 零贡献，因此完全由这类提供方服务的轮次永远不会触发 token 臂（配置了 `maxStepsPerTurn` 时步数臂仍然约束它；纯 token 配置下则不受任何约束）。
 - **没有墙钟限制** — 缓慢（而非循环）的模型不在范围内；超时属于请求／工具层。
 - **建议可被忽略** — 收尾 steer 是请求而非否决；模型可以忽略一次，这正是硬限随后要执行的。

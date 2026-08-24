@@ -24,7 +24,7 @@ Configuration fails loud at plugin load: an empty config throws, every present v
 - **Step counting folds the session log.** At each closing attempt the listener counts logged `step/start` records since the most recent `turn/start`, so the count reflects exactly what the durable log shows for the open turn — including steps forced by earlier steering.
 - **Token spend sums each request's reported usage.** At each closing attempt the listener folds the open turn's logged `assistant/message` records and adds up every request's disjoint usage buckets (`inputTokens` plus cache-read, cache-write, and output), so repeated requests each contribute their full input and output cost rather than a shared-surface delta.
 - **Hard limit → cancel.** `agent.cancel({ kind: 'hook', reason }, { keepInbox: true })` aborts the active turn while preserving queued and steering inbox items; the durable `turn/end` records reason `aborted`/`hook` with the observed numbers in the reason string.
-- **Soft limit → one steer per turn.** Past `warnAtSteps`, the policy calls `agent.steer(...)` once per turn; the machine re-reads its inbox and runs another step. A latch keyed by turn id guarantees the second closing attempt is never steered again — if the model spent its chance on another tool call, the next closing attempt meets the hard limit.
+- **Soft limit → one steer per turn.** Past `warnAtSteps`, the policy calls `agent.steer(...)` once per turn; the machine re-reads its inbox and runs another step. A latch keyed by turn id guarantees the second closing attempt is never steered again, and closing attempts between the advisory and the hard limit still pass through un-steered — with `warnAtSteps: 3` and `maxStepsPerTurn: 6`, a later closing attempt at step 4 closes normally — until one lands at or past the hard limit.
 - **Per-turn reset.** State is keyed by live agent object and turn number: a follow-up turn starts from zero steps and a cleared steer latch. A cancelled turn does not poison the next one.
 
 ## Reminder delivery
@@ -56,6 +56,6 @@ Append-only; newly visible content follows the reusable request prefix and does 
 ## Known Limitations and Deferred Work
 
 - **Closing attempts only** — a turn that never stops streaming tool calls never reaches `agent/turn-stopping`, so neither arm can fire until the model attempts to close; bounding those mid-run turns would require a loop change, which this policy deliberately avoids.
-- **Unreported usage is invisible** — a request whose adapter reports no `usage` contributes nothing to `maxTurnTokens`, so a turn served entirely by such providers never trips the token arm (the step arm still bounds it).
+- **Unreported usage is invisible** — a request whose adapter reports no `usage` contributes nothing to `maxTurnTokens`, so a turn served entirely by such providers never trips the token arm (the step arm still bounds it when `maxStepsPerTurn` is configured; a token-only configuration leaves it unbounded).
 - **No wall-clock limit** — a slow (as opposed to looping) model is out of scope; timeouts belong to the request/tool layers.
 - **Advisory is skippable** — the wrap-up steer is a request, not a veto; a model may ignore it once, which is exactly what the hard limit then enforces.
