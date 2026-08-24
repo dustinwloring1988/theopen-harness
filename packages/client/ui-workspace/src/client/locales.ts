@@ -7,6 +7,8 @@
 /** Simplified Chinese dictionary (the key-set source of truth). */
 export const zh = {
   'group.ungrouped': '未分组',
+  'group.pending.one': '{n} 个会话等待处理',
+  'group.pending.other': '{n} 个会话等待处理',
   'session.new': '新会话',
   'section.workspaces': '工作区',
   'section.sessions': '会话',
@@ -76,6 +78,8 @@ export type WorkspaceKey = keyof typeof zh
 /** English dictionary, checked complete against the zh key set. */
 export const en = {
   'group.ungrouped': 'Ungrouped',
+  'group.pending.one': '{n} session waiting on you',
+  'group.pending.other': '{n} sessions waiting on you',
   'session.new': 'New Session',
   'section.workspaces': 'Workspaces',
   'section.sessions': 'Sessions',

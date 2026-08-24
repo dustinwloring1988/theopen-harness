@@ -97,10 +97,12 @@ function rowHalf(e: { clientY: number; currentTarget: HTMLElement }): 'before' |
 }
 
 /**
- * Project (workspace) header row: folder + title;
- * hover reveals the chevron and create button, and dwelling on a real
- * Workspace shows its hover card (the ungrouped bucket has none).
- * `containsCurrent` arrives on the node (derivation fact, no renderer scan).
+ * Project (workspace) header row: folder + title, plus a warning dot with an
+ * assistive label while the folded group hides sessions waiting on the user
+ * (pending-interaction aggregation survives folding). Hover reveals the
+ * chevron and create button, and dwelling on a real Workspace shows its hover
+ * card (the ungrouped bucket has none). `containsCurrent` arrives on the node
+ * (derivation fact, no renderer scan).
  * @param props.group - derived group node.
  * @param props.onToggle - expand/collapse the group.
  * @param props.onCreate - start a frontend Session inside this Workspace.
@@ -152,6 +154,16 @@ export function ProjectRowItem({ group, onToggle, onCreate, actions, drag, home,
       <span className={clsx(css.slot, css.chevron)}>
         <IconTriangleRightFill14 className={clsx(css.arrow, row.expanded && css.arrowOpen)} />
       </span>
+      {/* A folded group hides its waiting rows, so the header carries their
+          count; an expanded group shows the per-row dots instead. */}
+      {!row.expanded && group.pendingCount > 0 && (
+        <span className={css.slot}>
+          <StateDot state="warning" />
+          <span className={css.visuallyHidden}>
+            {t(group.pendingCount === 1 ? 'group.pending.one' : 'group.pending.other', { n: group.pendingCount })}
+          </span>
+        </span>
+      )}
       <span className={css.projectText}>
         <span className={css.title}>{label}</span>
       </span>

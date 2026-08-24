@@ -214,6 +214,7 @@
       "@buckeyestudio/toh-client-ui-model-selection": ["./packages/client/ui-model-selection/src"],
       "@buckeyestudio/toh-client-ui-goal": ["./packages/client/ui-goal/src"],
       "@buckeyestudio/toh-client-ui-message-feedback": ["./packages/client/ui-message-feedback/src"],
+      "@buckeyestudio/toh-client-ui-notify": ["./packages/client/ui-notify/src"],
       "@buckeyestudio/toh-client-ui-agent-preset": ["./packages/client/ui-agent-preset/src"],
       "@buckeyestudio/toh-client-ui-permission-presets": ["./packages/client/ui-permission-presets/src"],
       "@buckeyestudio/toh-client-ui-skill": ["./packages/client/ui-skill/src"],

@@ -48,6 +48,29 @@ describe('deriveGroups', () => {
     expect(deriveFlat(sessions, noArchive)[0]).toMatchObject({ pendingInteraction: 'plan-review', running: true })
   })
 
+  it('counts pending interactions across the whole group while it is folded', () => {
+    const waiting = { ...summary('waiting', 10), pendingInteraction: 'approval' as const }
+    const idle = summary('idle', 9)
+    const sessions = list(waiting, idle)
+    // The group is folded: rows are withheld but the header count still lands.
+    const folded = deriveGroups(sessions, [workspace('project', ['waiting', 'idle'])], noArchive, view([]))
+    expect(folded[0]!.pendingCount).toBe(1)
+    expect(folded[0]!.sessions).toEqual([])
+    const expanded = deriveGroups(sessions, [workspace('project', ['waiting', 'idle'])], noArchive, view(['project']))
+    expect(expanded[0]!.pendingCount).toBe(1)
+    expect(expanded[0]!.sessions).toHaveLength(2)
+
+    // Blank non-current members are invisible everywhere, including the count.
+    const blank = { ...summary('blank', 8), blank: true }
+    const withBlank = deriveGroups(
+      list({ ...blank, pendingInteraction: 'question' as const }, waiting),
+      [workspace('project', ['blank', 'waiting'])],
+      noArchive,
+      view([]),
+    )
+    expect(withBlank[0]!.pendingCount).toBe(1)
+  })
+
   it('puts only real unaccounted Sessions in the trailing Ungrouped group', () => {
     const sessions = list(summary('owned', 1, '/projects/first'), summary('loose', 9, '/other'))
     const groups = deriveGroups(sessions, [workspace('first', ['owned'])], noArchive, view([UNGROUPED_KEY]))

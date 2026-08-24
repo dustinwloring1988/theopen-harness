@@ -1,0 +1,78 @@
+{
+  "name": "@buckeyestudio/toh-client-ui-notify",
+  "description": "Turn-notification plugin: OS notifications for turn completion and approval-blocked agents, with the General-section preference row",
+  "version": "0.1.1-rc.2",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dustinwloring1988/theopen-harness.git",
+    "directory": "packages/client/ui-notify"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./client": {
+      "types": "./lib/types/client/index.d.ts",
+      "default": "./lib/client.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "toh": {
+    "client": {
+      "inject": [
+        "@buckeyestudio/toh-client-locale",
+        "@buckeyestudio/toh-client-runtime",
+        "@buckeyestudio/toh-client-ui-settings"
+      ],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "bundle": "tsdown",
+    "watch": "tsdown --watch"
+  },
+  "license": "MIT",
+  "author": "buckeyestudio",
+  "peerDependencies": {
+    "@buckeyestudio/cordis": "workspace:^",
+    "@buckeyestudio/toh-client-locale": "workspace:^",
+    "@buckeyestudio/toh-client-runtime": "workspace:^",
+    "@buckeyestudio/toh-client-ui-settings": "workspace:^",
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-settings": "workspace:^"
+  },
+  "devDependencies": {
+    "@buckeyestudio/cordis": "workspace:^",
+    "@buckeyestudio/toh-client-locale": "workspace:^",
+    "@buckeyestudio/toh-client-runtime": "workspace:^",
+    "@buckeyestudio/toh-client-test-runtime": "workspace:^",
+    "@buckeyestudio/toh-client-ui-primitives": "workspace:^",
+    "@buckeyestudio/toh-client-ui-settings": "workspace:^",
+    "@buckeyestudio/toh-client-ui-slots": "workspace:^",
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/toh-settings": "workspace:^",
+    "@types/react": "~19.2.3",
+    "react": "^19.2.8"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "lib/client.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "dependencies": {
+    "@buckeyestudio/schemastery": "workspace:^"
+  }
+}

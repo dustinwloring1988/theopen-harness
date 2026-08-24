@@ -1373,6 +1373,9 @@ importers:
       '@buckeyestudio/toh-client-ui-model-selection':
         specifier: workspace:^
         version: link:../../client/ui-model-selection
+      '@buckeyestudio/toh-client-ui-notify':
+        specifier: workspace:^
+        version: link:../../client/ui-notify
       '@buckeyestudio/toh-client-ui-permission-presets':
         specifier: workspace:^
         version: link:../../client/ui-permission-presets
@@ -2338,6 +2341,46 @@ importers:
       '@types/react':
         specifier: ~19.2.3
         version: 19.2.17
+      react:
+        specifier: ^19.2.8
+        version: 19.2.8
+
+  packages/client/ui-notify:
+    dependencies:
+      '@buckeyestudio/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@buckeyestudio/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@buckeyestudio/toh-client-locale':
+        specifier: workspace:^
+        version: link:../locale
+      '@buckeyestudio/toh-client-runtime':
+        specifier: workspace:^
+        version: link:../runtime
+      '@buckeyestudio/toh-client-test-runtime':
+        specifier: workspace:^
+        version: link:../../test-support/client-runtime
+      '@buckeyestudio/toh-client-ui-primitives':
+        specifier: workspace:^
+        version: link:../ui-primitives
+      '@buckeyestudio/toh-client-ui-settings':
+        specifier: workspace:^
+        version: link:../ui-settings
+      '@buckeyestudio/toh-client-ui-slots':
+        specifier: workspace:^
+        version: link:../ui-slots
+      '@buckeyestudio/toh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+      '@buckeyestudio/toh-settings':
+        specifier: workspace:^
+        version: link:../../settings/settings
+      '@types/react':
+        specifier: ~19.2.3
+        version: 19.2.18
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -16667,7 +16710,6 @@ snapshots:
   '@types/react@19.2.18':
     dependencies:
       csstype: 3.2.3
-    optional: true
 
   '@types/retry@0.12.0': {}
 
