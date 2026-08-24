@@ -855,7 +855,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/host/frontend-static/src/index.ts:28`](../packages/host/frontend-static/src/index.ts)
+来源：[`packages/host/frontend-static/src/index.ts:25`](../packages/host/frontend-static/src/index.ts)
 
 <a id="buckeyestudiotoh-host-webserver"></a>
 
@@ -1626,7 +1626,7 @@ export interface Config {
 }
 ```
 
-来源：[`packages/guard/repeat-tool-reminder/src/index.ts:28`](../packages/guard/repeat-tool-reminder/src/index.ts)
+来源：[`packages/guard/repeat-tool-reminder/src/index.ts:25`](../packages/guard/repeat-tool-reminder/src/index.ts)
 
 <a id="buckeyestudiotoh-sandbox-local"></a>
 
@@ -2997,6 +2997,41 @@ export type ToolPresentationMode = 'native' | 'code' | 'both'
 ```
 
 来源：[`packages/core/tools/src/index.ts:654`](../packages/core/tools/src/index.ts)
+
+<a id="buckeyestudiotoh-turn-budget-policy"></a>
+
+## `@buckeyestudio/toh-turn-budget-policy`
+
+```ts config-catalog
+/**
+ * Plugin config, re-checked by the load-time validation in `apply`
+ * (misconfiguration fails loud). Every limit is opt-in: omitting all three
+ * throws at plugin load, never a silent unbounded policy.
+ */
+export interface Config {
+  /**
+   * Step count that hard-cancels the turn. A turn reaching this many logged
+   * `step/start` records at its stop boundary is cancelled with a `hook`
+   * cause and `keepInbox`.
+   */
+  maxStepsPerTurn?: number
+  /**
+   * Per-turn token spend that hard-cancels the turn, measured as the sum of
+   * every request's reported usage across the open turn's logged
+   * `assistant/message` records. Requests whose adapter reported no usage
+   * contribute nothing to the sum.
+   */
+  maxTurnTokens?: number
+  /**
+   * Step count that delivers one advisory wrap-up steer. Must stay strictly
+   * below `maxStepsPerTurn` when both are set, so the model's single bounded
+   * chance to land the turn precedes the hard cancel.
+   */
+  warnAtSteps?: number
+}
+```
+
+来源：[`packages/guard/turn-budget-policy/src/index.ts:25`](../packages/guard/turn-budget-policy/src/index.ts)
 
 <a id="buckeyestudiotoh-typert-loader"></a>
 

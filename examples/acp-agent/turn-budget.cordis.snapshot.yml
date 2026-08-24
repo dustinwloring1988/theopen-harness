@@ -1,0 +1,40 @@
+# Keyless replay for the turn-budget overlay: disable the key-requiring DeepSeek
+# adapter, insert `llm-replay`, re-pin the recorded flash model on the app patch
+# (the default header class pin), and keep the policy limits identical to the
+# live sibling so the scripted transcript trips the same advisory and cancel.
+- id: base
+  name: '@buckeyestudio/cordis-plugin-include'
+  config:
+    path: ./cordis.yml
+    patches:
+      - id: llm-deepseek
+        name: '@buckeyestudio/toh-llm-deepseek'
+        disabled: true
+      - id: acp-agent
+        name: '@buckeyestudio/toh-acp-demo'
+        config:
+          provider: deepseek-official
+          model: deepseek-v4-flash
+          persistenceRoot: !!js process.env.TOH_SNAPSHOT_SESSIONS_ROOT ?? './.sessions'
+          persistenceCompression: none
+          workspaceContext:
+            maxBytes: 65536
+          persona: |
+            You are a coding assistant powered by the {{model}} model. Your working directory is {{cwd}}. Your bash tool runs under a file sandbox — a `[sandbox: file access denied …]` result is policy, not a command bug.
+
+            Verify your work by running the code or tests. Keep answers brief and factual.
+      - insert:
+          - id: llm-replay
+            name: '@buckeyestudio/toh-llm-replay'
+            config:
+              providers:
+                - id: deepseek-official
+                  name: DeepSeek
+                  models:
+                    - id: deepseek-v4-flash
+                    - id: deepseek-v4-pro
+          - id: turn-budget-policy
+            name: '@buckeyestudio/toh-turn-budget-policy'
+            config:
+              warnAtSteps: 3
+              maxStepsPerTurn: 5

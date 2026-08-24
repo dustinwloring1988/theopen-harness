@@ -747,6 +747,9 @@ importers:
       '@buckeyestudio/toh-tools':
         specifier: workspace:*
         version: link:../packages/core/tools
+      '@buckeyestudio/toh-turn-budget-policy':
+        specifier: workspace:*
+        version: link:../packages/guard/turn-budget-policy
       '@buckeyestudio/toh-user-approval':
         specifier: workspace:*
         version: link:../packages/interaction/user-approval
@@ -1221,6 +1224,9 @@ importers:
       '@buckeyestudio/toh-tools':
         specifier: workspace:^
         version: link:../../core/tools
+      '@buckeyestudio/toh-turn-budget-policy':
+        specifier: workspace:^
+        version: link:../../guard/turn-budget-policy
       '@buckeyestudio/toh-typert-loader':
         specifier: workspace:^
         version: link:../../typert/loader
@@ -4870,6 +4876,34 @@ importers:
       '@buckeyestudio/toh-tools':
         specifier: workspace:^
         version: link:../../core/tools
+
+  packages/guard/turn-budget-policy:
+    dependencies:
+      '@buckeyestudio/schemastery':
+        specifier: link:../../../vendor/schemastery
+        version: link:../../../vendor/schemastery
+    devDependencies:
+      '@buckeyestudio/cordis':
+        specifier: workspace:^
+        version: link:../../../vendor/cordis
+      '@buckeyestudio/toh-agent':
+        specifier: workspace:^
+        version: link:../../core/agent
+      '@buckeyestudio/toh-agent-loop':
+        specifier: workspace:^
+        version: link:../../core/agent-loop
+      '@buckeyestudio/toh-agent-loop-testkit':
+        specifier: workspace:^
+        version: link:../../test-support/agent-loop-testkit
+      '@buckeyestudio/toh-invariants':
+        specifier: workspace:^
+        version: link:../../runtime-diagnostics/invariants
+      '@buckeyestudio/toh-llm':
+        specifier: workspace:^
+        version: link:../../llm/llm
+      '@buckeyestudio/toh-session':
+        specifier: workspace:^
+        version: link:../../core/session
 
   packages/hooks/hook-protocol:
     devDependencies:

@@ -148,6 +148,8 @@ flowchart LR
   cfg --> plugin_toh_base_tool_str_replace_editor
   plugin_toh_base_repeat_tool_reminder["repeat-tool-reminder<br/>@buckeyestudio/toh-repeat-tool-reminder"]
   cfg --> plugin_toh_base_repeat_tool_reminder
+  plugin_toh_base_turn_budget_policy["turn-budget-policy<br/>@buckeyestudio/toh-turn-budget-policy"]
+  cfg --> plugin_toh_base_turn_budget_policy
   plugin_toh_base_web["web<br/>@buckeyestudio/toh-web"]
   cfg --> plugin_toh_base_web
   plugin_toh_base_web_search_deepseek["web-search-deepseek<br/>@buckeyestudio/toh-web-search-deepseek"]
@@ -238,6 +240,7 @@ flowchart LR
 | `tool-ralph` | `@buckeyestudio/toh-tool-ralph` |
 | `tool-str-replace-editor` | `@buckeyestudio/toh-tool-str-replace-editor` |
 | `repeat-tool-reminder` | `@buckeyestudio/toh-repeat-tool-reminder` |
+| `turn-budget-policy` | `@buckeyestudio/toh-turn-budget-policy` |
 | `web` | `@buckeyestudio/toh-web` |
 | `web-search-deepseek` | `@buckeyestudio/toh-web-search-deepseek` |
 | `tool-web` | `@buckeyestudio/toh-tool-web` |
