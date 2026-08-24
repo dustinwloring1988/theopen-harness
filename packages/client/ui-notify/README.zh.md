@@ -18,7 +18,7 @@
 
 无：通知属于浏览器界面外壳，不进入任何模型请求。
 
-#### KV Cache effect
+### KV Cache effect
 
 无：不改写历史尾部。
 

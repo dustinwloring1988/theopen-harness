@@ -18,7 +18,7 @@ The General-section row (id `notifications`) owns the durable `ui-notify` namesp
 
 None, as notifications are browser chrome; nothing here enters a model request.
 
-#### KV Cache effect
+### KV Cache effect
 
 None; no history-tail mutation.
 
