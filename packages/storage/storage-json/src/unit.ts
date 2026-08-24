@@ -7,7 +7,10 @@
  * silently discard an acknowledged record). Logical write ordering across
  * calls still belongs to the caller (the domain layer's write chain); this
  * unit only guarantees that each single call publishes a complete, durable
- * file that carries every acknowledged write issued before it.
+ * file that carries every acknowledged write issued before it. A failed
+ * publish rolls its caller's mutation back in memory and appends one
+ * replacement of the restored state, so a rejected write never persists on
+ * the medium.
  * @module @buckeyestudio/toh-storage-json/src/unit
  */
 
@@ -56,7 +59,9 @@ class JsonKvUnit implements KvUnit {
    * Settled tail of the publish chain: every publish appends one
    * whole-file replacement behind all earlier ones, and a rejected link is
    * swallowed here so one failed write cannot poison the chain (the
-   * rejecting caller still observes its own error).
+   * rejecting caller still observes its own error). The rejecting caller's
+   * rollback then appends one replacement of the restored state, so the
+   * medium never keeps a rejected mutation past that replacement.
    */
   private publishTail: Promise<void> = Promise.resolve()
 
@@ -88,6 +93,7 @@ class JsonKvUnit implements KvUnit {
     await this.publish().catch((error: unknown) => {
       if (hadKey) records.set(key, previous)
       else records.delete(key)
+      this.republishRestoredState()
       throw error
     })
   }
@@ -100,6 +106,7 @@ class JsonKvUnit implements KvUnit {
     records.delete(key)
     await this.publish().catch((error: unknown) => {
       records.set(key, previous)
+      this.republishRestoredState()
       throw error
     })
   }
@@ -113,23 +120,36 @@ class JsonKvUnit implements KvUnit {
     this.state.global = value
     await this.publish().catch((error: unknown) => {
       this.state.global = previous
+      this.republishRestoredState()
       throw error
     })
   }
 
   async close(): Promise<void> {
     if (this.closed) {
-      await this.publishTail
+      await this.drain()
       return
     }
     this.closed = true
-    // Draining the tail waits out every queued publish, held or not yet
-    // started; the tail never rejects, so this cannot throw. After the drain
-    // the medium matches memory: the last landed slot serialized the full
-    // state, and any failed publish rolled its caller's mutation back before
-    // the next slot serialized.
-    await this.publishTail
+    await this.drain()
     this.onClose()
+  }
+
+  /**
+   * Await the publish chain to quiescence: a failed publish appends its
+   * replacement while the tail is being awaited, so keep waiting until a
+   * wait observes no new link. The tail never rejects, so this cannot throw.
+   * After the drain the medium matches memory: every landed slot serialized
+   * the state current at its turn, and a rejected mutation is dropped by its
+   * caller's replacement.
+   */
+  private async drain(): Promise<void> {
+    let tail = this.publishTail
+    for (;;) {
+      await tail
+      if (this.publishTail === tail) return
+      tail = this.publishTail
+    }
   }
 
   private assertOpen(): void {
@@ -157,5 +177,17 @@ class JsonKvUnit implements KvUnit {
     )
     this.publishTail = write.then(noop, noop)
     return write
+  }
+
+  /**
+   * Append one replacement after a failed publish so the medium drops the
+   * rejected mutation: an earlier slot may have already landed it while the
+   * failing call was queued behind it. Runs after the caller's rollback, so
+   * it serializes the restored state. Best-effort: if this replacement also
+   * fails the medium is left as-is and the rejection is swallowed here,
+   * because the caller already received the primary error.
+   */
+  private republishRestoredState(): void {
+    this.publish().catch(noop)
   }
 }

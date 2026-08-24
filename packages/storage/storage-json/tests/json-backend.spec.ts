@@ -1,4 +1,4 @@
-﻿import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
+import { mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
@@ -285,6 +285,50 @@ describe('json backend specifics', () => {
       tables: Record<string, Record<string, unknown>>
     }
     expect(onDisk.tables['t']).toEqual({ a: { v: 'first' }, b: { v: 'second' } })
+    await backend.close()
+  })
+
+  it('drops a rejected overlapping write from the medium when close drains', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    const path = join(root, 'shape.json')
+    const backup = join(root, 'shape.committed.json')
+    let releaseFirst!: () => void
+    let releaseSecond!: () => void
+    let releaseThird!: () => void
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseFirst = resolveHold }))
+    const first = unit.putRecord('t', 'a', { v: 'first' })
+    const second = unit.putRecord('t', 'b', { v: 'second' })
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseSecond = resolveHold }))
+    releaseFirst()
+    await first
+    // The first slot serializes full state at its turn, so the still-pending
+    // second record already reached the medium; park its own slot and break
+    // the target so only that slot's replacement fails.
+    await rename(path, backup)
+    await mkdir(path)
+    await setHoldOnce(new Promise<void>((resolveHold) => { releaseThird = resolveHold }))
+    const closing = unit.close()
+    releaseSecond()
+    await expect(second).rejects.toThrow()
+    // The rollback appended one replacement of the restored state; close
+    // keeps draining until the tail stops growing.
+    await rm(path, { recursive: true })
+    await rename(backup, path)
+    releaseThird()
+    await closing
+    const onDisk = JSON.parse(await readFile(path, 'utf8')) as {
+      tables: Record<string, Record<string, unknown>>
+    }
+    expect(onDisk.tables['t']).toEqual({ a: { v: 'first' } })
+    const reopened = new JsonStorageBackend(root)
+    const reopenedUnit = await reopened.kv.open(descriptor)
+    expect(await reopenedUnit.loadAll()).toEqual({
+      tables: { t: { a: { v: 'first' } } },
+      global: null,
+    })
+    await reopened.close()
     await backend.close()
   })
 
