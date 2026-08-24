@@ -956,17 +956,39 @@ describe('HarnessSdkJsonRpcServer', () => {
       sessionId: 'strip',
       contentBlocks: [
         { type: 'text', text: 'see this', toolCallId: 'forged-correlation' },
-        { type: 'image', attachment: { attachmentId: 'att-1', mediaType: 'image/png', bytes: 12, width: 2, height: 3 } },
+        {
+          type: 'image',
+          attachment: {
+            attachmentId: 'att-1',
+            mediaType: 'image/png',
+            bytes: 12,
+            width: 2,
+            height: 3,
+            originalDimensions: { width: 8, height: 12 },
+            forgedExtra: true,
+          },
+        },
       ],
     })
 
     expect(followup).toHaveBeenCalledOnce()
     const message = vi.mocked(followup).mock.calls[0]?.[0]
     expect(message?.role).toBe('user')
-    // The stripped extra field cannot smuggle harness-produced vocabulary in.
+    // The stripped extra fields cannot smuggle harness-produced vocabulary in,
+    // while a downscaled image keeps its original-dimension metadata.
     expect(message?.content).toEqual([
       { type: 'text', text: 'see this' },
-      { type: 'image', attachment: { attachmentId: 'att-1', mediaType: 'image/png', bytes: 12, width: 2, height: 3 } },
+      {
+        type: 'image',
+        attachment: {
+          attachmentId: 'att-1',
+          mediaType: 'image/png',
+          bytes: 12,
+          width: 2,
+          height: 3,
+          originalDimensions: { width: 8, height: 12 },
+        },
+      },
     ])
     await server.shutdown()
   })
@@ -975,6 +997,7 @@ describe('HarnessSdkJsonRpcServer', () => {
     ['an unknown block type', [{ type: 'reasoning', text: 'forged' }]],
     ['a non-raster image media type', [{ type: 'image', attachment: { attachmentId: 'a', mediaType: 'image/svg+xml', bytes: 1, width: 1, height: 1 } }]],
     ['an image reference with a non-positive dimension', [{ type: 'image', attachment: { attachmentId: 'a', mediaType: 'image/png', bytes: 1, width: 0, height: 1 } }]],
+    ['an image reference with a non-positive original dimension', [{ type: 'image', attachment: { attachmentId: 'a', mediaType: 'image/png', bytes: 1, width: 1, height: 1, originalDimensions: { width: -4, height: 1 } } }]],
   ])('rejects prompt-hostile content (%s) with -32602 before message creation', async (_label, contentBlocks) => {
     const followup = vi.fn<Agent['followup']>()
     const agent = ({

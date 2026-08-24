@@ -28,13 +28,16 @@ const imageMediaTypeSchema = z.union([
 ])
 
 /**
- * Durable image reference carried by core image blocks. Field-for-field the
- * web gateway's `imageAttachmentRefSchema`; the `attachmentId` brand cast is
- * the single `as unknown as` on the content-block union below.
+ * Durable image reference carried by core image blocks, mirroring the web
+ * gateway's `imageAttachmentRefSchema` and keeping the internal ref's optional
+ * `originalDimensions` downscale metadata that stripping would lose. The
+ * `attachmentId` brand cast is the single `as unknown as` on the content-block
+ * union below.
  */
-/* jscpd:ignore-start -- mirrors the host gateway's schema field for field; a
-   published SDK package cannot import across into the BFF host plane, and each
-   surface owns its own wire admission (the mirrored-predicate precedent). */
+/* jscpd:ignore-start -- mirrors the host gateway's schema plus the internal
+   ref's downscale metadata; a published SDK package cannot import across into
+   the BFF host plane, and each surface owns its own wire admission (the
+   mirrored-predicate precedent). */
 const imageAttachmentRefSchema = z.object({
   attachmentId: z.string().min(1),
   mediaType: imageMediaTypeSchema,
@@ -42,6 +45,10 @@ const imageAttachmentRefSchema = z.object({
   width: z.number().int().positive(),
   height: z.number().int().positive(),
   name: z.string().optional(),
+  originalDimensions: z.object({
+    width: z.number().int().positive(),
+    height: z.number().int().positive(),
+  }).optional(),
 })
 /* jscpd:ignore-end */
 

@@ -137,6 +137,56 @@ describe('JsonRpcLineTransport', () => {
     b.close()
   })
 
+  it('serializes error data exactly once when its toJSON succeeds only on the first pass', async () => {
+    const { a, b } = transportPair()
+    let serializations = 0
+    const stateful = {
+      toJSON() {
+        serializations += 1
+        if (serializations > 1) throw new Error('stateful toJSON exhausted')
+        return { ok: true }
+      },
+    }
+    a.onRequest(async () => {
+      throw new JsonRpcResponseError(-32000, 'stateful data', stateful)
+    })
+    a.start()
+    b.start()
+
+    const failure = await b.request('explode-stateful', {}).then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({ code: -32000, message: 'stateful data', data: { ok: true } })
+    expect(serializations).toBe(1)
+
+    a.close()
+    b.close()
+  })
+
+  it.each([
+    ['NaN', Number.NaN],
+    ['Infinity', Number.POSITIVE_INFINITY],
+  ] as const)('maps a non-finite (%s) wire code to the internal-error fallback without data', async (_label, code) => {
+    const { a, b } = transportPair()
+    a.onRequest(async () => {
+      throw new JsonRpcResponseError(code, 'non-finite wire code', { issues: [] })
+    })
+    a.start()
+    b.start()
+
+    const failure = await b.request('explode-nonfinite', {}).then(
+      () => { throw new Error('request unexpectedly succeeded') },
+      (error: unknown) => error,
+    )
+    expect(failure).toBeInstanceOf(JsonRpcResponseError)
+    expect(failure).toMatchObject({ code: -32603, message: 'non-finite wire code', data: undefined })
+
+    a.close()
+    b.close()
+  })
+
   it('rejects immediately on a pre-aborted signal without registering pending state', async () => {
     const { b } = transportPair()
     b.start()
