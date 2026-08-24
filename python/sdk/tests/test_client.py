@@ -929,6 +929,41 @@ def test_client_close_escalates_from_terminate_to_kill_with_clamped_waits(
     assert client._proc is None
 
 
+class _NeverReapingRuntimeProc(_WedgedRuntimeProc):
+    """Fake runtime Popen that stays unreaped even after kill()."""
+
+    def poll(self) -> int | None:
+        return None
+
+    def wait(self, timeout: float | None = None) -> int:
+        self.waits.append(timeout)
+        raise subprocess.TimeoutExpired(cmd="never-reaping-runtime", timeout=timeout)
+
+
+def test_client_close_keeps_unreaped_runtime_when_kill_join_times_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from theopen_harness import client as sdk_client
+
+    proc = _NeverReapingRuntimeProc()
+    client = HarnessClient(HarnessConfig(shutdown_timeout_seconds=0.25))
+    client._proc = proc
+
+    client.close()
+
+    def forbidden_spawn(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("start() must not spawn while an unreaped runtime is owned")
+
+    monkeypatch.setattr(sdk_client.subprocess, "Popen", forbidden_spawn)
+    client.start()
+
+    assert proc.calls == ["terminate", "kill"]
+    request_wait, kill_join = proc.waits
+    assert kill_join == sdk_client._KILL_JOIN_SECONDS
+    assert request_wait is not None and 0 <= request_wait <= 0.25
+    assert client._proc is proc
+
+
 def test_initialize_failure_reaps_started_runtime(tmp_path: Path) -> None:
     script = tmp_path / "rejecting_runtime.py"
     script.write_text(

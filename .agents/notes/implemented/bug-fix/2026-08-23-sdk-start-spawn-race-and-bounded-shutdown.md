@@ -12,11 +12,11 @@ English | [中文](2026-08-23-sdk-start-spawn-race-and-bounded-shutdown.zh.md)
 
 `start()` performs its whole check-and-spawn under the instance lock and assigns `self._proc` inside that locked region, so one client owns at most one runtime subprocess.
 
-`close()` derives a single monotonic deadline from `shutdown_timeout_seconds` clamped into [0, 30] seconds — `None` selects the ceiling instead of an unbounded wait — spends that budget across the shutdown request and the post-terminate join, then escalates from `terminate()` to `kill()` with a fixed five-second reap join. The 30-second ceiling is a fixed liveness invariant rather than a configurable tunable: `close()` must return even against a runtime that ignores its shutdown handshake and termination signals, and the same bound protects `__exit__`.
+`close()` derives a single monotonic deadline from `shutdown_timeout_seconds` clamped into [0, 30] seconds — `None` selects the ceiling instead of an unbounded wait — spends that budget across the shutdown request and the post-terminate join, then escalates from `terminate()` to `kill()` with a fixed five-second reap join. When that join times out, `close()` keeps the `Popen` reference so a retried `close()` can finish the reap and `start()` cannot spawn a second runtime while the previous one may still exist. The 30-second ceiling is a fixed liveness invariant rather than a configurable tunable: `close()` must return even against a runtime that ignores its shutdown handshake and termination signals, and the same bound protects `__exit__`.
 
 ## Verification
 
-The pytest suite drives fake runtime peers: eight barrier-synchronized `start()` calls log exactly one spawned process id; `close()` with `shutdown_timeout_seconds=None` returns promptly against a peer that sleeps through shutdown while ignoring SIGTERM, under a patched-down ceiling; and a fake Popen records that escalation reaches `kill()` with clamped, never-`None`, waits for both the unselected and a configured budget.
+The pytest suite drives fake runtime peers: eight barrier-synchronized `start()` calls log exactly one spawned process id; `close()` with `shutdown_timeout_seconds=None` returns promptly against a peer that sleeps through shutdown while ignoring SIGTERM, under a patched-down ceiling; a fake Popen records that escalation reaches `kill()` with clamped, never-`None`, waits for both the unselected and a configured budget; and a fake Popen that stays unreaped confirms `close()` keeps ownership while `start()` refuses to spawn.
 
 ## Alternatives considered
 
@@ -28,4 +28,4 @@ The pytest suite drives fake runtime peers: eight barrier-synchronized `start()`
 
 ## Consequences
 
-A wedged runtime now costs at most roughly 35 seconds of teardown instead of hanging the caller, and cooperative shutdown longer than 30 seconds is no longer expressible. Concurrent `start()` callers serialize behind one spawn, paying single process-launch latency instead of leaking a duplicate runtime.
+A wedged runtime costs at most roughly 35 seconds of teardown instead of hanging the caller: shutdown waits are capped at 30 seconds plus the five-second reap join. Concurrent `start()` callers serialize behind one spawn, paying single process-launch latency instead of leaking a duplicate runtime.

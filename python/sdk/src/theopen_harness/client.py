@@ -116,6 +116,7 @@ class HarnessClient:
                 proc.terminate()
             except ProcessLookupError:
                 pass
+        reaped = True
         try:
             proc.wait(timeout=max(deadline - time.monotonic(), 0.0))
         except subprocess.TimeoutExpired:
@@ -126,9 +127,12 @@ class HarnessClient:
             try:
                 proc.wait(timeout=_KILL_JOIN_SECONDS)
             except subprocess.TimeoutExpired:
-                # Termination was delivered; the OS owns completion from here.
-                pass
-        self._proc = None
+                # Kill was delivered, but the process remains unreaped; keep
+                # self._proc so a retried close() can finish the reap and
+                # start() cannot spawn a second runtime meanwhile.
+                reaped = False
+        if reaped:
+            self._proc = None
         self._fail_waiters(self._runtime_closed_error("TheOpen Harness runtime closed"))
         if self._reader_thread and self._reader_thread.is_alive():
             self._reader_thread.join(timeout=0.5)
