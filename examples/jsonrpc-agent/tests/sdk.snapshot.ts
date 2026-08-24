@@ -28,6 +28,7 @@ import {
   type HarvestedLog,
   type NormalizeContext,
 } from '@buckeyestudio/toh-acp-snapshot'
+import { parseSessionHeader } from '@buckeyestudio/toh-llm-replay'
 import { resolveExampleLaunch } from '@buckeyestudio/toh-loader-smoke'
 import { DeepSeekHarness, type HarnessNotification, type RunResult } from '@buckeyestudio/toh-sdk-client'
 
@@ -198,15 +199,39 @@ function contextOf(logs: readonly { content: string; header: Record<string, unkn
   return {
     sessionIds: logs.flatMap(log => typeof log.header.id === 'string' ? [log.header.id] : []),
     cwd,
+    cwdAliases: cwdAliasesOf(cwd),
   }
+}
+
+/**
+ * The other separator spelling of one workspace: hydrated replay fixtures
+ * carry the workspace as forward slashes (JSON-safe substitution) while the
+ * runtime writes native win32 paths into session headers and tool results.
+ */
+function cwdAliasesOf(cwd: string): string[] {
+  return [cwd.replaceAll('\\', '/')].filter(alias => alias !== cwd)
 }
 
 function contextOfContents(contents: readonly string[]): NormalizeContext {
   const headers = contents.map(content => JSON.parse(content.slice(0, content.indexOf('\n'))) as Record<string, unknown>)
+  const cwd = typeof headers[0]?.cwd === 'string' ? headers[0].cwd : '\0no-cwd\0'
   return {
     sessionIds: headers.flatMap(header => typeof header.id === 'string' ? [header.id] : []),
-    cwd: typeof headers[0]?.cwd === 'string' ? headers[0].cwd : '\0no-cwd\0',
+    cwd,
+    cwdAliases: cwdAliasesOf(cwd),
   }
+}
+
+/**
+ * One replay fixture's runtime contents: `{{cwd}}` substituted with the run's
+ * workspace. Fixtures embed the placeholder inside JSON strings at two depths
+ * — the session header and tool-call arguments embedded in assistant records
+ * — so the win32 drive-letter form substitutes as forward slashes: raw
+ * backslashes are illegal JSON escapes at both depths, while `/` needs no
+ * escaping and resolves natively on Windows.
+ */
+function hydratedReplayFixture(contents: string, cwd: string): string {
+  return contents.replaceAll('{{cwd}}', cwd.replaceAll('\\', '/'))
 }
 
 async function hydrateReplayFixtures(scenario: SdkScenario, cwd: string): Promise<string[]> {
@@ -214,7 +239,7 @@ async function hydrateReplayFixtures(scenario: SdkScenario, cwd: string): Promis
   await mkdir(root, { recursive: true })
   return Promise.all(fixtureFiles(scenario).map(async (source) => {
     const destination = join(root, basename(source))
-    await writeFile(destination, (await readFile(source, 'utf8')).replaceAll('{{cwd}}', cwd))
+    await writeFile(destination, hydratedReplayFixture(await readFile(source, 'utf8'), cwd))
     return destination
   }))
 }
@@ -462,6 +487,44 @@ describe('TypeScript SDK snapshots over the jsonrpc runtime', () => {
       if (scenario.children > 0) {
         expect(notifications.some(n => n.method === 'subagent.started')).toBe(true)
         expect(notifications.some(n => n.method === 'subagent.finished')).toBe(true)
+      }
+    })
+  }
+})
+
+describe('replay fixture hydration', () => {
+  const win32Workspace = 'C:\\Users\\snapshot\\AppData\\Local\\Temp\\sdk-hydration-probe'
+
+  /**
+   * Require every serialized tool-argument payload anywhere in a parsed
+   * record to parse: arguments ride one JSON level below their log line, so
+   * a hydration that only fixed the header would still boot broken turns.
+   */
+  function requireEmbeddedJsonParses(value: unknown): void {
+    if (Array.isArray(value)) {
+      for (const item of value) requireEmbeddedJsonParses(item)
+      return
+    }
+    if (value === null || typeof value !== 'object') return
+    for (const [key, child] of Object.entries(value)) {
+      if ((key === 'arguments' || key === 'argumentsDelta') && typeof child === 'string') {
+        expect(() => { JSON.parse(child) }, child.slice(0, 80)).not.toThrow()
+        continue
+      }
+      requireEmbeddedJsonParses(child)
+    }
+  }
+
+  for (const scenario of SCENARIOS) {
+    it(`hydrates ${scenario.name} fixtures into bootable JSONL for a win32 workspace`, async () => {
+      const files = fixtureFiles(scenario)
+      for (const [index, source] of files.entries()) {
+        const hydrated = hydratedReplayFixture(await readFile(source, 'utf8'), win32Workspace)
+        expect(parseSessionHeader(hydrated)).toMatchObject(index === 0 ? { id: scenario.sessionId } : {})
+        const records = hydrated.split('\n').filter(line => line.trim().length > 0)
+          .map(line => JSON.parse(line) as Record<string, unknown>)
+        expect(records[0]).toMatchObject({ type: 'session', cwd: win32Workspace.replaceAll('\\', '/') })
+        for (const record of records) requireEmbeddedJsonParses(record)
       }
     })
   }

@@ -1844,7 +1844,7 @@ export type JournalMode = 'wal' | 'delete' | 'truncate' | 'persist'
 
 依赖：[`SessionQueryConfig`](../packages/session-query/session-query/src/index.ts)
 
-来源：[`packages/session-query/session-query-sqlite/src/index.ts:89`](../packages/session-query/session-query-sqlite/src/index.ts)
+来源：[`packages/session-query/session-query-sqlite/src/index.ts:94`](../packages/session-query/session-query-sqlite/src/index.ts)
 
 <a id="buckeyestudiotoh-session-reference"></a>
 
@@ -3114,10 +3114,12 @@ export interface Config {
   maxRedirects?: number
   /** `User-Agent` header sent on every request. */
   userAgent?: string
+  /** Permit loopback, private, and otherwise non-public destinations. Defaults to false. */
+  allowPrivateNetworks?: boolean
 }
 ```
 
-来源：[`packages/web/web-fetch-http/src/index.ts:34`](../packages/web/web-fetch-http/src/index.ts)
+来源：[`packages/web/web-fetch-http/src/index.ts:36`](../packages/web/web-fetch-http/src/index.ts)
 
 <a id="buckeyestudiotoh-web-search-deepseek"></a>
 

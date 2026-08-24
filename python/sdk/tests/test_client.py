@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import inspect
+import subprocess
 import sys
 import threading
 import time
@@ -779,6 +780,421 @@ for line in sys.stdin:
     client.close()
     assert time.monotonic() - start < 2
     assert proc.poll() is not None
+    assert client._proc is None
+
+
+def test_concurrent_start_spawns_exactly_one_runtime_subprocess(tmp_path: Path) -> None:
+    script = tmp_path / "counting_runtime.py"
+    spawn_log = tmp_path / "spawns.log"
+    script.write_text(
+        """
+import json
+import os
+import sys
+
+with open(os.environ["SPAWN_LOG"], "a") as seen:
+    seen.write(str(os.getpid()) + "\\n")
+
+for line in sys.stdin:
+    msg = json.loads(line)
+    if msg.get("method") == "initialize":
+        print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": {"serverInfo": {"name": "fake-toh"}}}), flush=True)
+    elif msg.get("method") == "shutdown":
+        print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": {}}), flush=True)
+        break
+""".strip()
+    )
+
+    client = HarnessClient(
+        HarnessConfig(
+            launch_args_override=(sys.executable, str(script)),
+            env={"SPAWN_LOG": str(spawn_log)},
+        )
+    )
+    barrier = threading.Barrier(8)
+
+    def attempt_start() -> None:
+        barrier.wait()
+        client.start()
+
+    threads = [threading.Thread(target=attempt_start) for _ in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    proc = client._proc
+    assert proc is not None
+    client.initialize(provider="deepseek-official", cwd="/workspace", model="dsagent")
+    client.close()
+
+    spawned = spawn_log.read_text().splitlines()
+    assert len(spawned) == 1
+    assert proc.poll() is not None
+    assert client._proc is None
+
+
+def test_client_close_bounds_unconfigured_shutdown_behind_hard_ceiling(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from theopen_harness import client as sdk_client
+
+    monkeypatch.setattr(sdk_client, "_SHUTDOWN_TIMEOUT_CEILING_SECONDS", 0.2)
+    script = tmp_path / "wedged_runtime.py"
+    script.write_text(
+        """
+import json
+import signal
+import sys
+import time
+
+signal.signal(signal.SIGTERM, signal.SIG_IGN)
+
+for line in sys.stdin:
+    msg = json.loads(line)
+    if msg.get("method") == "initialize":
+        print(json.dumps({"jsonrpc": "2.0", "id": msg["id"], "result": {"serverInfo": {"name": "fake-toh"}}}), flush=True)
+    elif msg.get("method") == "shutdown":
+        time.sleep(60)
+""".strip()
+    )
+
+    client = HarnessClient(
+        HarnessConfig(
+            launch_args_override=(sys.executable, str(script)),
+            shutdown_timeout_seconds=None,
+        )
+    )
+    client.start()
+    proc = client._proc
+    assert proc is not None
+    client.initialize(provider="deepseek-official", cwd="/workspace", model="dsagent")
+
+    start = time.monotonic()
+    client.close()
+
+    assert time.monotonic() - start < 10
+    assert proc.poll() is not None
+    assert client._proc is None
+
+
+class _WedgedRuntimeProc:
+    """Fake runtime Popen that ignores terminate() until kill() escalates."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self.waits: list[float | None] = []
+
+    @property
+    def stdin(self) -> None:
+        return None
+
+    def poll(self) -> int | None:
+        return 0 if "kill" in self.calls else None
+
+    def terminate(self) -> None:
+        self.calls.append("terminate")
+
+    def kill(self) -> None:
+        self.calls.append("kill")
+
+    def wait(self, timeout: float | None = None) -> int:
+        self.waits.append(timeout)
+        if "kill" not in self.calls:
+            raise subprocess.TimeoutExpired(cmd="wedged-runtime", timeout=timeout)
+        return 0
+
+
+@pytest.mark.parametrize("configured_timeout", [None, 0.25], ids=["unselected", "configured"])
+def test_client_close_escalates_from_terminate_to_kill_with_clamped_waits(
+    monkeypatch: pytest.MonkeyPatch, configured_timeout: float | None
+) -> None:
+    from theopen_harness import client as sdk_client
+
+    proc = _WedgedRuntimeProc()
+    client = HarnessClient(HarnessConfig(shutdown_timeout_seconds=configured_timeout))
+    client._proc = proc
+
+    client.close()
+
+    expected_budget = (
+        sdk_client._SHUTDOWN_TIMEOUT_CEILING_SECONDS
+        if configured_timeout is None
+        else configured_timeout
+    )
+    assert proc.calls == ["terminate", "kill"]
+    request_wait, kill_join = proc.waits
+    assert kill_join == sdk_client._KILL_JOIN_SECONDS
+    assert request_wait is not None and 0 <= request_wait <= expected_budget
+    assert client._proc is None
+
+
+class _NeverReapingRuntimeProc(_WedgedRuntimeProc):
+    """Fake runtime Popen that stays unreaped even after kill()."""
+
+    def poll(self) -> int | None:
+        return None
+
+    def wait(self, timeout: float | None = None) -> int:
+        self.waits.append(timeout)
+        raise subprocess.TimeoutExpired(cmd="never-reaping-runtime", timeout=timeout)
+
+
+def test_client_close_keeps_unreaped_runtime_when_kill_join_times_out(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from theopen_harness import client as sdk_client
+
+    proc = _NeverReapingRuntimeProc()
+    client = HarnessClient(HarnessConfig(shutdown_timeout_seconds=0.25))
+    client._proc = proc
+
+    client.close()
+
+    def forbidden_spawn(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("start() must not spawn while an unreaped runtime is owned")
+
+    monkeypatch.setattr(sdk_client.subprocess, "Popen", forbidden_spawn)
+    # close() marked the client closed even though it kept the unreaped
+    # runtime, so start() refuses before any spawn attempt.
+    with pytest.raises(RuntimeError, match="client is closed"):
+        client.start()
+
+    assert proc.calls == ["terminate", "kill"]
+    request_wait, kill_join = proc.waits
+    assert kill_join == sdk_client._KILL_JOIN_SECONDS
+    assert request_wait is not None and 0 <= request_wait <= 0.25
+    assert client._proc is proc
+
+
+@pytest.mark.parametrize(
+    ("configured", "expected"),
+    [
+        (None, 0.4),
+        (float("nan"), 0.4),
+        (float("-inf"), 0.0),
+        (-2.0, 0.0),
+        (99.0, 0.4),
+        (0.15, 0.15),
+    ],
+    ids=["none", "nan", "negative-infinity", "negative", "above-ceiling", "in-range"],
+)
+def test_clamped_shutdown_timeout_maps_every_configured_value_into_range(
+    monkeypatch: pytest.MonkeyPatch, configured: float | None, expected: float
+) -> None:
+    from theopen_harness import client as sdk_client
+
+    monkeypatch.setattr(sdk_client, "_SHUTDOWN_TIMEOUT_CEILING_SECONDS", 0.4)
+    client = HarnessClient(HarnessConfig(shutdown_timeout_seconds=configured))
+
+    assert client._clamped_shutdown_timeout() == expected
+
+
+def test_client_close_reaches_kill_with_nan_configured_shutdown_timeout() -> None:
+    from theopen_harness import client as sdk_client
+
+    proc = _WedgedRuntimeProc()
+    client = HarnessClient(HarnessConfig(shutdown_timeout_seconds=float("nan")))
+    client._proc = proc
+
+    start = time.monotonic()
+    client.close()
+
+    assert time.monotonic() - start < 5
+    assert proc.calls == ["terminate", "kill"]
+    request_wait, kill_join = proc.waits
+    assert kill_join == sdk_client._KILL_JOIN_SECONDS
+    ceiling = sdk_client._SHUTDOWN_TIMEOUT_CEILING_SECONDS
+    assert request_wait is not None and 0 <= request_wait <= ceiling
+    assert client._proc is None
+
+
+class _ContendedWriteRuntimeProc:
+    """Fake runtime Popen whose stdin write can never complete on its own."""
+
+    def __init__(self) -> None:
+        self.calls: list[str] = []
+        self.waits: list[float | None] = []
+        self.stdin = object()
+
+    def poll(self) -> int | None:
+        return 0 if "kill" in self.calls else None
+
+    def terminate(self) -> None:
+        self.calls.append("terminate")
+
+    def kill(self) -> None:
+        self.calls.append("kill")
+
+    def wait(self, timeout: float | None = None) -> int:
+        self.waits.append(timeout)
+        if "kill" not in self.calls:
+            raise subprocess.TimeoutExpired(cmd="contended-write-runtime", timeout=timeout)
+        return 0
+
+
+def test_client_close_bounds_shutdown_behind_blocked_stdin_write() -> None:
+    from theopen_harness import client as sdk_client
+
+    proc = _ContendedWriteRuntimeProc()
+    client = HarnessClient(HarnessConfig(shutdown_timeout_seconds=0.25))
+    client._proc = proc
+    client._write_lock.acquire()
+    try:
+        start = time.monotonic()
+        client.close()
+    finally:
+        client._write_lock.release()
+
+    assert time.monotonic() - start < 5
+    assert proc.calls == ["terminate", "kill"]
+    request_wait, kill_join = proc.waits
+    assert kill_join == sdk_client._KILL_JOIN_SECONDS
+    assert request_wait is not None and 0 <= request_wait <= 0.25
+    assert client._proc is None
+
+
+class _GatedSpawnRuntimeProc:
+    """Fake runtime Popen returned once its gated spawn is released."""
+
+    def __init__(self) -> None:
+        self.stdin = None
+        self.stdout = None
+        self.stderr = None
+        self.returncode: int | None = None
+
+    def poll(self) -> int | None:
+        return self.returncode
+
+    def terminate(self) -> None:
+        self.returncode = 0
+
+    def wait(self, timeout: float | None = None) -> int:
+        assert self.returncode is not None
+        return self.returncode
+
+
+def test_close_waits_for_in_progress_start_before_tearing_down_runtime(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from theopen_harness import client as sdk_client
+
+    spawn_entered = threading.Event()
+    spawn_released = threading.Event()
+    created: list[_GatedSpawnRuntimeProc] = []
+    order: list[str] = []
+
+    def gated_popen(*_args: object, **_kwargs: object) -> _GatedSpawnRuntimeProc:
+        spawn_entered.set()
+        if not spawn_released.wait(timeout=10):
+            raise AssertionError("gated spawn was never released")
+        proc = _GatedSpawnRuntimeProc()
+        created.append(proc)
+        order.append("start")
+        return proc
+
+    monkeypatch.setattr(sdk_client.subprocess, "Popen", gated_popen)
+
+    client = HarnessClient(HarnessConfig(launch_args_override=("unused",)))
+    close_done = threading.Event()
+
+    def run_start() -> None:
+        client.start()
+
+    def run_close() -> None:
+        client.close()
+        order.append("close")
+        close_done.set()
+
+    starter = threading.Thread(target=run_start)
+    starter.start()
+    assert spawn_entered.wait(timeout=10)
+    closer = threading.Thread(target=run_close)
+    closer.start()
+    time.sleep(0.2)
+    assert not close_done.is_set()
+    spawn_released.set()
+    starter.join(timeout=10)
+    closer.join(timeout=10)
+
+    assert len(created) == 1
+    assert order == ["start", "close"]
+    assert created[0].returncode == 0
+    assert client._proc is None
+
+
+def test_close_without_runtime_marks_client_closed_so_queued_start_cannot_spawn(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from theopen_harness import client as sdk_client
+
+    def forbidden_popen(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("start() must not spawn a runtime after close() returned")
+
+    monkeypatch.setattr(sdk_client.subprocess, "Popen", forbidden_popen)
+
+    client = HarnessClient(HarnessConfig(launch_args_override=("unused",)))
+    assert client._proc is None
+
+    client.close()
+
+    with pytest.raises(RuntimeError, match="client is closed"):
+        client.start()
+    assert client._proc is None
+    client.close()
+
+
+def test_close_bounds_lifecycle_lock_wait_behind_the_shutdown_budget(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from theopen_harness import client as sdk_client
+
+    spawn_entered = threading.Event()
+    spawn_released = threading.Event()
+    created: list[_GatedSpawnRuntimeProc] = []
+
+    def gated_popen(*_args: object, **_kwargs: object) -> _GatedSpawnRuntimeProc:
+        spawn_entered.set()
+        if not spawn_released.wait(timeout=10):
+            raise AssertionError("gated spawn was never released")
+        proc = _GatedSpawnRuntimeProc()
+        created.append(proc)
+        return proc
+
+    monkeypatch.setattr(sdk_client.subprocess, "Popen", gated_popen)
+
+    client = HarnessClient(
+        HarnessConfig(launch_args_override=("unused",), shutdown_timeout_seconds=0.25)
+    )
+    starter = threading.Thread(target=client.start)
+    starter.start()
+    assert spawn_entered.wait(timeout=10)
+
+    close_outcome: list[BaseException | None] = [None]
+
+    def run_close() -> None:
+        try:
+            client.close()
+        except BaseException as exc:
+            close_outcome[0] = exc
+
+    closer = threading.Thread(target=run_close, daemon=True)
+    start_time = time.monotonic()
+    closer.start()
+    closer.join(timeout=5)
+    elapsed = time.monotonic() - start_time
+
+    assert not closer.is_alive(), "close() blocked past its budget on the lifecycle lock"
+    assert isinstance(close_outcome[0], TimeoutError)
+    assert elapsed < 5
+
+    assert created == []
+    spawn_released.set()
+    starter.join(timeout=10)
+    assert len(created) == 1
+
+    client.close()
+    assert created[0].returncode == 0
     assert client._proc is None
 
 

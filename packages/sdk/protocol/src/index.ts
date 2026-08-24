@@ -8,8 +8,8 @@
  * @module @buckeyestudio/toh-sdk-protocol
  */
 
-export { JsonRpcLineTransport, JsonRpcResponseError } from './transport.ts'
-export type { JsonRpcTransportPeer } from './transport.ts'
+export { DEFAULT_MAX_FRAME_BYTES, JsonRpcLineTransport, JsonRpcResponseError } from './transport.ts'
+export type { JsonRpcLineTransportOptions, JsonRpcTransportPeer } from './transport.ts'
 export type {
   HarnessSdkNotificationMap,
   HarnessSdkRequestMap,

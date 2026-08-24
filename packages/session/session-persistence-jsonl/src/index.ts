@@ -6,7 +6,7 @@
  * @module @buckeyestudio/toh-session-persistence-jsonl
  */
 
-import { Context } from '@buckeyestudio/cordis'
+import { Context, Service } from '@buckeyestudio/cordis'
 import z from '@buckeyestudio/schemastery'
 import { readdirSync } from 'node:fs'
 import { open, mkdir, readFile, readdir, realpath, link, rm, stat, truncate } from 'node:fs/promises'
@@ -31,6 +31,7 @@ import {
   compressZstdFrame, createZstdFrameDecoder, decompressZstdFrame, decompressZstdPrefix, scanZstdFrames,
 } from './zstd.ts'
 import { ensureDurableDirectoryWin32, publishNewFileWin32 } from './win32.ts'
+import { sweepOrphanedTemps } from './sweep.ts'
 
 export type { JsonlCompression } from './format.ts'
 
@@ -161,6 +162,26 @@ export class JsonlSessionPersistence extends SessionPersistence implements Persi
       preparedSessionCacheSize,
       writeBatchMaxDelayMs,
     })
+  }
+
+  /**
+   * Sweep staging temporaries orphaned by a previous process's crash. A
+   * `*.tmp` name inside a session directory never reaches a published log,
+   * and this process has created none at mount time, so collection is
+   * confined to temporaries predating this process's start: anything newer
+   * may belong to a live peer sharing the root. The sweep itself is
+   * best-effort and never blocks the mount.
+   */
+  protected async [Service.init](): Promise<void> {
+    try {
+      const swept = await sweepOrphanedTemps(this.root, performance.timeOrigin)
+      if (swept > 0) this.ctx.logger.debug(`session-persistence-jsonl: swept ${swept} crash-orphaned staging temporaries`)
+    } catch (error) {
+      // Residue is harmless: discovery never reads *.tmp names. Surfacing the
+      // failure at debug keeps a locked or unreadable directory from blocking
+      // every session operation behind an unfixable mount error.
+      this.ctx.logger.debug(`session-persistence-jsonl: orphaned-temp sweep skipped: ${String(error)}`)
+    }
   }
 
   // Each backend keeps the typed service API beside its storage hooks;

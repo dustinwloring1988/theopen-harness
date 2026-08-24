@@ -11,9 +11,17 @@
  * deployment-derived LAN IP literals, or a declared `trustedHosts` authority.
  * Network reachability and authentication stay out of scope: binding policy
  * belongs to the webserver config, and this fence is not an auth layer.
+ *
+ * The Host fence is the whole story for browser adversaries (a browser cannot
+ * lie about Host to its own socket target). Privileged surface adds a second
+ * adversary the fence does not cover — a non-browser LAN caller, which can
+ * forge Host freely over plain HTTP — and pins those methods with
+ * [isLocalApiRequest](./api-request-trust.ts): the socket peer address must
+ * agree with the loopback Host.
  */
 
 import type { IncomingHttpHeaders } from 'node:http'
+import { isLoopbackPeerAddress } from './loopback-address.ts'
 import { isLoopbackHostname } from './loopback-hostname.ts'
 
 /** The request facts the fence reads from either HTTP representation. */
@@ -120,4 +128,19 @@ export function isTrustedApiRequest(request: ApiTrustRequest, trustedHosts: read
   } catch {
     return false
   }
+}
+
+/**
+ * Decide whether one /api request carries local-operator privilege. Beyond the
+ * Host fence with an empty trust list — the same fence every request passes,
+ * kept here as the browser-side rebinding defense — the server-side socket
+ * peer address must be loopback: over plain HTTP a non-browser caller can put
+ * any Host on the wire, so only the accepted connection's peer address, which
+ * the caller does not choose, proves the request originated on this machine.
+ * @param request - Node HTTP or Fetch request facts (headers).
+ * @param remoteAddress - socket peer address threaded from the transport; an unreported peer (`undefined`) fails closed.
+ * @returns true when the loopback Host and the loopback socket peer agree.
+ */
+export function isLocalApiRequest(request: ApiTrustRequest, remoteAddress: string | undefined): boolean {
+  return isTrustedApiRequest(request, []) && isLoopbackPeerAddress(remoteAddress)
 }
