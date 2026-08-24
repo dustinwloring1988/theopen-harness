@@ -8,6 +8,8 @@ TheOpen Harness SDK 运行时的共享协议格式（wire format）：一个按�
 
 `JsonRpcLineTransport` 在调用方持有的字节流上为 JSON-RPC 2.0 分帧，每行一个紧凑 JSON 帧、以 `\n` 结尾。带 `id` 与 `method` 的帧是请求，仅 `id` 是响应，仅 `method` 是通知；非法 JSON 行被忽略。`start()` 挂接流监听器，`close()` 移除监听器并拒绝挂起请求，但不销毁流。缺失请求处理器时应答 `-32601`；处理器返回的 Promise 被拒绝时，则应答携带错误消息的 `-32603`；若抛出的是 `JsonRpcResponseError` 且其协议错误码为有限数值，帧会原样携带该错误码、错误消息与可选 `data`；错误码缺失、非数值或非有限值时回退为不带 `data` 的 `-32603`；无法通过 JSON 序列化的 `data`（循环引用、`BigInt`）会被丢弃，从而对端总能收到响应帧。错误响应会以 `JsonRpcResponseError` 拒绝挂起的 `request()` Promise，并保留协议格式中的 `code` 与可选 `data`。`JsonRpcTransportPeer` 是服务器类据以进行类型声明的出站接口（request/notify）。
 
+超过 `maxFrameBytes`（`JsonRpcLineTransportOptions`，默认 `DEFAULT_MAX_FRAME_BYTES` = 16 MiB，按跨块边界的 UTF-8 字节数计量）的入站帧，无论其 `\n` 是否已到达，在协议上都无法处理：传输层丢弃其缓冲、销毁输入流，并以 `JsonRpcResponseError` 错误码 `-32700` 拒绝所有挂起请求；后续输入一律不再保留。该上限约束每个单帧，而不是等待分发的未超限完整行的数量。
+
 ## 协议类型
 
 `types.ts` 为 `HarnessSdkJsonRpcServer` 所服务协议的每个载荷命名：
