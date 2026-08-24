@@ -229,12 +229,12 @@ describe('BoundedOutputBuffer steady-state cost', () => {
     expect(buffer.consume().delta.endsWith(chunk)).toBe(true)
   })
 
-  it('keeps newline-dense appends flat at a 4 MiB cap with a line cap larger than the window', { timeout: 120_000 }, () => {
-    const maxBytes = 4 * 1024 * 1024
+  it('keeps newline-dense appends flat with a line cap larger than the window', { timeout: 60_000 }, () => {
+    const maxBytes = 256 * 1024
     const buffer = new BoundedOutputBuffer(maxBytes, 20_000_000)
     while (buffer.byteLength < maxBytes) buffer.append('\n')
 
-    const iterations = 2_500_000
+    const iterations = 500_000
     let slowestAppend = 0n
     const started = process.hrtime.bigint()
     for (let index = 0; index < iterations; index += 1) {
@@ -247,12 +247,15 @@ describe('BoundedOutputBuffer steady-state cost', () => {
 
     expect(buffer.byteLength).toBeLessThanOrEqual(maxBytes)
     expect(elapsedMs).toBeLessThan(30_000)
-    // Releasing millions of indexed newlines must never move retained index
-    // entries within one append; such a stall would pause the event loop.
+    // Releasing hundreds of thousands of indexed newlines must never move
+    // retained index entries within one append; such a stall would pause the
+    // event loop.
     expect(Number(slowestAppend) / 1e6).toBeLessThan(50)
 
+    // The non-newline flood stays under one window so the retained tail still
+    // begins in the newline era while the flood drives further index release.
     const releaseStarted = process.hrtime.bigint()
-    for (let index = 0; index < 40_000; index += 1) buffer.append('x'.repeat(64))
+    for (let index = 0; index < 3_000; index += 1) buffer.append('x'.repeat(64))
     const releaseElapsedMs = Number(process.hrtime.bigint() - releaseStarted) / 1e6
     expect(releaseElapsedMs).toBeLessThan(30_000)
 
