@@ -24,7 +24,7 @@
 - **步数从会话日志折叠。** 在每次关闭尝试时，监听器统计自最近一条 `turn/start` 以来的 `step/start` 记录数，因此计数如实反映持久日志中本轮的开销——包括更早 steering 强制出来的步骤。
 - **Token 支出对每个请求上报的 usage 求和。** 在每次关闭尝试时，监听器折叠本轮已记录的 `assistant/message`，把每个请求各自不相交的 usage 桶（`inputTokens` 加上 cache-read、cache-write 与 output）累加起来，因此重复请求各自贡献完整的输入与输出成本，而不是共享表面的差值。
 - **硬限 → 取消。** `agent.cancel({ kind: 'hook', reason }, { keepInbox: true })` 中止活动轮次，同时保留排队与 steering 收件箱；持久的 `turn/end` 记录 `aborted`/`hook` 原因，原因字符串携带观测数值。
-- **建议线 → 每轮一次 steer。** 达到或超过 `warnAtSteps` 后，策略每轮调用恰好一次 `agent.steer(...)`；机器重读收件箱并再跑一步。按 turn id 键控的闩锁保证第二次关闭尝试不会再被引导，而建议与硬限之间的后续关闭尝试仍会被放行——如 `warnAtSteps: 3` 且 `maxStepsPerTurn: 6` 时，第 4 步的关闭尝试会正常关闭——直到某次尝试达到或越过硬限。
+- **建议线 → 每轮一次 steer。** 只有当某次关闭尝试在任一硬限之前达到 `warnAtSteps` 时才会引导：硬限检查先于建议分支执行，因此步数或 token 先触发的取消会在没有任何建议的情况下关闭轮次。建议确实触发时，策略每轮调用恰好一次 `agent.steer(...)`；机器重读收件箱并再跑一步。按 turn id 键控的闩锁保证第二次关闭尝试不会再被引导，而建议与硬限之间的后续关闭尝试仍会被放行——如 `warnAtSteps: 3` 且 `maxStepsPerTurn: 6` 时，第 4 步的关闭尝试会正常关闭——直到某次尝试达到或越过硬限。
 - **按轮重置。** 状态按存活 agent 对象与 turn 号键控：后续轮次从零步数和清空的 steer 闩锁开始。被取消的一轮不会污染下一轮。
 
 ## Reminder delivery
