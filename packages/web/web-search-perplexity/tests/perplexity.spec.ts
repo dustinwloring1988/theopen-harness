@@ -10,8 +10,33 @@ import { mapPerplexityResponse } from '../src/provider.ts'
 
 const options = { apiKey: 'pplx-key', baseURL: 'https://api.perplexity.test', model: 'sonar', maxTokens: 1024 }
 
+/** Ceiling mirrored from the provider's private constant; tests pin its documented value. */
+const MAX_RESPONSE_BYTES = 4 * 1024 * 1024
+
 function jsonResponse(body: unknown, init: ResponseInit = {}): Response {
   return new Response(JSON.stringify(body), { status: 200, headers: { 'content-type': 'application/json' }, ...init })
+}
+
+function streamResponse(chunks: readonly Uint8Array[], init: ResponseInit = {}): Response {
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (const chunk of chunks) controller.enqueue(chunk)
+        controller.close()
+      },
+    }),
+    { status: 200, headers: { 'content-type': 'application/json' }, ...init },
+  )
+}
+
+/** A response whose body errors with an abort before any byte can be read. */
+function abortedBody(init: ResponseInit): Response {
+  return new Response(
+    new ReadableStream<Uint8Array>({
+      start(controller) { controller.error(new DOMException('aborted', 'AbortError')) },
+    }),
+    init,
+  )
 }
 
 afterEach(() => {
@@ -158,16 +183,62 @@ describe('PerplexitySearchProvider error handling', () => {
       .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_ERROR' }))
   })
 
-  it('surfaces an abort during success-body parse as WEB_ABORTED, not provider error', async () => {
-    const body = { json: () => Promise.reject(new DOMException('aborted', 'AbortError')), ok: true, status: 200 }
-    vi.stubGlobal('fetch', vi.fn(async () => body as unknown as Response))
+  it('parses a success reply at exactly the byte ceiling', async () => {
+    const body = new TextEncoder().encode(
+      JSON.stringify({ choices: [{ message: { content: 'a' } }], citations: [] }).padEnd(MAX_RESPONSE_BYTES, ' '),
+    )
+    expect(body.byteLength).toBe(MAX_RESPONSE_BYTES)
+    vi.stubGlobal('fetch', vi.fn(async () => streamResponse([body])))
+    await expect(new PerplexitySearchProvider(options).search({ query: 'q' }))
+      .resolves.toMatchObject({ content: 'a', sources: [] })
+  })
+
+  it('refuses a success reply that streams past the byte ceiling', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => streamResponse([
+      new Uint8Array(3 * 1024 * 1024),
+      new Uint8Array(3 * 1024 * 1024),
+    ])))
+    await expect(new PerplexitySearchProvider(options).search({ query: 'q' }))
+      .rejects.toThrow(expect.objectContaining({
+        code: 'WEB_PROVIDER_ERROR',
+        message: `Perplexity answered with more than ${MAX_RESPONSE_BYTES} bytes`,
+      }))
+  })
+
+  it('refuses a reply whose declared Content-Length exceeds the ceiling without draining the body', async () => {
+    // The body stays open after one small chunk: only the Content-Length
+    // pre-check can finish this search, so a read-to-EOF implementation hangs.
+    const openBody = new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new Uint8Array(8)) },
+    })
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(openBody, {
+      status: 200,
+      headers: { 'content-type': 'application/json', 'content-length': String(MAX_RESPONSE_BYTES + 1) },
+    })))
+    await expect(new PerplexitySearchProvider(options).search({ query: 'q' }))
+      .rejects.toThrow(expect.objectContaining({
+        code: 'WEB_PROVIDER_ERROR',
+        message: `Perplexity answered with more than ${MAX_RESPONSE_BYTES} bytes`,
+      }))
+  })
+
+  it('refuses an oversized error body instead of falling back to the status line', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => streamResponse([new Uint8Array(4 * 1024 * 1024 + 1)], { status: 500 })))
+    await expect(new PerplexitySearchProvider(options).search({ query: 'q' }))
+      .rejects.toThrow(expect.objectContaining({
+        code: 'WEB_PROVIDER_ERROR',
+        message: `Perplexity answered with more than ${MAX_RESPONSE_BYTES} bytes`,
+      }))
+  })
+
+  it('surfaces an abort during the success-body read as WEB_ABORTED, not provider error', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => abortedBody({ status: 200, headers: { 'content-type': 'application/json' } })))
     await expect(new PerplexitySearchProvider(options).search({ query: 'q' }))
       .rejects.toThrow(expect.objectContaining({ code: 'WEB_ABORTED' }))
   })
 
-  it('surfaces an abort during error-body parse as WEB_ABORTED', async () => {
-    const body = { json: () => Promise.reject(new DOMException('aborted', 'AbortError')), ok: false, status: 500 }
-    vi.stubGlobal('fetch', vi.fn(async () => body as unknown as Response))
+  it('surfaces an abort during the error-body read as WEB_ABORTED', async () => {
+    vi.stubGlobal('fetch', vi.fn(async () => abortedBody({ status: 500, headers: { 'content-type': 'application/json' } })))
     await expect(new PerplexitySearchProvider(options).search({ query: 'q' }))
       .rejects.toThrow(expect.objectContaining({ code: 'WEB_ABORTED' }))
   })

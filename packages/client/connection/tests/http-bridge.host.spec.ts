@@ -12,6 +12,7 @@ describe('HTTP bridge abort', () => {
       url: '/api/session.prompt',
       method: 'POST',
       headers: { 'content-type': 'application/json', 'content-length': '999999' },
+      socket: { remoteAddress: '127.0.0.1' },
       destroy: () => { destroyed.push(true) },
     })
     let status: number | undefined
@@ -42,6 +43,7 @@ describe('HTTP bridge abort', () => {
       url: '/api/host.pickDirectory',
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      socket: { remoteAddress: '::ffff:127.0.0.1' },
     })
 
     const response = Object.assign(new EventEmitter(), {
@@ -54,10 +56,12 @@ describe('HTTP bridge abort', () => {
     let resolveStarted!: () => void
     const started = new Promise<void>((resolve) => { resolveStarted = resolve })
     let carrierSignal: AbortSignal | undefined
+    let carrierRemoteAddress: string | undefined
     const pending = bridge(request, response, {
-      fetch: async (input) => {
+      fetch: async (input, remoteAddress) => {
         const fetchRequest = input
         carrierSignal = fetchRequest.signal
+        carrierRemoteAddress = remoteAddress
         resolveStarted()
         if (!fetchRequest.signal.aborted) {
           await new Promise<void>((resolve) => {
@@ -71,5 +75,8 @@ describe('HTTP bridge abort', () => {
     response.emit('close')
     await pending
     expect(carrierSignal?.aborted).toBe(true)
+    // The bridge threads the socket peer address — the one client fact the
+    // request headers cannot carry or forge — to the fetch handler.
+    expect(carrierRemoteAddress).toBe('::ffff:127.0.0.1')
   })
 })

@@ -24,13 +24,15 @@ The plugin answers `shutdown`, flushes the response, disposes the root context s
 
 `initialize` is the runtime-readiness boundary: when the server is mounted by a Loader composition, it waits for the current plugin tree to settle before replying, so async sibling capabilities such as initial MCP tool discovery are visible to the first prompt. Hand-built contexts without Loader remain immediately usable. `initialize.serverInfo.name` is the wire-stable `theopen-harness-sdk-runtime`. An optional positive `initialize.maxTokens` becomes the request output cap of each SDK-created agent and its in-process descendants; invalid values reject initialization, while omission sends no SDK cap and allows the selected adapter or provider route default to apply. `session/prompt` queues one identified user message and immediately returns `{ messageId }`. The server streams every durable fact as `session.event` and every whole-agent lifecycle transition as `session.status`; it does not assign an assistant message or `turn/end` to that prompt. Independent requests may enqueue more work on the same session. Persistence roots and persona come from `cordis.yml`.
 
+Every dispatched method validates its params before any handler runs, mirroring the web gateway's request schemas: unknown fields are stripped, and a failure answers `-32602` naming the method and each failing field (`data.issues` carries the structured list). `session/prompt.contentBlocks` accepts prompt-side blocks only — `text`, and `image` with a durable attachment reference — so harness-produced vocabulary such as `tool-result` or `reasoning` can never enter the session log or a model request as user content; the remaining core blocks stay server-produced.
+
 ## Model Experience
 
 ### SDK user message
 
 #### What the model sees
 
-For each accepted `session/prompt`, the conversation model receives the caller-supplied `contentBlocks` verbatim as one user message in that SDK session. This package adds no system-prompt prose or tool schema; those come from the plugins in the surrounding `cordis.yml`.
+For each accepted `session/prompt`, the conversation model receives the validated caller-supplied `contentBlocks` verbatim as one user message in that SDK session; non-prompt block types are rejected at the wire with `-32602` before any message exists. This package adds no system-prompt prose or tool schema; those come from the plugins in the surrounding `cordis.yml`.
 
 #### Token effect
 
