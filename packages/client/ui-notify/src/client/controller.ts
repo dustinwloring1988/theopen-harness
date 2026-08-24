@@ -91,7 +91,11 @@ export class NotifyController {
   readonly #missing = new Map<string, number>()
   /** Whether the first (recording-only) pass has run since start(). */
   #primed = false
-  /** Whether this page already ran the permission request; it never re-asks. */
+  /**
+   * Whether this page already ran the permission request; an unanswered result
+   * still counts. The flag outlives stop()/start(): the browser prompts once
+   * per page lifetime, so restarting the watcher must not re-ask.
+   */
   #permissionAsked = false
   /** Serializes passes so async permission handshakes cannot interleave. */
   #chain: Promise<void> = Promise.resolve()
@@ -126,7 +130,8 @@ export class NotifyController {
       this.#armed.clear()
       this.#missing.clear()
       this.#primed = false
-      this.#permissionAsked = false
+      // #permissionAsked deliberately survives: the prompt is once per page,
+      // so a restart within this page never re-asks an unanswered permission.
     }
     return this.#stop
   }

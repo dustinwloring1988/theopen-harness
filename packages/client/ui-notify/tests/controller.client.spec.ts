@@ -212,6 +212,38 @@ describe('NotifyController', () => {
     expect(requestPermission).toHaveBeenCalledTimes(1)
   })
 
+  it('keeps the unanswered permission attempt across a stop/start restart', async () => {
+    const source = listSource(list([]))
+    const requestPermission = vi.fn(() => Promise.resolve('default' as const))
+    const controller = new NotifyController(
+      source.list,
+      () => ({ mode: 'ask', quietFrom: '', quietTo: '' }),
+      () => ({ completed: 'c', approval: 'a' }),
+      {
+        focused: () => false,
+        permission: () => 'default',
+        requestPermission,
+        nowMinutes: () => 0,
+        raise: () => {},
+      },
+    )
+    await controller.pass()
+    source.publish(list([summary('a', { completed: true })]))
+    await controller.pass()
+    expect(requestPermission).toHaveBeenCalledTimes(1)
+
+    // Restarting the watcher stays inside one page lifetime: after teardown
+    // re-primes on the standing facts, a genuinely new event must not raise
+    // the browser prompt a second time.
+    const stop = controller.start()
+    stop()
+    source.publish(list([summary('a', { completed: true })]))
+    await controller.pass()
+    source.publish(list([summary('a', { completed: true }), summary('b', { completed: true })]))
+    await controller.pass()
+    expect(requestPermission).toHaveBeenCalledTimes(1)
+  })
+
   it('re-notifies only after the interaction has been gone for two passes', async () => {
     const b = bench('on')
     b.publish(list([summary('a')]))
