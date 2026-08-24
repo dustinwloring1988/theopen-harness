@@ -10,7 +10,7 @@ import LlmRuntime, { createUserMessage, LlmAdapter  } from '@buckeyestudio/toh-l
 import type { GenerateOptions, StreamChunk } from '@buckeyestudio/toh-llm'
 import SessionStore, { SessionId } from '@buckeyestudio/toh-session'
 import SessionTitleService from '@buckeyestudio/toh-session-title'
-import * as providerPlugin from '@buckeyestudio/toh-session-title-first-prompt-llm'
+import * as providerPlugin from '@buckeyestudio/toh-session-title-llm'
 
 let root: string | undefined
 let context: Context | undefined
@@ -32,10 +32,8 @@ afterEach(async () => {
   root = undefined
 })
 
-async function loadComposition(): Promise<Context> {
-  root = await mkdtemp(join(tmpdir(), 'toh-title-loader-'))
-  const configPath = join(root, 'cordis.yml')
-  await writeFile(configPath, [
+function configLines(cadence: string): string[] {
+  return [
     "- name: '@buckeyestudio/toh-llm'",
     "- name: '@buckeyestudio/toh-session'",
     "- name: '@buckeyestudio/toh-session-title'",
@@ -43,8 +41,9 @@ async function loadComposition(): Promise<Context> {
     '    fallbackMaxWords: 5',
     '    fallbackMaxBytes: 40',
     '    maxTitleBytes: 80',
-    "- name: '@buckeyestudio/toh-session-title-first-prompt-llm'",
+    "- name: '@buckeyestudio/toh-session-title-llm'",
     '  config:',
+    `    cadence: '${cadence}'`,
     '    targetWords: 5',
     '    targetCjkCharacters: 10',
     '    maxInputBytes: 1000',
@@ -53,7 +52,13 @@ async function loadComposition(): Promise<Context> {
     "    provider: 'title-route'",
     "    model: 'title-model'",
     '',
-  ].join('\n'))
+  ]
+}
+
+async function loadComposition(cadence: string): Promise<Context> {
+  root = await mkdtemp(join(tmpdir(), 'toh-title-loader-'))
+  const configPath = join(root, 'cordis.yml')
+  await writeFile(configPath, configLines(cadence).join('\n'))
 
   context = new Context()
   context.baseUrl = pathToFileURL(root).href + '/'
@@ -63,7 +68,7 @@ async function loadComposition(): Promise<Context> {
     ['@buckeyestudio/toh-llm', LlmRuntime],
     ['@buckeyestudio/toh-session', SessionStore],
     ['@buckeyestudio/toh-session-title', SessionTitleService],
-    ['@buckeyestudio/toh-session-title-first-prompt-llm', providerPlugin],
+    ['@buckeyestudio/toh-session-title-llm', providerPlugin],
   ])
   context.loader.internal = {
     version: 'v2',
@@ -82,7 +87,7 @@ async function loadComposition(): Promise<Context> {
 
 describe('session-title Loader composition', () => {
   it('loads the service and one model provider with required deployment policy', async () => {
-    const ctx = await loadComposition()
+    const ctx = await loadComposition('first-prompt')
     const unloaded = [...ctx.loader.entries()]
       .filter(entry => entry.fiber === undefined && !entry.disabled)
       .map(entry => entry.options.name)
@@ -115,5 +120,9 @@ describe('session-title Loader composition', () => {
         model: { provider: 'title-route', model: 'title-model' },
       },
     })
+  })
+
+  it('fails loud at load when the cadence is not a supported value', async () => {
+    await expect(loadComposition('sometimes')).rejects.toThrow(/cadence/)
   })
 })

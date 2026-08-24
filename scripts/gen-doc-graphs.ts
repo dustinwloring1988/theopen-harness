@@ -268,7 +268,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'session-title',
     title: 'Log-backed session titles',
     mode: 'seam',
-    implementations: ['session-title-first-prompt-llm', 'session-title-all-prompts-llm'],
+    implementations: ['session-title-llm'],
     note: 'Owns the deterministic fallback, latest-title fold, and sole optional asynchronous provider registration.',
   },
   {

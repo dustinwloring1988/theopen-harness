@@ -1932,35 +1932,37 @@ export interface Config {
 
 来源：[`packages/session/session-title/src/index.ts:79`](../packages/session/session-title/src/index.ts)
 
-<a id="buckeyestudiotoh-session-title-all-prompts-llm"></a>
+<a id="buckeyestudiotoh-session-title-llm"></a>
 
-## `@buckeyestudio/toh-session-title-all-prompts-llm`
-
-需要：`sessionTitle` · `llm` · `sessions`
-
-```ts config-catalog
-/** Required LLM policy; this plugin adds no defaults. */
-export type Config = SessionTitleLlmConfig
-```
-
-依赖：[`SessionTitleLlmConfig`](../packages/session/session-title-llm/src/index.ts)
-
-来源：[`packages/session/session-title-all-prompts-llm/src/index.ts:15`](../packages/session/session-title-all-prompts-llm/src/index.ts)
-
-<a id="buckeyestudiotoh-session-title-first-prompt-llm"></a>
-
-## `@buckeyestudio/toh-session-title-first-prompt-llm`
+## `@buckeyestudio/toh-session-title-llm`
 
 需要：`sessionTitle` · `llm` · `sessions`
 
 ```ts config-catalog
-/** Required LLM policy; this plugin adds no defaults. */
-export type Config = SessionTitleLlmConfig
+/** Required deployment policy for the model-backed title plugin. */
+export interface SessionTitleLlmConfig {
+  /** Automatic generation cadence this registration owns. */
+  readonly cadence: SessionTitleAutomaticMode
+  /** Target word count for non-CJK titles. */
+  readonly targetWords: number
+  /** Target character count for Chinese, Japanese, or Korean titles. */
+  readonly targetCjkCharacters: number
+  /** Maximum UTF-8 bytes in the final JSON-framed user prompt. */
+  readonly maxInputBytes: number
+  /** Auxiliary generation output-token cap. */
+  readonly maxOutputTokens: number
+  /** End-to-end auxiliary request deadline in milliseconds. */
+  readonly timeoutMs: number
+  /** Optional explicit provider route; must be paired with `model`. */
+  readonly provider?: string
+  /** Optional explicit model id; must be paired with `provider`. */
+  readonly model?: string
+}
 ```
 
-依赖：[`SessionTitleLlmConfig`](../packages/session/session-title-llm/src/index.ts)
+依赖：[`SessionTitleAutomaticMode`](../packages/session/session-title/src/index.ts)
 
-来源：[`packages/session/session-title-first-prompt-llm/src/index.ts:15`](../packages/session/session-title-first-prompt-llm/src/index.ts)
+来源：[`packages/session/session-title-llm/src/index.ts:51`](../packages/session/session-title-llm/src/index.ts)
 
 <a id="buckeyestudiotoh-settings-file"></a>
 
@@ -3350,7 +3352,6 @@ export interface Config {
 - `@buckeyestudio/toh-sdk-jsonrpc-demo`（[`packages/examples/jsonrpc-demo/src/index.ts`](../packages/examples/jsonrpc-demo/src/index.ts)）
 - `@buckeyestudio/toh-sdk-protocol`（[`packages/sdk/protocol/src/index.ts`](../packages/sdk/protocol/src/index.ts)）
 - `@buckeyestudio/toh-session-telemetry`（[`packages/session/session-telemetry/src/index.ts`](../packages/session/session-telemetry/src/index.ts)）
-- `@buckeyestudio/toh-session-title-llm`（[`packages/session/session-title-llm/src/index.ts`](../packages/session/session-title-llm/src/index.ts)）
 - `@buckeyestudio/toh-subagent-in-process-driver`（[`packages/subagent/subagent-in-process-driver/src/index.ts`](../packages/subagent/subagent-in-process-driver/src/index.ts)）
 - `@buckeyestudio/toh-timeout`（[`packages/util/timeout/src/index.ts`](../packages/util/timeout/src/index.ts)）
 - `@buckeyestudio/toh-typert-generator`（[`packages/typert/generator/src/index.ts`](../packages/typert/generator/src/index.ts)）

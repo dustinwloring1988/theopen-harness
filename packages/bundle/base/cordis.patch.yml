@@ -44,8 +44,9 @@
         maxTitleBytes: 80
 
     - id: session-title-llm
-      name: '@buckeyestudio/toh-session-title-first-prompt-llm'
+      name: '@buckeyestudio/toh-session-title-llm'
       config:
+        cadence: 'first-prompt'
         targetWords: 5
         targetCjkCharacters: 10
         maxInputBytes: 4096
