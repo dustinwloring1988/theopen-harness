@@ -2,9 +2,9 @@
  * One opened JSON unit. The in-memory state is authoritative; every write
  * primitive republishes the whole file atomically. Each primitive enqueues one
  * publication on a per-unit chain, and its queue slot captures the previous
- * value, applies only its own mutation, serializes, and rolls that mutation
- * back if its write fails: a slot publishes exactly the committed earlier
- * slots plus its own mutation, never a later pending one. Publications chain
+ * value, applies only its own mutation, and rolls that mutation back if
+ * serializing or writing it fails: a slot publishes exactly the committed
+ * earlier slots plus its own mutation, never a later pending one. Publications chain
  * because overlapping unchained calls stage independent temp files whose
  * renames complete in arbitrary order, letting an older snapshot rename last
  * and discard an already-resolved newer write. Ordering across separately
@@ -75,31 +75,36 @@ class JsonKvUnit implements KvUnit {
   async putRecord(table: string, key: string, value: unknown): Promise<void> {
     this.assertOpen()
     const records = this.records(table)
-    return this.enqueuePublish(() => {
+    return this.enqueuePublish(async () => {
       // Capture, mutation, and rollback live inside the slot so no pending
       // later write leaks into this publication and no rejected write lingers
-      // in memory past it.
+      // in memory past it. The async body routes a synchronous serialize
+      // throw into the same catch as a failed write.
       const hadKey = records.has(key)
       const previous = records.get(key)
       records.set(key, value)
-      return writeAtomic(this.path, serialize(this.descriptor.name, this.state)).catch((error: unknown) => {
+      try {
+        await writeAtomic(this.path, serialize(this.descriptor.name, this.state))
+      } catch (error) {
         if (hadKey) records.set(key, previous)
         else records.delete(key)
         throw error
-      })
+      }
     })
   }
 
   async deleteRecord(table: string, key: string): Promise<void> {
     this.assertOpen()
     const records = this.records(table)
-    return this.enqueuePublish(() => {
+    return this.enqueuePublish(async () => {
       const previous = records.get(key)
-      if (!records.delete(key)) return undefined
-      return writeAtomic(this.path, serialize(this.descriptor.name, this.state)).catch((error: unknown) => {
+      if (!records.delete(key)) return
+      try {
+        await writeAtomic(this.path, serialize(this.descriptor.name, this.state))
+      } catch (error) {
         records.set(key, previous)
         throw error
-      })
+      }
     })
   }
 
@@ -108,13 +113,15 @@ class JsonKvUnit implements KvUnit {
     if (!this.descriptor.hasGlobal) {
       throw new Error(`unit '${this.descriptor.name}' does not declare a global slot`)
     }
-    return this.enqueuePublish(() => {
+    return this.enqueuePublish(async () => {
       const previous = this.state.global
       this.state.global = value
-      return writeAtomic(this.path, serialize(this.descriptor.name, this.state)).catch((error: unknown) => {
+      try {
+        await writeAtomic(this.path, serialize(this.descriptor.name, this.state))
+      } catch (error) {
         this.state.global = previous
         throw error
-      })
+      }
     })
   }
 

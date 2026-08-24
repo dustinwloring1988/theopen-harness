@@ -339,6 +339,101 @@ describe('json backend specifics', () => {
     await backend.close()
   })
 
+  it('keeps a put whose payload cannot be serialized out of memory and off disk', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    await unit.putRecord('t', 'k', { v: 'committed' })
+    const path = join(root, 'shape.json')
+    // JSON.stringify rejects bigint synchronously inside the publish slot,
+    // before writeAtomic runs, so the rollback must cover that window too.
+    const hold = deferred()
+    const written = stagePublications([{ holdUntil: hold.promise }, {}])
+    const kept = unit.putRecord('t', 'kept', { v: 'kept' })
+    const rejected = unit.putRecord('t', 'rejected', { v: 1n })
+    const later = unit.putRecord('t', 'later', { v: 'later' })
+    hold.resolve()
+    await expect(rejected).rejects.toThrow(/Do not know how to serialize a BigInt/)
+    await expect(kept).resolves.toBeUndefined()
+    await expect(later).resolves.toBeUndefined()
+    expect(written).toHaveLength(2)
+    const snapshots = written.map(text => JSON.parse(text) as {
+      tables: Record<string, Record<string, unknown>>
+    })
+    expect(snapshots[0]!.tables['t']).toEqual({ k: { v: 'committed' }, kept: { v: 'kept' } })
+    expect(snapshots[1]!.tables['t']).toEqual({
+      k: { v: 'committed' },
+      kept: { v: 'kept' },
+      later: { v: 'later' },
+    })
+    expect((await unit.loadAll()).tables['t']).toEqual({
+      k: { v: 'committed' },
+      kept: { v: 'kept' },
+      later: { v: 'later' },
+    })
+    const onDisk = JSON.parse(await readFile(path, 'utf8')) as {
+      tables: Record<string, Record<string, unknown>>
+    }
+    expect(onDisk.tables['t']).toEqual({
+      k: { v: 'committed' },
+      kept: { v: 'kept' },
+      later: { v: 'later' },
+    })
+    await backend.close()
+  })
+
+  it('restores a deleted record when the resulting payload cannot be serialized', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    await unit.putRecord('t', 'victim', { v: 'committed' })
+    await unit.putRecord('t', 'k', { v: 'delete me' })
+    const path = join(root, 'shape.json')
+    const committed = await readFile(path, 'utf8')
+    // loadAll hands back the live record objects, so seeding one lets the
+    // test raise a genuine synchronous JSON.stringify rejection.
+    const snapshot = await unit.loadAll()
+    const victim = snapshot.tables['t']!['victim'] as { v: unknown }
+    victim.v = 1n
+    await expect(unit.deleteRecord('t', 'k')).rejects.toThrow(/Do not know how to serialize a BigInt/)
+    victim.v = 'committed'
+    expect((await unit.loadAll()).tables['t']).toEqual({ victim: { v: 'committed' }, k: { v: 'delete me' } })
+    expect(await readFile(path, 'utf8')).toBe(committed)
+    await unit.putRecord('t', 'later', { v: 'later' })
+    const onDisk = JSON.parse(await readFile(path, 'utf8')) as {
+      tables: Record<string, Record<string, unknown>>
+    }
+    expect(onDisk.tables['t']).toEqual({
+      victim: { v: 'committed' },
+      k: { v: 'delete me' },
+      later: { v: 'later' },
+    })
+    await backend.close()
+  })
+
+  it('restores the previous global when the resulting payload cannot be serialized', async () => {
+    const root = await freshRoot()
+    const backend = new JsonStorageBackend(root)
+    const unit = await backend.kv.open(descriptor)
+    await unit.setGlobal({ g: 'committed' })
+    await unit.putRecord('t', 'victim', { v: 'committed' })
+    const path = join(root, 'shape.json')
+    const committed = await readFile(path, 'utf8')
+    const snapshot = await unit.loadAll()
+    const victim = snapshot.tables['t']!['victim'] as { v: unknown }
+    victim.v = 1n
+    await expect(unit.setGlobal({ g: 'rejected' })).rejects.toThrow(/Do not know how to serialize a BigInt/)
+    victim.v = 'committed'
+    const settled = await unit.loadAll()
+    expect(settled.global).toEqual({ g: 'committed' })
+    expect(settled.tables['t']).toEqual({ victim: { v: 'committed' } })
+    expect(await readFile(path, 'utf8')).toBe(committed)
+    await unit.setGlobal({ g: 'later' })
+    const onDisk = JSON.parse(await readFile(path, 'utf8')) as { global: unknown }
+    expect(onDisk.global).toEqual({ g: 'later' })
+    await backend.close()
+  })
+
   it('publishes sequential writes in call order with each resolution durable', async () => {
     const root = await freshRoot()
     const backend = new JsonStorageBackend(root)
