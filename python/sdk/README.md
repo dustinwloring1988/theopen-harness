@@ -13,6 +13,8 @@ Install the `theopen-harness-sdk` distribution from PyPI; the import module rema
 python -m pip install theopen-harness-sdk
 ```
 
+The SDK ships a PEP 561 `py.typed` marker, so mypy and pyright check `theopen_harness.*` imports against its inline annotations instead of treating them as untyped.
+
 Installing `theopen-harness-sdk` installs the exact same-version `theopen-harness-runtime-bin` platform wheel. The normal entry point therefore needs no executable argument:
 
 ```py

@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import json
 import runpy
+import shutil
+import subprocess
+import zipfile
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -82,6 +85,25 @@ def test_stage_sdk_keeps_distribution_module_and_runtime_pin_distinct(tmp_path: 
     assert 'license-files = ["LICENSE"]' in pyproject
     assert (destination / "LICENSE").read_bytes() == (ROOT / "LICENSE").read_bytes()
     assert (destination / "src" / "theopen_harness" / "__init__.py").is_file()
+    assert (destination / "src" / "theopen_harness" / "py.typed").is_file()
+
+
+def test_sdk_wheel_ships_the_pep561_marker(tmp_path: Path) -> None:
+    if shutil.which("uv") is None:
+        pytest.skip("uv is required to build the release wheel")
+    destination = tmp_path / "staging"
+    build_python_release.stage_sdk(destination, "1.2.3")
+    output_dir = tmp_path / "dist"
+
+    subprocess.run(
+        ["uv", "build", "--wheel", "--out-dir", str(output_dir), str(destination)],
+        cwd=ROOT,
+        check=True,
+    )
+
+    (wheel,) = output_dir.glob("theopen_harness_sdk-1.2.3-py3-none-any.whl")
+    with zipfile.ZipFile(wheel) as archive:
+        assert "theopen_harness/py.typed" in archive.namelist()
 
 
 @pytest.mark.parametrize(("target", "with_helper"), [("linux-x64", False), ("macos-arm64", True)])
@@ -117,3 +139,4 @@ def test_stage_runtime_copies_platform_payload(
     assert (destination / "THIRD_PARTY_NOTICES.md").read_bytes() == (
         ROOT / "THIRD_PARTY_NOTICES.md"
     ).read_bytes()
+    assert (destination / "src" / "theopen_harness_runtime" / "py.typed").is_file()
