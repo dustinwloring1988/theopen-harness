@@ -26,7 +26,7 @@ This partially supersedes [the api browser-trust boundary Agent Note](../archite
 
 ## Consequences
 
-On an all-interfaces composition, LAN callers lose exactly the privileged set even when their authority is declared; browsers are unaffected, since their loopback claims were true before and remain unverified against the socket only when they come from loopback itself. A local reverse proxy still presents a loopback peer: the pin proves the connection originated on the host machine, not who is behind it, and authentication remains the recorded deferred work. In-process callers that reach the fetch layer without a transport report no peer and fail closed on privileged surface.
+On an all-interfaces composition, LAN callers lose exactly the privileged set even when their authority is declared; browsers connecting from the host machine are unaffected: their loopback claims were true before, and the socket-peer check runs for every privileged request, which a loopback-originated browser passes because the server observes a loopback peer. A local reverse proxy still presents a loopback peer: the pin proves the connection originated on the host machine, not who is behind it, and authentication remains the recorded deferred work. In-process callers that reach the fetch layer without a transport report no peer and fail closed on privileged surface.
 
 ## Testing
 
