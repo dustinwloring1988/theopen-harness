@@ -1233,6 +1233,9 @@ importers:
       '@buckeyestudio/toh-web':
         specifier: workspace:^
         version: link:../../web/web
+      '@buckeyestudio/toh-web-fetch-http':
+        specifier: workspace:^
+        version: link:../../web/web-fetch-http
       '@buckeyestudio/toh-web-search-deepseek':
         specifier: workspace:^
         version: link:../../web/web-search-deepseek

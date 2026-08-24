@@ -3110,10 +3110,12 @@ export interface Config {
   maxRedirects?: number
   /** `User-Agent` header sent on every request. */
   userAgent?: string
+  /** Permit loopback, private, and otherwise non-public destinations. Defaults to false. */
+  allowPrivateNetworks?: boolean
 }
 ```
 
-Source: [`packages/web/web-fetch-http/src/index.ts:34`](../packages/web/web-fetch-http/src/index.ts)
+Source: [`packages/web/web-fetch-http/src/index.ts:36`](../packages/web/web-fetch-http/src/index.ts)
 
 <a id="buckeyestudiotoh-web-search-deepseek"></a>
 
