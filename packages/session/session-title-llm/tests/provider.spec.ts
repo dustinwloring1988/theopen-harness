@@ -147,3 +147,41 @@ describe('all-prompts cadence', () => {
     })
   })
 })
+
+describe('cadence dispatch', () => {
+  it.each([
+    ['first-prompt', FIRST_PROMPT_CONFIG],
+    ['all-prompts', ALL_PROMPTS_CONFIG],
+  ] as const)('direct application registers exactly one %s provider under its derived identity', async (_cadence, config) => {
+    const ctx = new Context()
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionTitleService, TITLE_CONFIG)
+    const registered: SessionTitleProvider[] = []
+    vi.spyOn(ctx.sessionTitle, 'register').mockImplementation((provider) => {
+      registered.push(provider)
+      return async () => undefined
+    })
+
+    expect(() => {
+      providerPlugin.apply(ctx, config)
+    }).not.toThrow()
+
+    expect(registered).toHaveLength(1)
+    expect(registered[0]!.automatic).toBe(config.cadence)
+    expect(registered[0]!.id).toBe(`session-title-${config.cadence}-llm`)
+  })
+
+  it('rejects an unsupported cadence before registering any provider', async () => {
+    const ctx = new Context()
+    await ctx.plugin(LlmRuntime)
+    await ctx.plugin(SessionStore)
+    await ctx.plugin(SessionTitleService, TITLE_CONFIG)
+    const register = vi.spyOn(ctx.sessionTitle, 'register')
+
+    expect(() => {
+      providerPlugin.apply(ctx, { ...FIRST_PROMPT_CONFIG, cadence: 'sometimes' } as never)
+    }).toThrow(/cadence must be "first-prompt" or "all-prompts"/)
+    expect(register).not.toHaveBeenCalled()
+  })
+})

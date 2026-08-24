@@ -6,7 +6,7 @@
 
 import type { Context } from '@buckeyestudio/cordis'
 import z from '@buckeyestudio/schemastery'
-import { createUserMessage, BlockAssembler, deepFreeze } from '@buckeyestudio/toh-llm'
+import { assertNever, createUserMessage, BlockAssembler, deepFreeze } from '@buckeyestudio/toh-llm'
 import type { FinishReason, GenerateOptions, Message } from '@buckeyestudio/toh-llm'
 import { deadline, MAX_TIMER_DELAY_MS } from '@buckeyestudio/toh-timeout'
 import {
@@ -174,30 +174,32 @@ export const Config: z<SessionTitleLlmConfig> = z.object({
  * @param config - required cadence, route, target, byte, token, and timeout policy.
  */
 export function apply(ctx: Context, config: SessionTitleLlmConfig): void {
-  switch (config.cadence) {
+  const resolved = resolveSessionTitleLlmConfig(config)
+  switch (resolved.cadence) {
     case 'first-prompt':
-      registerSessionTitleLlmProvider(ctx, config, 'first-prompt', selectFirstPromptMessages)
+      registerSessionTitleLlmProvider(ctx, resolved, 'first-prompt', selectFirstPromptMessages)
       return
     case 'all-prompts':
-      registerSessionTitleLlmProvider(ctx, config, 'all-prompts', selectAllPromptsMessages)
+      registerSessionTitleLlmProvider(ctx, resolved, 'all-prompts', selectAllPromptsMessages)
       return
+    default:
+      return assertNever(resolved.cadence, 'session-title-llm cadence')
   }
 }
 
 /**
  * Register one model-backed provider through the shared configuration and call policy.
  * @param ctx - context exposing the title and LLM services.
- * @param config - untrusted required deployment policy.
+ * @param config - validated immutable deployment policy.
  * @param automatic - provider-owned automatic generation cadence.
  * @param selectMessages - exact source-message selection for one revision.
  */
 function registerSessionTitleLlmProvider(
   ctx: Context,
-  config: SessionTitleLlmConfig,
+  config: ResolvedSessionTitleLlmConfig,
   automatic: SessionTitleAutomaticMode,
   selectMessages: SessionTitleLlmMessageSelector,
 ): void {
-  const resolved = resolveSessionTitleLlmConfig(config)
   // The registered identity stays cadence-derived so durable title provenance
   // keeps naming the exact selection behavior that produced it.
   const titleProvider = SessionTitleProviderId(`session-title-${automatic}-llm`)
@@ -205,7 +207,7 @@ function registerSessionTitleLlmProvider(
     id: titleProvider,
     automatic,
     async generate(request) {
-      return generateSessionTitleWithLlm(ctx, resolved, request, selectMessages(request.messages), titleProvider)
+      return generateSessionTitleWithLlm(ctx, config, request, selectMessages(request.messages), titleProvider)
     },
   })
 }
