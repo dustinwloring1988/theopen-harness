@@ -295,6 +295,22 @@ describe('private-network policy', () => {
     expect(resolverCalls).toBe(0)
   })
 
+  it('classifies bracketed IPv6 literals directly and returns their unbracketed addresses', async () => {
+    // url.hostname keeps the brackets (`[::1]`), a form isIP rejects and the
+    // OS resolver cannot resolve; the policy must see through to the bare
+    // address for both classification and the dial list it hands back.
+    let resolverCalls = 0
+    const policy = createPrivateNetworkPolicy({
+      allowPrivateNetworks: false,
+      resolve: async () => { resolverCalls++; return [] },
+    })
+    await expect(policy.resolveValidated('[::1]'))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED' }))
+    await expect(policy.resolveValidated('[2606:4700:4700::1111]'))
+      .resolves.toEqual([{ address: '2606:4700:4700::1111', family: 6 }])
+    expect(resolverCalls).toBe(0)
+  })
+
   it('fails closed when the resolver returns an unrecognizable record', async () => {
     const policy = createPrivateNetworkPolicy({ allowPrivateNetworks: false, resolve: async () => [{ address: 'corrupt', family: 4 }] })
     await expect(policy.resolveValidated('weird.test'))
@@ -709,6 +725,27 @@ describe('HttpFetchProvider private-network guard', () => {
     await expect(provider({ allowPrivateNetworks: false }).fetch({ url: 'http://198.18.0.1:9/' }))
       .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED' }))
     expect(servedRequests).toBe(0)
+  })
+
+  it('blocks a bracketed IPv6 loopback URL like every other private destination', async () => {
+    await expect(provider({ allowPrivateNetworks: false }).fetch({ url: 'http://[::1]:9/' }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED' }))
+    expect(servedRequests).toBe(0)
+  })
+
+  it('dials a bracketed IPv6 loopback URL once allowPrivateNetworks is opted into', async () => {
+    // The fixture listens on ::1 itself, so success proves the dial landed on
+    // the validated unbracketed address rather than failing on the bracketed
+    // hostname form.
+    const v6 = createServer((_req, res) => { res.writeHead(200, { 'content-type': 'text/plain' }); res.end('v6 loopback') })
+    await new Promise<void>(resolve => v6.listen(0, '::1', resolve))
+    try {
+      const { port } = v6.address() as AddressInfo
+      const result = await provider().fetch({ url: `http://[::1]:${port}/` })
+      expect(result.body.content).toBe('v6 loopback')
+    } finally {
+      await new Promise<void>(resolve => v6.close(() => { resolve() }))
+    }
   })
 
   it('blocks a localhost name through real OS resolution', async () => {

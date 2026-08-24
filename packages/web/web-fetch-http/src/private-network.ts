@@ -229,7 +229,9 @@ export interface PrivateNetworkPolicy {
    * Resolve `hostname` and return every address the dial may use. Throws
    * {@link WebError} `WEB_PRIVATE_NETWORK_BLOCKED` when any resolved address
    * (or the hostname itself) lands in a non-public range and private networks
-   * are not allowed. Literal IP hostnames are classified without resolution.
+   * are not allowed. Literal IP hostnames are classified without resolution;
+   * a bracketed IPv6 literal (`[::1]`) is classified as its unbracketed
+   * address, which is also what the returned list carries.
    *
    * @param hostname - the hostname from the request URL.
    * @returns the validated addresses, in resolution order.
@@ -253,24 +255,32 @@ export function createPrivateNetworkPolicy(options: PrivateNetworkPolicyOptions)
     allowPrivateNetworks,
     async resolveValidated(hostname: string): Promise<readonly ResolvedAddress[]> {
       // Literal IP hostnames classify directly: no resolver participates, so
-      // the dial cannot be steered by DNS at all.
-      const literalFamily = isIP(hostname)
+      // the dial cannot be steered by DNS at all. URL serialization keeps the
+      // brackets around an IPv6 literal (`[::1]`), while `isIP` and the dial
+      // both speak the bare address; classify and return that form.
+      const name = unwrapIpv6Literal(hostname)
+      const literalFamily = isIP(name)
       if (literalFamily !== 0) {
-        if (allowPrivateNetworks) return [{ address: hostname, family: literalFamily as 4 | 6 }]
-        const range = classifyBlockedRange(hostname)
-        if (range === undefined) return [{ address: hostname, family: literalFamily as 4 | 6 }]
-        throw new WebError(`"${hostname}" is a ${range} address; fetching non-public destinations is blocked`, 'WEB_PRIVATE_NETWORK_BLOCKED')
+        if (allowPrivateNetworks) return [{ address: name, family: literalFamily as 4 | 6 }]
+        const range = classifyBlockedRange(name)
+        if (range === undefined) return [{ address: name, family: literalFamily as 4 | 6 }]
+        throw new WebError(`"${name}" is a ${range} address; fetching non-public destinations is blocked`, 'WEB_PRIVATE_NETWORK_BLOCKED')
       }
-      if (!allowPrivateNetworks && isLocalNetworkHostname(hostname)) {
-        throw new WebError(`"${hostname}" is a local-network hostname; fetching non-public destinations is blocked`, 'WEB_PRIVATE_NETWORK_BLOCKED')
+      if (!allowPrivateNetworks && isLocalNetworkHostname(name)) {
+        throw new WebError(`"${name}" is a local-network hostname; fetching non-public destinations is blocked`, 'WEB_PRIVATE_NETWORK_BLOCKED')
       }
-      const addresses = await resolve(hostname)
+      const addresses = await resolve(name)
       if (!allowPrivateNetworks) {
-        for (const resolved of addresses) assertPublicAddress(hostname, resolved)
+        for (const resolved of addresses) assertPublicAddress(name, resolved)
       }
       return addresses
     },
   }
+}
+
+/** Strip the brackets URL serialization keeps around an IPv6 literal host (`[::1]` becomes `::1`). */
+function unwrapIpv6Literal(hostname: string): string {
+  return hostname.startsWith('[') && hostname.endsWith(']') ? hostname.slice(1, -1) : hostname
 }
 
 /** Throw when one resolved address is not a public destination. */

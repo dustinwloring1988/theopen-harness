@@ -199,7 +199,7 @@ Full page retrieval remains the job of `web_fetch(url)`. Search snippets are dis
 
 ## Fetch request and result schema
 
-The `web_fetch` implementation is an anonymous public HTTP(S) fetch provider, `http`. It fetches bytes from a concrete URL, applies the transport hygiene below (http/https-only, credential rejection, byte/time caps, cross-origin redirect blocking), decodes textual content, and returns only the minimal model-useful result: final URL, status code, body, and truncation. It carries no browser cookies, editor credentials, git credentials, internal auth tokens, or implicit access to private services. (Private-network blocking ships with the provider — see [Deferred work](#deferred-work).)
+The `web_fetch` implementation is an anonymous public HTTP(S) fetch provider, `http`. It fetches bytes from a concrete URL, applies the transport hygiene below (http/https-only, credential rejection, byte/time caps, cross-origin redirect blocking), decodes textual content, and returns only the minimal model-useful result: final URL, status code, body, and truncation. It carries no browser cookies, editor credentials, git credentials, internal auth tokens, or implicit access to private services. (Private-network blocking ships with the provider; [Deferred work](#deferred-work) records only what remains out of scope.)
 
 The seam request stays smaller than OpenCode's model-facing tool:
 

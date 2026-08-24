@@ -17,7 +17,7 @@
 ## 传输卫生
 
 - 只接受 `http:` 和 `https:` URL；拒绝 URL 中的凭据（`WEB_BLOCKED_URL`）以及过长／格式错误的 URL（`WEB_INVALID_URL`）。
-- 在拨号前解析每个目标主机名，并以 `WEB_PRIVATE_NETWORK_BLOCKED` 阻止 loopback、私有、link-local、CGNAT、benchmarking、multicast、ULA、文档等非公开地址；连接只拨向已验证的地址，因此不会有未经检查的第二次解析选择目标。本地网络主机名（`localhost`、`.localhost`、`.local`）按名称拒绝，字面 IP URL 无需任何解析即可分类。
+- 在拨号前解析每个目标主机名，并以 `WEB_PRIVATE_NETWORK_BLOCKED` 阻止 loopback、私有、link-local、CGNAT、benchmarking、multicast、ULA、文档等非公开地址；连接只拨向已验证的地址，因此不会有未经检查的第二次解析选择目标。本地网络主机名（`localhost`、`.localhost`、`.local`）按名称拒绝，字面 IP URL——包括带方括号的 IPv6 形式（`[::1]`）——无需任何解析即可分类。
 - 在字节封顶与 charset 解码之前解码声明的 `Content-Encoding`（`gzip`／`x-gzip`、zlib 包装的 `deflate` 或 `br`；缺失、空白与 `identity` 直接透传）；任何其他声明的编码都会以 `WEB_UNSUPPORTED_CONTENT_TYPE` 响亮失败，绝不返回无法解码的字节。
 - 强制执行 URL 最大长度、解压后度量的响应字节上限（`WEB_FETCH_TOO_LARGE`）、解码主体字符上限、超时（`WEB_FETCH_TIMEOUT`）和重定向跳数上限。
 - 把调用方的中止信号（`WEB_ABORTED`）传播到解析、网络请求与流式读取。
