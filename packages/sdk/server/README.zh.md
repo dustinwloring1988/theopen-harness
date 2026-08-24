@@ -24,13 +24,15 @@ Stdout 只承载 JSON-RPC 帧。部署不得组合 stdout logger；诊断应写�
 
 `initialize` 是运行时就绪边界：服务器由 Loader 组合挂载时，会等待当前插件树完成所有加载任务后再响应，因此首次提示词能够看到 MCP 初始工具发现等异步同级能力。没有 Loader 的手工组装上下文仍可立即使用。`initialize.serverInfo.name` 的协议稳定值为 `theopen-harness-sdk-runtime`。可选的正整数 `initialize.maxTokens` 会成为每个 SDK 创建的 agent 及其进程内后代的请求输出上限；非法值会使初始化失败，省略时则不发送 SDK 上限，并应用所选适配器或提供方路由的默认值。`session/prompt` 将一条带标识的用户消息排入队列，并立即返回 `{ messageId }`。服务器将每个持久事实作为 `session.event` 流式发出，并将整个 agent 生命周期的每次状态转换作为 `session.status` 发出；它不会把某条助手消息或 `turn/end` 归属于该提示词。同一会话上的独立请求可以继续排入更多工作。持久化根目录和 persona 由 `cordis.yml` 提供。
 
+每个被分发的方法都会在处理程序运行前校验其参数，与 Web 网关的请求 schema 保持一致：未知字段会被剥离；校验失败时以 `-32602` 应答，并指明方法名和每个未通过的字段（`data.issues` 携带结构化列表）。`session/prompt.contentBlocks` 只接受提示词侧的内容块——`text`，以及携带持久化附件引用的 `image`——因此 harness 产生的词汇（如 `tool-result` 或 `reasoning`）绝不可能作为用户内容进入会话日志或模型请求；其余核心内容块只能由服务器产生。
+
 ## 模型体验
 
 ### SDK 用户消息
 
 #### 模型看到的内容
 
-对于每个已接受的 `session/prompt`，对话模型会将调用方提供的 `contentBlocks` 原样作为该 SDK 会话中的一条用户消息接收。此包不会添加系统提示词文本或工具 schema；这些内容来自外围 `cordis.yml` 中的插件。
+对于每个已接受的 `session/prompt`，对话模型会将校验后的调用方 `contentBlocks` 原样作为该 SDK 会话中的一条用户消息接收；非提示词侧的内容块会在消息产生之前以 `-32602` 被拒绝。此包不会添加系统提示词文本或工具 schema；这些内容来自外围 `cordis.yml` 中的插件。
 
 #### Token 影响
 
