@@ -8,9 +8,13 @@
  * calls still belongs to the caller (the domain layer's write chain); this
  * unit only guarantees that each single call publishes a complete, durable
  * file that carries every acknowledged write issued before it. A failed
- * publish rolls its caller's mutation back in memory and appends one
- * replacement of the restored state, so a rejected write never persists on
- * the medium.
+ * publish rolls back only its caller's mutation: when a later mutation on
+ * the same target has already replaced the failed one in memory, the
+ * rollback preserves that mutation and hands the restore target to the
+ * later mutation's own rollback. Both paths append one replacement publish,
+ * so the medium converges to the acknowledged state — a rejected write
+ * never persists, and an older failed write never discards a newer
+ * acknowledged one.
  * @module @buckeyestudio/toh-storage-json/src/unit
  */
 
@@ -53,6 +57,33 @@ export async function openJsonUnit(
 
 const noop = (): void => {}
 
+/** Prior value of one mutation target: what a failed attempt must restore. */
+interface PriorValue {
+  /** Whether the target held a record before the attempted mutation. */
+  present: boolean
+  /** The record value when {@link present} is `true`; ignored otherwise. */
+  value: unknown
+}
+
+/**
+ * Mutation ordering state for one target (one record key, or the global
+ * slot): a ticket counter over attempted mutations plus the restore target
+ * handed down by a failed attempt that a later attempt superseded.
+ */
+interface TargetMutations {
+  revision: number
+  deferredRestore?: PriorValue
+}
+
+const GLOBAL_TARGET = '\u0000global'
+
+function restoreRecord(records: Map<string, unknown>, key: string): (prior: PriorValue) => void {
+  return (prior) => {
+    if (prior.present) records.set(key, prior.value)
+    else records.delete(key)
+  }
+}
+
 class JsonKvUnit implements KvUnit {
   private closed = false
   /**
@@ -60,10 +91,13 @@ class JsonKvUnit implements KvUnit {
    * whole-file replacement behind all earlier ones, and a rejected link is
    * swallowed here so one failed write cannot poison the chain (the
    * rejecting caller still observes its own error). The rejecting caller's
-   * rollback then appends one replacement of the restored state, so the
+   * rollback then appends one replacement of the acknowledged state, so the
    * medium never keeps a rejected mutation past that replacement.
    */
   private publishTail: Promise<void> = Promise.resolve()
+
+  /** Per-target mutation ordering state; entries live only while mutations on the target may still roll back. */
+  private readonly targetMutations = new Map<string, TargetMutations>()
 
   constructor(
     private readonly descriptor: KvUnitDescriptor,
@@ -85,30 +119,33 @@ class JsonKvUnit implements KvUnit {
   async putRecord(table: string, key: string, value: unknown): Promise<void> {
     this.assertOpen()
     const records = this.records(table)
-    const hadKey = records.has(key)
-    const previous = records.get(key)
+    const target = `${table}\u0000${key}`
+    const revision = this.beginMutation(target)
+    const prior: PriorValue = { present: records.has(key), value: records.get(key) }
     records.set(key, value)
     // Roll back on a failed publish: memory is authoritative, so a rejected
-    // write must not survive in memory (or ride along with the next publish).
+    // write must not survive in memory (or ride along with the next publish)
+    // — unless a later mutation on this key already replaced it.
     await this.publish().catch((error: unknown) => {
-      if (hadKey) records.set(key, previous)
-      else records.delete(key)
-      this.republishRestoredState()
+      this.rollbackMutation(target, revision, prior, restoreRecord(records, key))
       throw error
     })
+    this.acknowledgeMutation(target, revision)
   }
 
   async deleteRecord(table: string, key: string): Promise<void> {
     this.assertOpen()
     const records = this.records(table)
     if (!records.has(key)) return
-    const previous = records.get(key)
+    const target = `${table}\u0000${key}`
+    const revision = this.beginMutation(target)
+    const prior: PriorValue = { present: true, value: records.get(key) }
     records.delete(key)
     await this.publish().catch((error: unknown) => {
-      records.set(key, previous)
-      this.republishRestoredState()
+      this.rollbackMutation(target, revision, prior, restoreRecord(records, key))
       throw error
     })
+    this.acknowledgeMutation(target, revision)
   }
 
   async setGlobal(value: unknown): Promise<void> {
@@ -116,13 +153,16 @@ class JsonKvUnit implements KvUnit {
     if (!this.descriptor.hasGlobal) {
       throw new Error(`unit '${this.descriptor.name}' does not declare a global slot`)
     }
-    const previous = this.state.global
+    const revision = this.beginMutation(GLOBAL_TARGET)
+    const prior: PriorValue = { present: true, value: this.state.global }
     this.state.global = value
     await this.publish().catch((error: unknown) => {
-      this.state.global = previous
-      this.republishRestoredState()
+      this.rollbackMutation(GLOBAL_TARGET, revision, prior, (restored) => {
+        this.state.global = restored.value
+      })
       throw error
     })
+    this.acknowledgeMutation(GLOBAL_TARGET, revision)
   }
 
   async close(): Promise<void> {
@@ -180,14 +220,75 @@ class JsonKvUnit implements KvUnit {
   }
 
   /**
+   * Ticket one attempted mutation on `target`, ordered after every earlier
+   * attempt on the same target.
+   */
+  private beginMutation(target: string): number {
+    const mutations = this.targetMutationsFor(target)
+    return ++mutations.revision
+  }
+
+  /**
+   * Acknowledge one published mutation on `target`: its value is now the
+   * acknowledged state, so a restore target handed down by an older failed
+   * attempt no longer applies. When no later attempt has been issued, the
+   * bookkeeping drops entirely.
+   */
+  private acknowledgeMutation(target: string, revision: number): void {
+    const mutations = this.targetMutations.get(target)
+    if (mutations === undefined) return
+    delete mutations.deferredRestore
+    if (mutations.revision === revision) this.targetMutations.delete(target)
+  }
+
+  /**
+   * Roll back one failed mutation without discarding later mutations on the
+   * same target. When the failed attempt is still the target's newest,
+   * memory returns to its prior value — or to a value handed down by an
+   * older failed attempt it had superseded, which skips past every rejected
+   * value back to the last acknowledged state. When a later attempt has been
+   * issued, memory keeps it and the prior hands down as that attempt's
+   * rollback target. Both paths append a replacement publish: an earlier
+   * slot may have landed the failed mutation, and the medium must converge
+   * to memory.
+   */
+  private rollbackMutation(
+    target: string,
+    revision: number,
+    prior: PriorValue,
+    restore: (prior: PriorValue) => void,
+  ): void {
+    const mutations = this.targetMutationsFor(target)
+    if (mutations.revision !== revision) {
+      mutations.deferredRestore ??= prior
+      this.republishCurrentState()
+      return
+    }
+    const restored = mutations.deferredRestore ?? prior
+    this.targetMutations.delete(target)
+    restore(restored)
+    this.republishCurrentState()
+  }
+
+  private targetMutationsFor(target: string): TargetMutations {
+    let mutations = this.targetMutations.get(target)
+    if (!mutations) {
+      mutations = { revision: 0 }
+      this.targetMutations.set(target, mutations)
+    }
+    return mutations
+  }
+
+  /**
    * Append one replacement after a failed publish so the medium drops the
    * rejected mutation: an earlier slot may have already landed it while the
-   * failing call was queued behind it. Runs after the caller's rollback, so
-   * it serializes the restored state. Best-effort: if this replacement also
-   * fails the medium is left as-is and the rejection is swallowed here,
-   * because the caller already received the primary error.
+   * failing call was queued behind it. The replacement serializes current
+   * memory — the restored prior, or the later mutation a superseded rollback
+   * preserved. Best-effort: if this replacement also fails the medium is
+   * left as-is and the rejection is swallowed here, because the caller
+   * already received the primary error.
    */
-  private republishRestoredState(): void {
+  private republishCurrentState(): void {
     this.publish().catch(noop)
   }
 }
