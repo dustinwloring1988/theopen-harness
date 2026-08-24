@@ -57,6 +57,7 @@
     "@buckeyestudio/toh-commands": "workspace:^",
     "@buckeyestudio/toh-llm": "workspace:^",
     "@buckeyestudio/toh-session": "workspace:^",
+    "@buckeyestudio/toh-session-query": "workspace:^",
     "@buckeyestudio/toh-tools": "workspace:^"
   },
   "devDependencies": {
@@ -69,6 +70,7 @@
     "@buckeyestudio/toh-commands": "workspace:^",
     "@buckeyestudio/toh-llm": "workspace:^",
     "@buckeyestudio/toh-session": "workspace:^",
+    "@buckeyestudio/toh-session-query": "workspace:^",
     "@buckeyestudio/toh-tools": "workspace:^"
   }
 }
