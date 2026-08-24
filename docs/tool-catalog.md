@@ -1284,7 +1284,7 @@ Search facts stored by earlier sessions in this workspace. Every keyword must ap
     },
     "limit": {
       "type": "number",
-      "description": "Maximum facts to return (capped at 20)."
+      "description": "Maximum facts to return. The effective result count is capped by the configured maxRecallResults (20 by default)."
     }
   }
 }

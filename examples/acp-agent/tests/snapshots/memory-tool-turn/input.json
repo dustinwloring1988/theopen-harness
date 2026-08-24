@@ -1,0 +1,7 @@
+{
+  "steps": [
+    { "op": "initialize" },
+    { "op": "newSession" },
+    { "op": "prompt", "text": "Use memory_remember to store that release automation runs through pnpm with the tags release and pnpm, use memory_recall to search stored facts for release, then reply DONE." }
+  ]
+}

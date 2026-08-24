@@ -7,7 +7,7 @@
 import { mkdtemp, rm } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it, vi } from 'vitest'
 import { Context } from '@buckeyestudio/cordis'
 import MemoryRegistry from '@buckeyestudio/toh-memory'
 import * as MemoryLocal from '@buckeyestudio/toh-memory-local'
@@ -58,9 +58,9 @@ describe('local memory provider', () => {
     expect(hits).toHaveLength(1)
     expect(hits[0]?.id).toBe(stored.id)
 
-    await expect(ctx.memory.forget(stored.id)).resolves.toBe(true)
+    await expect(ctx.memory.forget({ id: stored.id, scope: '/work/project' })).resolves.toBe(true)
     await expect(ctx.memory.recall('deploy scripts', { scope: '/work/project' })).resolves.toHaveLength(0)
-    await expect(ctx.memory.forget(stored.id)).resolves.toBe(false)
+    await expect(ctx.memory.forget({ id: stored.id, scope: '/work/project' })).resolves.toBe(false)
   })
 
   it('matches every keyword case-insensitively and narrows by scope and tag conjunction', async () => {
@@ -85,10 +85,29 @@ describe('local memory provider', () => {
 
   it('orders recall results newest first with an empty query matching everything narrowed', async () => {
     const ctx = await mountedContext(await tempRoot('ordering'))
-    const first = await ctx.memory.remember({ text: 'older fact', scope: '/w' })
-    const second = await ctx.memory.remember({ text: 'newer fact', scope: '/w' })
-    const hits = await ctx.memory.recall('', { scope: '/w' })
-    expect(hits.map(hit => hit.id)).toEqual([second.id, first.id])
+    // The provider stamps createdAt with the wall clock; distinct controlled
+    // timestamps make the newest-first order deterministic instead of racing
+    // same-millisecond inserts.
+    vi.useFakeTimers()
+    try {
+      vi.setSystemTime(1_000)
+      const first = await ctx.memory.remember({ text: 'older fact', scope: '/w' })
+      vi.setSystemTime(2_000)
+      const second = await ctx.memory.remember({ text: 'newer fact', scope: '/w' })
+      const hits = await ctx.memory.recall('', { scope: '/w' })
+      expect(hits.map(hit => hit.id)).toEqual([second.id, first.id])
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('treats a forget addressed under another scope as absent and keeps the row', async () => {
+    const ctx = await mountedContext(await tempRoot('scope-delete'))
+    const stored = await ctx.memory.remember({ text: 'workspace-bound fact', scope: '/work/one' })
+    await expect(ctx.memory.forget({ id: stored.id, scope: '/work/two' })).resolves.toBe(false)
+    await expect(ctx.memory.recall('workspace-bound', { scope: '/work/one' })).resolves.toHaveLength(1)
+    await expect(ctx.memory.forget({ id: stored.id, scope: '/work/one' })).resolves.toBe(true)
+    await expect(ctx.memory.recall('workspace-bound', { scope: '/work/one' })).resolves.toHaveLength(0)
   })
 
   it('persists facts across a full context reopen of the same storage root', async () => {
@@ -117,9 +136,9 @@ describe('local memory provider', () => {
 
   it('keeps the pure matcher exact on tokens, tags, and scope', () => {
     const row = { scope: '/w', text: 'Alpha Beta gamma', tags: ['x', 'y'], createdAt: 1 }
-    expect(matchesRow(row, queryTokensOf('alpha beta'), {})).toBe(true)
-    expect(matchesRow(row, queryTokensOf('alpha delta'), {})).toBe(false)
-    expect(matchesRow(row, [], { tags: ['x', 'z'] })).toBe(false)
+    expect(matchesRow(row, queryTokensOf('alpha beta'), { scope: '/w' })).toBe(true)
+    expect(matchesRow(row, queryTokensOf('alpha delta'), { scope: '/w' })).toBe(false)
+    expect(matchesRow(row, [], { scope: '/w', tags: ['x', 'z'] })).toBe(false)
     expect(matchesRow(row, [], { scope: '/other' })).toBe(false)
     expect(matchesRow(row, [], { scope: '/w', tags: ['y'] })).toBe(true)
   })

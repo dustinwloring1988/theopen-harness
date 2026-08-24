@@ -13,8 +13,9 @@ One row per fact: `{ scope, text, tags, createdAt }`, keyed by a provider-minted
 ## Recall semantics
 
 - The query splits on whitespace into lowercase keywords; every candidate's text must contain all of them.
-- `options.scope` requires exact equality; `options.tags` requires the candidate to carry every listed tag.
+- `options.scope` (required by the registry) requires exact equality; `options.tags` requires the candidate to carry every listed tag.
 - Results order newest-first by `createdAt`, tie-broken by id for a total stable order.
+- `forget` deletes only when the stored row's scope equals the caller's; any other id is reported as absent and the row survives.
 
 ## Config
 

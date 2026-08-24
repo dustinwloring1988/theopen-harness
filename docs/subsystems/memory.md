@@ -31,7 +31,7 @@ interface MemoryFact {
 
 ## Write, read, delete
 
-`ctx.memory.remember(input)` persists the full text verbatim and returns the committed fact; blank text is rejected by the registry. Each commit emits exactly one `memory/changed` (operation, provider name, fact id) after durability; failed writes and missed deletions emit nothing. `recall(query, options)` narrows by `scope` equality plus a `tags` conjunction before the provider's matcher runs; `forget(id)` removes exactly the addressed row and reports whether it existed.
+`ctx.memory.remember(input)` persists the full text verbatim and returns the committed fact; blank text is rejected by the registry. Each commit emits exactly one `memory/changed` (operation, provider name, fact id) after durability; failed writes and missed deletions emit nothing. `recall(query, options)` requires the caller's workspace scope at the registry, then narrows by `scope` equality plus an optional `tags` conjunction before the provider's matcher runs; `forget({ id, scope })` removes exactly the addressed row inside that scope — an unknown id or an id stored under another workspace is a definite `false` — and reports whether it removed anything.
 
 ## Providers
 
@@ -71,22 +71,25 @@ registerProvider(provider: MemoryProvider): () => void
 async remember(input: RememberInput): Promise<MemoryFact>
 
 /**
- * Query stored facts through the selected provider. Matching semantics are
- * the provider's; the options narrow by scope and tag conjunction before
- * the backend matches.
+ * Query stored facts through the selected provider. The caller's scope is
+ * required here, in the operation that owns fact visibility, so no
+ * consumer can read across workspaces regardless of what its provider
+ * would tolerate; matching semantics beyond the scope are the provider's,
+ * with tag-conjunction narrowing applied before the backend matches.
  * @param query - free-form query text.
- * @param options - scope and tag-conjunction narrowing.
+ * @param options - the required scope plus optional tag conjunction.
  * @returns the matching facts.
  */
-async recall(query: string, options: RecallOptions = {}): Promise<readonly MemoryFact[]>
+async recall(query: string, options: RecallOptions): Promise<readonly MemoryFact[]>
 
 /**
- * Delete one fact through the selected provider. An unknown id is a
- * definite `false`; storage faults propagate as themselves.
- * @param id - the fact to delete.
+ * Delete one fact through the selected provider inside the caller's scope.
+ * An unknown id — or an id stored under another scope — is a definite
+ * `false`; storage faults propagate as themselves.
+ * @param input - the fact to delete and the caller's workspace scope.
  * @returns whether a stored fact was removed.
  */
-async forget(id: MemoryFactId): Promise<boolean>
+async forget(input: ForgetInput): Promise<boolean>
 ```
 
 Source: [`packages/memory/memory/src/index.ts`](../../packages/memory/memory/src/index.ts)

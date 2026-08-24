@@ -13,19 +13,54 @@ import z from '@buckeyestudio/schemastery'
 import { defineTool } from '@buckeyestudio/toh-tools'
 import type { GenericCallView, ToolExecution } from '@buckeyestudio/toh-tools'
 import { MemoryFactId } from '@buckeyestudio/toh-memory'
+import type { RecallOptions } from '@buckeyestudio/toh-memory'
 
 export const name = 'tool-memory'
 export const inject = ['tools', 'memory', 'systemPrompt']
 
 /** Model-facing memory tool configuration. */
 export interface Config {
-  /** Maximum facts one `memory_recall` result may list; minimum 1. */
+  /** Maximum facts one `memory_recall` result may list; minimum 1. Default 20. */
   maxRecallResults?: number
 }
 
 export const Config: z<Config> = z.object({
   maxRecallResults: z.number().min(1).default(20),
 })
+
+/** The effective configuration one registration resolves once and both registration and execution read. */
+export interface ResolvedConfig {
+  /** Maximum facts one `memory_recall` result may list; minimum 1. */
+  readonly maxRecallResults: number
+}
+
+/** Default of {@link Config.maxRecallResults}, applied only in {@link resolveConfig}. */
+const DEFAULT_MAX_RECALL_RESULTS = 20
+
+/**
+ * Resolve validated plugin configuration into the effective values: omitted
+ * keys take their documented defaults here, exactly once at the owning
+ * boundary, so neither tool registration nor execution re-applies a default.
+ * @param config - validated plugin configuration.
+ * @returns the frozen effective configuration.
+ */
+export function resolveConfig(config: Config = {}): ResolvedConfig {
+  const maxRecallResults = config.maxRecallResults ?? DEFAULT_MAX_RECALL_RESULTS
+  if (!Number.isInteger(maxRecallResults) || maxRecallResults < 1) {
+    throw new Error(`tool-memory: maxRecallResults (${maxRecallResults}) must be an integer >= 1`)
+  }
+  return Object.freeze({ maxRecallResults })
+}
+
+/** One model-supplied recall call narrowed against the configured ceiling. */
+interface RecallRequest {
+  /** Query text passed to `ctx.memory.recall`; blank means list newest. */
+  readonly query: string
+  /** The caller's workspace scope plus any tag conjunction. */
+  readonly options: RecallOptions
+  /** Effective result ceiling after flooring at 1 and capping at `maxRecallResults`. */
+  readonly limit: number
+}
 
 const MEMORY_PROMPT_TEXT = [
   'You have persistent cross-session memory for this workspace through three tools:',
@@ -107,9 +142,40 @@ export function renderRecallLine(fact: {
   return `- ${fact.id}: ${fact.text}${tags}`
 }
 
-/** Register the three memory tools and their prompt guidance. */
+/**
+ * Resolve one model-supplied recall call against the configured ceiling:
+ * the query may be blank (list newest), the tag conjunction is normalized,
+ * and the requested limit floors at 1 and caps at the configured maximum.
+ * @param args - the model's call arguments.
+ * @param scope - the caller's workspace scope from {@link requireScope}.
+ * @param spec - the resolved configuration owning the result ceiling.
+ * @returns the request to dispatch to `ctx.memory.recall`.
+ */
+function resolveRecallRequest(
+  args: { readonly query?: string; readonly tags?: readonly string[]; readonly limit?: number },
+  scope: string,
+  spec: ResolvedConfig,
+): RecallRequest {
+  const limit = Math.min(Math.max(1, Math.floor(args.limit ?? spec.maxRecallResults)), spec.maxRecallResults)
+  const tags = normalizeTags(args.tags)
+  return {
+    query: args.query ?? '',
+    options: {
+      scope,
+      ...(tags.length > 0 ? { tags } : {}),
+    },
+    limit,
+  }
+}
+
+/**
+ * Register the three memory tools and their prompt guidance.
+ * @param ctx - Cordis context carrying the `tools`, `memory`, and `systemPrompt` services.
+ * @param config - validated plugin configuration; omitted keys take the documented defaults through {@link resolveConfig}.
+ * @returns void.
+ */
 export function apply(ctx: Context, config: Config = {}): void {
-  const maxResults = config.maxRecallResults ?? 20
+  const spec = resolveConfig(config)
 
   ctx.systemPrompt.section({ name: 'tool:memory', order: 113, text: MEMORY_PROMPT_TEXT })
 
@@ -157,7 +223,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     parameters: {
       query: { type: 'string', description: 'Space-separated keywords; all must match. Omit to list without keyword filtering.' },
       tags: { type: 'array', items: { type: 'string' }, description: 'Only return facts carrying every listed tag.' },
-      limit: { type: 'number', description: `Maximum facts to return (capped at ${maxResults}).` },
+      limit: { type: 'number', description: `Maximum facts to return. The effective result count is capped by the configured maxRecallResults (${spec.maxRecallResults} by default).` },
     },
     output: {
       schema: {
@@ -181,12 +247,9 @@ export function apply(ctx: Context, config: Config = {}): void {
       }],
     },
     async execute(args, exec) {
-      const limit = Math.min(Math.max(1, Math.floor(args.limit ?? maxResults)), maxResults)
-      const matches = await ctx.memory.recall(args.query ?? '', {
-        scope: requireScope(exec),
-        ...(normalizeTags(args.tags).length > 0 ? { tags: normalizeTags(args.tags) } : {}),
-      })
-      const capped = matches.slice(0, limit)
+      const request = resolveRecallRequest(args, requireScope(exec), spec)
+      const matches = await ctx.memory.recall(request.query, request.options)
+      const capped = matches.slice(0, request.limit)
       return {
         total: matches.length,
         returned: capped.length,
@@ -222,9 +285,9 @@ export function apply(ctx: Context, config: Config = {}): void {
         text: value.forgotten ? `Forgot memory ${value.id}.` : `No stored memory with id ${value.id}.`,
       }],
     },
-    async execute(args) {
+    async execute(args, exec) {
       const id = MemoryFactId(validateId(args.id))
-      const forgotten = await ctx.memory.forget(id)
+      const forgotten = await ctx.memory.forget({ id, scope: requireScope(exec) })
       return { id: args.id, forgotten }
     },
     presentCall: args => ({

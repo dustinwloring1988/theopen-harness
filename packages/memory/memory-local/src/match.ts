@@ -31,7 +31,7 @@ export function queryTokens(query: string): string[] {
  * @returns whether the row is a match.
  */
 export function matchesRow(row: MemoryRow, tokens: readonly string[], options: RecallOptions): boolean {
-  if (options.scope !== undefined && row.scope !== options.scope) return false
+  if (row.scope !== options.scope) return false
   for (const tag of options.tags ?? []) {
     if (!row.tags.includes(tag)) return false
   }

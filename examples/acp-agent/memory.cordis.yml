@@ -1,0 +1,27 @@
+# Memory-scenario overlay: mounts the cross-session memory stack (storage hub
+# + JSON backend + domain + seam + local provider + model tools) on top of the
+# base ACP tree. The storage root sits inside the generated session workspace,
+# so every run starts from an empty store and the harness removes it with the
+# workspace.
+- id: base
+  name: '@buckeyestudio/cordis-plugin-include'
+  config:
+    path: ./cordis.yml
+    patches:
+      - insert:
+          - id: storage
+            name: '@buckeyestudio/toh-storage'
+          - id: storage-json
+            name: '@buckeyestudio/toh-storage-json'
+            config:
+              root: './.memory-storage'
+          - id: storage-domain
+            name: '@buckeyestudio/toh-storage-domain'
+            config:
+              backend: json
+          - id: memory
+            name: '@buckeyestudio/toh-memory'
+          - id: memory-local
+            name: '@buckeyestudio/toh-memory-local'
+          - id: tool-memory
+            name: '@buckeyestudio/toh-tool-memory'

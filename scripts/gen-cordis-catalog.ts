@@ -412,6 +412,7 @@ export const LINK_MAP: Readonly<Record<string, string>> = {
   MemoryChanged: 'memory.md',
   MemoryFact: 'memory.md',
   MemoryFactId: 'memory.md',
+  ForgetInput: 'memory.md',
   MemoryProvider: 'memory.md',
   RecallOptions: 'memory.md',
   RememberInput: 'memory.md',

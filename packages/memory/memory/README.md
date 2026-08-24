@@ -8,7 +8,7 @@ Requires `@buckeyestudio/toh-invariants` (the invariant companion).
 
 ## Provider registration
 
-`registerProvider(provider)` files one borrowed same-process provider under a unique name and returns the disposer; fiber disposal unregisters it. Duplicate names throw. A provider implements three operations: `remember(input)` (persists and returns a fact with a provider-minted id), `recall(query, options)` (narrowed by scope equality plus a tag conjunction before its own matching runs), and `forget(id)` (removes exactly that fact and reports whether it existed).
+`registerProvider(provider)` files one borrowed same-process provider under a unique name and returns the disposer; fiber disposal unregisters it. Duplicate names throw. A provider implements three operations: `remember(input)` (persists and returns a fact with a provider-minted id), `recall(query, options)` (the registry passes the caller's workspace scope plus an optional tag conjunction; the provider narrows by scope equality before its own matching runs), and `forget(input)` (removes exactly that fact inside the addressed scope — an id stored under another scope counts as unknown — and reports whether it existed).
 
 ## Execution-time selection
 

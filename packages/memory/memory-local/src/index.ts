@@ -12,7 +12,7 @@ import { randomUUID } from 'node:crypto'
 import type { Context } from '@buckeyestudio/cordis'
 import z from '@buckeyestudio/schemastery'
 import { MemoryFactId } from '@buckeyestudio/toh-memory'
-import type { MemoryFact, MemoryProvider, RecallOptions, RememberInput } from '@buckeyestudio/toh-memory'
+import type { ForgetInput, MemoryFact, MemoryProvider, RecallOptions, RememberInput } from '@buckeyestudio/toh-memory'
 import { matchesRow, queryTokens } from './match.ts'
 import { memoryDomainSpec, rowToFact } from './spec.ts'
 import type { MemoryRow } from './spec.ts'
@@ -60,7 +60,7 @@ export async function apply(ctx: Context, _config: Config = {}): Promise<void> {
       await table.put(fact.id, factToRow(fact))
       return fact
     },
-    recall(query: string, options: RecallOptions = {}): Promise<readonly MemoryFact[]> {
+    recall(query: string, options: RecallOptions): Promise<readonly MemoryFact[]> {
       const tokens = queryTokens(query)
       const matches: MemoryFact[] = []
       for (const [id, row] of table.entries()) {
@@ -69,8 +69,13 @@ export async function apply(ctx: Context, _config: Config = {}): Promise<void> {
       }
       return Promise.resolve(matches.sort(compareNewestFirst))
     },
-    async forget(id: MemoryFactId): Promise<boolean> {
-      return await table.delete(id)
+    async forget(input: ForgetInput): Promise<boolean> {
+      // Scope equality is enforced here, at the only writer of the store, so
+      // a fact stored under another workspace is indistinguishable from an
+      // unknown id and is never removed.
+      const row = table.get(input.id)
+      if (row === undefined || row.scope !== input.scope) return false
+      return await table.delete(input.id)
     },
   }
   ctx.memory.registerProvider(provider)

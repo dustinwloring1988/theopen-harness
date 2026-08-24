@@ -27,8 +27,8 @@ The package ships in no bundle; enabling it is three rows in your profile or ove
 | Tool | Args | Behavior |
 |---|---|---|
 | `memory_remember` | `fact` (required), `tags?` | Stores one fact and returns its id. Blank text and empty tags fail loud; tags are trimmed and deduplicated. |
-| `memory_recall` | `query?`, `tags?`, `limit?` | Keyword-conjunction search over the current workspace's facts; omitting `query` lists newest facts. Results cap at `maxRecallResults` with an explicit truncation flag. |
-| `memory_forget` | `id` (required) | Deletes by id; a miss is an explicit `{ forgotten: false }`, never an error. |
+| `memory_recall` | `query?`, `tags?`, `limit?` | Keyword-conjunction search over the current workspace's facts; omitting `query` lists newest facts. The effective result count is capped by `maxRecallResults` (default 20) with an explicit truncation flag. |
+| `memory_forget` | `id` (required) | Deletes by id within the calling workspace; an unknown id — or an id stored under another workspace — is an explicit `{ forgotten: false }`, never an error. |
 
 Every committed mutation also emits `memory/changed` through `ctx.memory`.
 

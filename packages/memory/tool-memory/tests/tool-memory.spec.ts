@@ -128,6 +128,26 @@ describe('memory tools', () => {
     expect(repeat.content[0]).toMatchObject({ type: 'text', text: `No stored memory with id ${storedValue.id}.` })
   })
 
+  it('refuses to delete a fact stored under another workspace', async () => {
+    const ctx = await setup()
+    const stored = await execute(ctx, 'memory_remember', { fact: 'secret of workspace one' }, agentFor('/work/one'))
+    assertSuccess(stored)
+    const { id } = stored.value as { id: string }
+
+    // A caller from another workspace cannot remove the fact even knowing its id.
+    const intruder = await execute(ctx, 'memory_forget', { id }, agentFor('/work/two'))
+    assertSuccess(intruder)
+    expect(intruder.value).toEqual({ id, forgotten: false })
+
+    const stillThere = await execute(ctx, 'memory_recall', { query: 'secret' }, agentFor('/work/one'))
+    assertSuccess(stillThere)
+    expect((stillThere.value as { total: number }).total).toBe(1)
+
+    const owner = await execute(ctx, 'memory_forget', { id }, agentFor('/work/one'))
+    assertSuccess(owner)
+    expect(owner.value).toEqual({ id, forgotten: true })
+  })
+
   it('caps recall output at the configured maximum and reports truncation', async () => {
     const ctx = await setup({ maxRecallResults: 2 })
     for (const suffix of ['alpha', 'beta', 'gamma']) {

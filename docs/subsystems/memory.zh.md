@@ -31,7 +31,7 @@ interface MemoryFact {
 
 ## 写入、读取、删除
 
-`ctx.memory.remember(input)` 持久化完整文本并返回已提交的事实；空白文本由注册表直接拒绝。每次提交成功后发出一次 `memory/changed`（携带操作、提供方名与事实 id）；失败或未命中的删除不产生事件。`recall(query, options)` 先按 `scope` 等值和 `tags` 合取收窄，再交给提供方匹配；`forget(id)` 只删除被寻址的那一行并报告是否存在。
+`ctx.memory.remember(input)` 持久化完整文本并返回已提交的事实；空白文本由注册表直接拒绝。每次提交成功后发出一次 `memory/changed`（携带操作、提供方名与事实 id）；失败或未命中的删除不产生事件。`recall(query, options)` 在注册表处要求调用方的工作区 scope，随后按 `scope` 等值和可选的 `tags` 合取收窄，再交给提供方匹配；`forget({ id, scope })` 只删除该 scope 内被寻址的那一行——未知 id 或属于其他工作区的 id 一律得到明确的 `false`——并报告是否真的删除了内容。
 
 ## 提供方
 
@@ -71,22 +71,25 @@ registerProvider(provider: MemoryProvider): () => void
 async remember(input: RememberInput): Promise<MemoryFact>
 
 /**
- * Query stored facts through the selected provider. Matching semantics are
- * the provider's; the options narrow by scope and tag conjunction before
- * the backend matches.
+ * Query stored facts through the selected provider. The caller's scope is
+ * required here, in the operation that owns fact visibility, so no
+ * consumer can read across workspaces regardless of what its provider
+ * would tolerate; matching semantics beyond the scope are the provider's,
+ * with tag-conjunction narrowing applied before the backend matches.
  * @param query - free-form query text.
- * @param options - scope and tag-conjunction narrowing.
+ * @param options - the required scope plus optional tag conjunction.
  * @returns the matching facts.
  */
-async recall(query: string, options: RecallOptions = {}): Promise<readonly MemoryFact[]>
+async recall(query: string, options: RecallOptions): Promise<readonly MemoryFact[]>
 
 /**
- * Delete one fact through the selected provider. An unknown id is a
- * definite `false`; storage faults propagate as themselves.
- * @param id - the fact to delete.
+ * Delete one fact through the selected provider inside the caller's scope.
+ * An unknown id — or an id stored under another scope — is a definite
+ * `false`; storage faults propagate as themselves.
+ * @param input - the fact to delete and the caller's workspace scope.
  * @returns whether a stored fact was removed.
  */
-async forget(id: MemoryFactId): Promise<boolean>
+async forget(input: ForgetInput): Promise<boolean>
 ```
 
 Source: [`packages/memory/memory/src/index.ts`](../../packages/memory/memory/src/index.ts)

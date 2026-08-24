@@ -15,10 +15,10 @@
 import { Context, Service } from '@buckeyestudio/cordis'
 import z from '@buckeyestudio/schemastery'
 import { MemoryFactId } from './types.ts'
-import type { MemoryChanged, MemoryFact, MemoryProvider, RecallOptions, RememberInput } from './types.ts'
+import type { ForgetInput, MemoryChanged, MemoryFact, MemoryProvider, RecallOptions, RememberInput } from './types.ts'
 
 export { MemoryFactId } from './types.ts'
-export type { MemoryChanged, MemoryFact, MemoryProvider, RecallOptions, RememberInput } from './types.ts'
+export type { ForgetInput, MemoryChanged, MemoryFact, MemoryProvider, RecallOptions, RememberInput } from './types.ts'
 
 declare module '@buckeyestudio/cordis' {
   interface Context {
@@ -104,27 +104,36 @@ export class MemoryRegistry extends Service {
   }
 
   /**
-   * Query stored facts through the selected provider. Matching semantics are
-   * the provider's; the options narrow by scope and tag conjunction before
-   * the backend matches.
+   * Query stored facts through the selected provider. The caller's scope is
+   * required here, in the operation that owns fact visibility, so no
+   * consumer can read across workspaces regardless of what its provider
+   * would tolerate; matching semantics beyond the scope are the provider's,
+   * with tag-conjunction narrowing applied before the backend matches.
    * @param query - free-form query text.
-   * @param options - scope and tag-conjunction narrowing.
+   * @param options - the required scope plus optional tag conjunction.
    * @returns the matching facts.
    */
-  async recall(query: string, options: RecallOptions = {}): Promise<readonly MemoryFact[]> {
+  async recall(query: string, options: RecallOptions): Promise<readonly MemoryFact[]> {
+    if (options.scope.trim().length === 0) {
+      throw new Error('memory: recall requires a non-empty workspace scope')
+    }
     return await this.resolveProvider().recall(query, options)
   }
 
   /**
-   * Delete one fact through the selected provider. An unknown id is a
-   * definite `false`; storage faults propagate as themselves.
-   * @param id - the fact to delete.
+   * Delete one fact through the selected provider inside the caller's scope.
+   * An unknown id — or an id stored under another scope — is a definite
+   * `false`; storage faults propagate as themselves.
+   * @param input - the fact to delete and the caller's workspace scope.
    * @returns whether a stored fact was removed.
    */
-  async forget(id: MemoryFactId): Promise<boolean> {
+  async forget(input: ForgetInput): Promise<boolean> {
+    if (input.scope.trim().length === 0) {
+      throw new Error('memory: forget requires a non-empty workspace scope')
+    }
     const provider = this.resolveProvider()
-    const removed = await provider.forget(id)
-    if (removed) this.emitChanged('forget', provider.name, id)
+    const removed = await provider.forget(input)
+    if (removed) this.emitChanged('forget', provider.name, input.id)
     return removed
   }
 

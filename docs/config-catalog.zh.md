@@ -1456,20 +1456,20 @@ export interface Config {
 }
 ```
 
-Source: [`packages/memory/memory/src/index.ts:41`](../packages/memory/memory/src/index.ts)
+来源：[`packages/memory/memory/src/index.ts:41`](../packages/memory/memory/src/index.ts)
 
 <a id="buckeyestudiotoh-memory-local"></a>
 
 ## `@buckeyestudio/toh-memory-local`
 
-Requires: `memory` · `storageDomain`
+需要：`memory` · `storageDomain`
 
 ```ts config-catalog
 /** Plugin config (none today; domain routing belongs to `ctx.storageDomain`). */
 export interface Config {}
 ```
 
-Source: [`packages/memory/memory-local/src/index.ts:33`](../packages/memory/memory-local/src/index.ts)
+来源：[`packages/memory/memory-local/src/index.ts:33`](../packages/memory/memory-local/src/index.ts)
 
 <a id="buckeyestudiotoh-message-feedback"></a>
 
@@ -2706,17 +2706,17 @@ export interface Config {
 
 ## `@buckeyestudio/toh-tool-memory`
 
-Requires: `tools` · `memory` · `systemPrompt`
+需要：`tools` · `memory` · `systemPrompt`
 
 ```ts config-catalog
 /** Model-facing memory tool configuration. */
 export interface Config {
-  /** Maximum facts one `memory_recall` result may list; minimum 1. */
+  /** Maximum facts one `memory_recall` result may list; minimum 1. Default 20. */
   maxRecallResults?: number
 }
 ```
 
-Source: [`packages/memory/tool-memory/src/index.ts:21`](../packages/memory/tool-memory/src/index.ts)
+来源：[`packages/memory/tool-memory/src/index.ts:22`](../packages/memory/tool-memory/src/index.ts)
 
 <a id="buckeyestudiotoh-tool-pwsh"></a>
 

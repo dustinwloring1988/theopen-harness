@@ -1070,15 +1070,15 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         returns: 'the committed fact, including the provider-minted id.',
       },
       {
-        signature: 'async recall(query: string, options: RecallOptions = {}): Promise<readonly MemoryFact[]>',
-        description: 'Query stored facts through the selected provider. Matching semantics are the provider\'s; the options narrow by scope and tag conjunction before the backend matches.',
-        parameters: [{ name: 'query', description: 'free-form query text.' }, { name: 'options', description: 'scope and tag-conjunction narrowing.' }],
+        signature: 'async recall(query: string, options: RecallOptions): Promise<readonly MemoryFact[]>',
+        description: 'Query stored facts through the selected provider. The caller\'s scope is required here, in the operation that owns fact visibility, so no consumer can read across workspaces regardless of what its provider would tolerate; matching semantics beyond the scope are the provider\'s, with tag-conjunction narrowing applied before the backend matches.',
+        parameters: [{ name: 'query', description: 'free-form query text.' }, { name: 'options', description: 'the required scope plus optional tag conjunction.' }],
         returns: 'the matching facts.',
       },
       {
-        signature: 'async forget(id: MemoryFactId): Promise<boolean>',
-        description: 'Delete one fact through the selected provider. An unknown id is a definite `false`; storage faults propagate as themselves.',
-        parameters: [{ name: 'id', description: 'the fact to delete.' }],
+        signature: 'async forget(input: ForgetInput): Promise<boolean>',
+        description: 'Delete one fact through the selected provider inside the caller\'s scope. An unknown id — or an id stored under another scope — is a definite `false`; storage faults propagate as themselves.',
+        parameters: [{ name: 'input', description: 'the fact to delete and the caller\'s workspace scope.' }],
         returns: 'whether a stored fact was removed.',
       },
     ],
@@ -3389,6 +3389,10 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface FinishReasonMap {\n    \'stop\': {\n        kind: \'stop\';\n    };\n    \'tool-calls\': {\n        kind: \'tool-calls\';\n    };\n    \'max-tokens\': {\n        kind: \'max-tokens\';\n    };\n    \'aborted\': {\n        kind: \'aborted\';\n        failure: LlmFailure;\n    };\n    \'error\': {\n        kind: \'error\';\n        failure: LlmFailure;\n    };\n}',
   },
   {
+    name: 'ForgetInput',
+    declaration: 'export interface ForgetInput {\n    readonly id: MemoryFactId;\n    readonly scope: string;\n}',
+  },
+  {
     name: 'FsDirEntry',
     declaration: 'export interface FsDirEntry {\n    name: string;\n    type: \'file\' | \'directory\' | \'other\';\n    target: FsTarget;\n    version?: FsVersion;\n    size?: number;\n}',
   },
@@ -3738,7 +3742,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'MemoryProvider',
-    declaration: 'export interface MemoryProvider {\n    readonly name: string;\n    readonly remember: (input: RememberInput) => Promise<MemoryFact>;\n    readonly recall: (query: string, options: RecallOptions) => Promise<readonly MemoryFact[]>;\n    readonly forget: (id: MemoryFactId) => Promise<boolean>;\n}',
+    declaration: 'export interface MemoryProvider {\n    readonly name: string;\n    readonly remember: (input: RememberInput) => Promise<MemoryFact>;\n    readonly recall: (query: string, options: RecallOptions) => Promise<readonly MemoryFact[]>;\n    readonly forget: (input: ForgetInput) => Promise<boolean>;\n}',
   },
   {
     name: 'Message',
@@ -3958,7 +3962,7 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   },
   {
     name: 'RecallOptions',
-    declaration: 'export interface RecallOptions {\n    readonly scope?: string | undefined;\n    readonly tags?: readonly string[] | undefined;\n}',
+    declaration: 'export interface RecallOptions {\n    readonly scope: string;\n    readonly tags?: readonly string[] | undefined;\n}',
   },
   {
     name: 'RedactedSecret',

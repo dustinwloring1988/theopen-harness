@@ -1290,7 +1290,7 @@ Source: [`packages/memory/tool-memory/src/index.ts`](../packages/memory/tool-mem
     },
     "limit": {
       "type": "number",
-      "description": "Maximum facts to return (capped at 20)."
+      "description": "Maximum facts to return. The effective result count is capped by the configured maxRecallResults (20 by default)."
     }
   }
 }

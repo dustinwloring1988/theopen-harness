@@ -27,9 +27,9 @@ function stubProvider(name: string, calls: string[]): MemoryProvider {
       calls.push(`${name}:recall`)
       return [fact(`${name}-${query}`)]
     },
-    async forget(id) {
+    async forget(input) {
       calls.push(`${name}:forget`)
-      return !id.includes('missing')
+      return input.scope === 'scope' && !input.id.includes('missing')
     },
   }
 }
@@ -58,9 +58,32 @@ describe('memory registry', () => {
     const calls: string[] = []
     ctx.memory.registerProvider(stubProvider('only', calls))
     await expect(ctx.memory.remember({ text: 'hello', scope: 'scope' })).resolves.toMatchObject({ id: 'only-hello' })
-    await expect(ctx.memory.recall('hello')).resolves.toHaveLength(1)
-    await expect(ctx.memory.forget(MemoryFactId('x'))).resolves.toBe(true)
+    await expect(ctx.memory.recall('hello', { scope: 'scope' })).resolves.toHaveLength(1)
+    await expect(ctx.memory.forget({ id: MemoryFactId('x'), scope: 'scope' })).resolves.toBe(true)
     expect(calls).toEqual(['only:remember', 'only:recall', 'only:forget'])
+  })
+
+  it('rejects a blank workspace scope before any provider runs', async () => {
+    const ctx = new Context()
+    await ctx.plugin(MemoryRegistry)
+    const calls: string[] = []
+    ctx.memory.registerProvider(stubProvider('store', calls))
+    await expect(ctx.memory.recall('hello', { scope: '   ' })).rejects.toThrow(/recall requires a non-empty workspace scope/)
+    await expect(ctx.memory.forget({ id: MemoryFactId('x'), scope: '' })).rejects.toThrow(/forget requires a non-empty workspace scope/)
+    expect(calls).toEqual([])
+  })
+
+  it('reports a forget addressed under another workspace scope as absent without deleting', async () => {
+    const ctx = new Context()
+    await ctx.plugin(MemoryRegistry)
+    const calls: string[] = []
+    const provider = stubProvider('store', calls)
+    // The stub only deletes inside `scope`; prove the seam forwards the caller's scope verbatim.
+    ctx.memory.registerProvider(provider)
+    const stored = await ctx.memory.remember({ text: 'hello', scope: 'scope' })
+    await expect(ctx.memory.forget({ id: stored.id, scope: '/other-workspace' })).resolves.toBe(false)
+    await expect(ctx.memory.forget({ id: stored.id, scope: 'scope' })).resolves.toBe(true)
+    expect(calls).toEqual(['store:remember', 'store:forget', 'store:forget'])
   })
 
   it('rejects duplicate provider names', async () => {
@@ -74,15 +97,15 @@ describe('memory registry', () => {
     const ctx = new Context()
     await ctx.plugin(MemoryRegistry)
     const fiber = await ctx.plugin(providerHost('ephemeral', []))
-    await expect(ctx.memory.recall('anything')).resolves.toHaveLength(1)
+    await expect(ctx.memory.recall('anything', { scope: 'scope' })).resolves.toHaveLength(1)
     await fiber.dispose()
-    await expect(ctx.memory.recall('anything')).rejects.toThrow(/no memory provider is registered/)
+    await expect(ctx.memory.recall('anything', { scope: 'scope' })).rejects.toThrow(/no memory provider is registered/)
   })
 
   it('fails loud with no provider registered', async () => {
     const ctx = new Context()
     await ctx.plugin(MemoryRegistry)
-    await expect(ctx.memory.recall('anything')).rejects.toThrow(/no memory provider is registered/)
+    await expect(ctx.memory.recall('anything', { scope: 'scope' })).rejects.toThrow(/no memory provider is registered/)
   })
 
   it('auto-selects exactly one registered provider and fails loud on several without configuration', async () => {
@@ -90,9 +113,9 @@ describe('memory registry', () => {
     await ctx.plugin(MemoryRegistry)
     const calls: string[] = []
     ctx.memory.registerProvider(stubProvider('first', calls))
-    await expect(ctx.memory.recall('query')).resolves.toEqual([expect.objectContaining({ id: 'first-query' })])
+    await expect(ctx.memory.recall('query', { scope: 'scope' })).resolves.toEqual([expect.objectContaining({ id: 'first-query' })])
     ctx.memory.registerProvider(stubProvider('second', calls))
-    await expect(ctx.memory.recall('query')).rejects.toThrow(/several providers are registered \(first, second\)/)
+    await expect(ctx.memory.recall('query', { scope: 'scope' })).rejects.toThrow(/several providers are registered \(first, second\)/)
   })
 
   it('routes to the configured provider when one is pinned', async () => {
@@ -101,7 +124,7 @@ describe('memory registry', () => {
     const calls: string[] = []
     ctx.memory.registerProvider(stubProvider('first', calls))
     ctx.memory.registerProvider(stubProvider('second', calls))
-    await expect(ctx.memory.recall('query')).resolves.toEqual([expect.objectContaining({ id: 'second-query' })])
+    await expect(ctx.memory.recall('query', { scope: 'scope' })).resolves.toEqual([expect.objectContaining({ id: 'second-query' })])
     expect(calls).toEqual(['second:recall'])
   })
 
@@ -130,10 +153,10 @@ describe('memory registry', () => {
     const stored = await ctx.memory.remember({ text: 'hello', tags: ['a'], scope: 'scope' })
     expect(events).toEqual([{ operation: 'remember', provider: 'store', factId: stored.id }])
 
-    await expect(ctx.memory.forget(MemoryFactId('the-missing'))).resolves.toBe(false)
+    await expect(ctx.memory.forget({ id: MemoryFactId('the-missing'), scope: 'scope' })).resolves.toBe(false)
     expect(events).toHaveLength(1)
 
-    await expect(ctx.memory.forget(stored.id)).resolves.toBe(true)
+    await expect(ctx.memory.forget({ id: stored.id, scope: 'scope' })).resolves.toBe(true)
     expect(events).toEqual([
       { operation: 'remember', provider: 'store', factId: stored.id },
       { operation: 'forget', provider: 'store', factId: stored.id },
@@ -146,6 +169,6 @@ describe('memory registry', () => {
     ctx.on('memory/changed', () => { throw new Error('observer boom') })
     ctx.memory.registerProvider(stubProvider('store', []))
     await expect(ctx.memory.remember({ text: 'hello', scope: 'scope' })).resolves.toMatchObject({ id: 'store-hello' })
-    await expect(ctx.memory.forget(MemoryFactId('store-hello'))).resolves.toBe(true)
+    await expect(ctx.memory.forget({ id: MemoryFactId('store-hello'), scope: 'scope' })).resolves.toBe(true)
   })
 })

@@ -8,7 +8,7 @@
 
 ## 提供方注册
 
-`registerProvider(provider)` 按唯一名称登记一个同进程提供方，返回注销 disposer；fiber 销毁时自动注销。重名直接抛错。提供方实现三个操作：`remember(input)`（持久化并返回含提供方铸造 id 的事实）、`recall(query, options)`（先按 scope 等值与 tag 合取收窄，再按自身语义匹配）、`forget(id)`（精确删除并报告是否存在）。
+`registerProvider(provider)` 按唯一名称登记一个同进程提供方，返回注销 disposer；fiber 销毁时自动注销。重名直接抛错。提供方实现三个操作：`remember(input)`（持久化并返回含提供方铸造 id 的事实）、`recall(query, options)`（注册表传入调用方工作区 scope 与可选 tag 合取；提供方先按 scope 等值收窄，再按自身语义匹配）、`forget(input)`（只删除寻址 scope 内的那条事实——存储在其他 scope 下的 id 视同未知——并报告是否存在）。
 
 ## 执行期选择
 

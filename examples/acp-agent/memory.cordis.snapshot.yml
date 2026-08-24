@@ -1,0 +1,55 @@
+# Keyless memory snapshots apply the memory and replay overlays directly
+# because include patches cannot target entries behind a nested include. The
+# memory stack (storage hub + JSON backend + domain + seam + local provider +
+# model tools) mounts on the base tree with its storage root inside the
+# generated session workspace. This file also re-pins the acp-agent model to
+# `deepseek-v4-flash`: `cordis.yml` ships `deepseek-v4-pro`, but the recorded
+# corpus was captured on flash, and a config patch replaces the whole app
+# config, so the base fields are restated verbatim.
+- id: base
+  name: '@buckeyestudio/cordis-plugin-include'
+  config:
+    path: ./cordis.yml
+    patches:
+      - id: llm-deepseek
+        name: '@buckeyestudio/toh-llm-deepseek'
+        disabled: true
+      - id: acp-agent
+        name: '@buckeyestudio/toh-acp-demo'
+        config:
+          provider: deepseek-official
+          model: deepseek-v4-flash
+          persistenceRoot: !!js process.env.TOH_SNAPSHOT_SESSIONS_ROOT ?? './.sessions'
+          persistenceCompression: none
+          workspaceContext:
+            maxBytes: 65536
+          persona: |
+            You are a coding assistant powered by the {{model}} model. Your working directory is {{cwd}}. Your bash tool runs under a file sandbox — a `[sandbox: file access denied …]` result is policy, not a command bug.
+
+            Verify your work by running the code or tests. Keep answers brief and factual.
+      - insert:
+          - id: storage
+            name: '@buckeyestudio/toh-storage'
+          - id: storage-json
+            name: '@buckeyestudio/toh-storage-json'
+            config:
+              root: './.memory-storage'
+          - id: storage-domain
+            name: '@buckeyestudio/toh-storage-domain'
+            config:
+              backend: json
+          - id: memory
+            name: '@buckeyestudio/toh-memory'
+          - id: memory-local
+            name: '@buckeyestudio/toh-memory-local'
+          - id: tool-memory
+            name: '@buckeyestudio/toh-tool-memory'
+          - id: llm-replay
+            name: '@buckeyestudio/toh-llm-replay'
+            config:
+              providers:
+                - id: deepseek-official
+                  name: DeepSeek
+                  models:
+                    - id: deepseek-v4-flash
+                    - id: deepseek-v4-pro

@@ -49,10 +49,25 @@ export interface RememberInput {
   readonly scope: string
 }
 
-/** Narrowing options for `ctx.memory.recall()`. Omitted fields match everything. */
+/** Input to `ctx.memory.forget()`: the addressed fact and the caller's storage scope. */
+export interface ForgetInput {
+  /** The fact to delete; an unknown id is a definite `false`. */
+  readonly id: MemoryFactId
+  /**
+   * Storage scope of the caller, typically the workspace canonical cwd.
+   * Required: deletion never crosses scopes, so a fact stored under another
+   * scope is reported as absent instead of removed.
+   */
+  readonly scope: string
+}
+
+/** Narrowing options for `ctx.memory.recall()`. The registry requires the scope; tags stay optional. */
 export interface RecallOptions {
-  /** Restrict matches to facts stored under this scope. */
-  readonly scope?: string | undefined
+  /**
+   * Storage scope of the caller, typically the workspace canonical cwd.
+   * Required at the registry so recall cannot read across workspaces.
+   */
+  readonly scope: string
   /** Restrict matches to facts carrying every listed tag. */
   readonly tags?: readonly string[] | undefined
 }
@@ -62,8 +77,9 @@ export interface RecallOptions {
  * `recall(query)` matches them (keyword intersection today, embeddings later)
  * under the seam's minimum semantics: `remember` persists the full text
  * verbatim and returns a fact minted by the provider; `recall` narrows by
- * scope and tag conjunction before applying its own matching; `forget`
- * removes exactly the addressed fact and reports whether it existed.
+ * scope equality and tag conjunction before applying its own matching;
+ * `forget` removes exactly the addressed fact inside the addressed scope and
+ * reports whether it existed.
  */
 export interface MemoryProvider {
   /** Unique provider name in the `ctx.memory` registry. */
@@ -83,11 +99,12 @@ export interface MemoryProvider {
    */
   readonly recall: (query: string, options: RecallOptions) => Promise<readonly MemoryFact[]>
   /**
-   * Delete one fact.
-   * @param id - the fact to delete.
+   * Delete one fact. A provider must treat an id stored under a different
+   * scope like an unknown id and remove nothing.
+   * @param input - the fact to delete and the caller's scope.
    * @returns whether a stored fact was removed.
    */
-  readonly forget: (id: MemoryFactId) => Promise<boolean>
+  readonly forget: (input: ForgetInput) => Promise<boolean>
 }
 
 /** Payload of one committed memory mutation. */

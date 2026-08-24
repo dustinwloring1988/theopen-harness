@@ -13,8 +13,9 @@
 ## 召回语义
 
 - 查询按空白切分为小写关键词；每条候选文本必须包含全部关键词。
-- `options.scope` 要求精确等值；`options.tags` 要求候选携带全部列出的标签。
+- `options.scope`（注册表要求必填）要求精确等值；`options.tags` 要求候选携带全部列出的标签。
 - 结果按 `createdAt` 最新优先，id 决胜保证全序稳定。
+- `forget` 仅在存储行的 scope 与调用方 scope 等值时删除；其余 id 一律报告为不存在，行保持原样。
 
 ## Config
 

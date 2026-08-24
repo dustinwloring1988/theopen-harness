@@ -27,8 +27,8 @@
 | 工具 | 参数 | 行为 |
 |---|---|---|
 | `memory_remember` | `fact`（必填）、`tags?` | 存一条事实，返回其 id。空白文本与空标签直接报错；标签去空白、去重。 |
-| `memory_recall` | `query?`、`tags?`、`limit?` | 关键词合取搜索当前 workspace 的事实；省略 `query` 即列出最新事实。结果上限为 `maxRecallResults` 并带截断标记。 |
-| `memory_forget` | `id`（必填） | 按 id 删除；未命中是显式的 `{ forgotten: false }` 而非错误。 |
+| `memory_recall` | `query?`、`tags?`、`limit?` | 关键词合取搜索当前 workspace 的事实；省略 `query` 即列出最新事实。有效结果数受 `maxRecallResults`（默认 20）封顶，并带截断标记。 |
+| `memory_forget` | `id`（必填） | 在调用方 workspace 内按 id 删除；未知 id——或存储在其他 workspace 的 id——是显式的 `{ forgotten: false }` 而非错误。 |
 
 每次提交式变更都会经 `ctx.memory` 发出 `memory/changed` 事件。
 

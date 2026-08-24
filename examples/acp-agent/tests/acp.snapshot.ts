@@ -71,6 +71,7 @@ const SUBAGENT_CONTINUABLE_INHERITANCE_CONFIG = fileURLToPath(
   new URL('../subagent-continuable-inheritance.cordis.yml', import.meta.url),
 )
 const LSP_CONFIG = fileURLToPath(new URL('./lsp.cordis.yml', import.meta.url))
+const MEMORY_CONFIG = fileURLToPath(new URL('../memory.cordis.yml', import.meta.url))
 const WEB_CONFIG = fileURLToPath(new URL('../web.cordis.yml', import.meta.url))
 const FS_SEARCH_CONFIG = fileURLToPath(new URL('./fs-search.cordis.yml', import.meta.url))
 const PARTIAL_LANDLOCK_CONFIG = fileURLToPath(new URL('../partial-landlock.cordis.yml', import.meta.url))
@@ -348,6 +349,18 @@ const SCENARIOS: Scenario[] = [
     prepareWorkspace: prepareEditingCordisSkillWorkspace,
   },
   { name: 'lsp-definition', hasModelTurn: true, recorded: false, pinsHeader: true, headerClass: 'lsp', configPath: LSP_CONFIG },
+  // The cross-session memory stack (storage hub + domain + seam + local
+  // provider + model tools) rides its own overlay; the assembled transcript
+  // pins the real tool schemas and the tool:memory prompt section through a
+  // remember → recall → done turn over the replayed model script.
+  {
+    name: 'memory-tool-turn',
+    hasModelTurn: true,
+    recorded: false,
+    pinsHeader: true,
+    headerClass: 'memory',
+    configPath: MEMORY_CONFIG,
+  },
   // web_fetch markdown rendering end to end: the overlay's loopback fixture
   // server supplies deterministic HTML (entities, a GFM table, nesting), the
   // REAL local fetch provider retrieves it, and the tool result pins the

@@ -2709,12 +2709,12 @@ Requires: `tools` · `memory` · `systemPrompt`
 ```ts config-catalog
 /** Model-facing memory tool configuration. */
 export interface Config {
-  /** Maximum facts one `memory_recall` result may list; minimum 1. */
+  /** Maximum facts one `memory_recall` result may list; minimum 1. Default 20. */
   maxRecallResults?: number
 }
 ```
 
-Source: [`packages/memory/tool-memory/src/index.ts:21`](../packages/memory/tool-memory/src/index.ts)
+Source: [`packages/memory/tool-memory/src/index.ts:22`](../packages/memory/tool-memory/src/index.ts)
 
 <a id="buckeyestudiotoh-tool-pwsh"></a>
 

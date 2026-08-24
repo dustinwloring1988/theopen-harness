@@ -552,6 +552,12 @@ importers:
       '@buckeyestudio/toh-lsp-stdio':
         specifier: workspace:*
         version: link:../packages/lsp/lsp-stdio
+      '@buckeyestudio/toh-memory':
+        specifier: workspace:*
+        version: link:../packages/memory/memory
+      '@buckeyestudio/toh-memory-local':
+        specifier: workspace:*
+        version: link:../packages/memory/memory-local
       '@buckeyestudio/toh-permission-presets':
         specifier: workspace:*
         version: link:../packages/interaction/permission-presets
@@ -630,6 +636,15 @@ importers:
       '@buckeyestudio/toh-spill-policy':
         specifier: workspace:*
         version: link:../packages/spill/spill-policy
+      '@buckeyestudio/toh-storage':
+        specifier: workspace:*
+        version: link:../packages/storage/storage
+      '@buckeyestudio/toh-storage-domain':
+        specifier: workspace:*
+        version: link:../packages/storage/storage-domain
+      '@buckeyestudio/toh-storage-json':
+        specifier: workspace:*
+        version: link:../packages/storage/storage-json
       '@buckeyestudio/toh-subagent':
         specifier: workspace:*
         version: link:../packages/subagent/subagent
@@ -702,6 +717,9 @@ importers:
       '@buckeyestudio/toh-tool-lsp':
         specifier: workspace:*
         version: link:../packages/lsp/tool-lsp
+      '@buckeyestudio/toh-tool-memory':
+        specifier: workspace:*
+        version: link:../packages/memory/tool-memory
       '@buckeyestudio/toh-tool-pwsh':
         specifier: workspace:*
         version: link:../packages/shell/tool-pwsh
