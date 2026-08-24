@@ -1,0 +1,20 @@
+# Opt-in Web overlay that routes the Workspace registry's domain data to the
+# SQLite storage backend. This file is a PATCH OVERLAY over the shipped web
+# profile (`toh-base` + `toh-web-app` bundle layers), applied as one more
+# sibling patch list: `toh web --patch examples/web-storage-sqlite/cordis.yml`.
+# A patch replaces the targeted row's whole `config`, so the storage-domain row
+# below restates every key it owns.
+
+- insert:
+    - id: storage-sqlite
+      name: '@buckeyestudio/toh-storage-sqlite'
+      config:
+        # One database file next to the JSON backend's unit files; created
+        # owner-only on first write.
+        path: !!js tohHomePath('storages/workspace.sqlite3')
+
+- id: storage-domain
+  config:
+    backend: json
+    routes:
+      workspace: sqlite
