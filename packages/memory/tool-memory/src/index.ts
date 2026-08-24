@@ -223,7 +223,7 @@ export function apply(ctx: Context, config: Config = {}): void {
     parameters: {
       query: { type: 'string', description: 'Space-separated keywords; all must match. Omit to list without keyword filtering.' },
       tags: { type: 'array', items: { type: 'string' }, description: 'Only return facts carrying every listed tag.' },
-      limit: { type: 'number', description: `Maximum facts to return. The effective result count is capped by the configured maxRecallResults (${spec.maxRecallResults} by default).` },
+      limit: { type: 'number', description: `Maximum facts to return. The effective result count is capped by the configured maxRecallResults (${spec.maxRecallResults}).` },
     },
     output: {
       schema: {
