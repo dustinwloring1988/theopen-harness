@@ -8,7 +8,7 @@
 
 ## 职责拆分
 
-提供方拥有**安全资源获取**：URL 验证、先解析后验证并固定连接、HTTP 传输、重定向策略、资源兜底超时、中止传播、字节上限、charset 解码、内容类型分类与二进制拒绝。`@buckeyestudio/toh-tool-web` 拥有**呈现**（HTML→markdown、截断格式）。非 2xx HTTP 响应是*结果*（状态码 + 解码主体），不是错误；`WebError` 只用于无法安全获取或表示资源的失败。
+提供方拥有**安全资源获取**：URL 验证、先解析后验证并固定连接、HTTP 传输、重定向策略、资源兜底超时、中止传播、内容编码解码、字节上限、charset 解码、内容类型分类与二进制拒绝。`@buckeyestudio/toh-tool-web` 拥有**呈现**（HTML→markdown、截断格式）。非 2xx HTTP 响应是*结果*（状态码 + 解码主体），不是错误；`WebError` 只用于无法安全获取或表示资源的失败。
 
 提供方的 `timeoutMs` 是直接 `ctx.web.fetch()` 调用方和配置有误的部署所用的资源兜底，不是面向模型的工具调用预算。[`toh-tool-call-timeout-policy`](../../guard/timeout-policy/README.zh.md) 拥有 `web_fetch` 工具调用预算，并让 `exec.signal` 在超时时触发，以强制执行该预算。
 
@@ -17,8 +17,9 @@
 ## 传输卫生
 
 - 只接受 `http:` 和 `https:` URL；拒绝 URL 中的凭据（`WEB_BLOCKED_URL`）以及过长／格式错误的 URL（`WEB_INVALID_URL`）。
-- 在拨号前解析每个目标主机名，并以 `WEB_PRIVATE_NETWORK_BLOCKED` 阻止 loopback、私有、link-local、CGNAT、multicast、ULA、文档等非公开地址；连接只拨向已验证的地址，因此不会有未经检查的第二次解析选择目标。本地网络主机名（`localhost`、`.localhost`、`.local`）按名称拒绝，字面 IP URL 无需任何解析即可分类。
-- 强制执行 URL 最大长度、响应字节上限（`WEB_FETCH_TOO_LARGE`）、解码主体字符上限、超时（`WEB_FETCH_TIMEOUT`）和重定向跳数上限。
+- 在拨号前解析每个目标主机名，并以 `WEB_PRIVATE_NETWORK_BLOCKED` 阻止 loopback、私有、link-local、CGNAT、benchmarking、multicast、ULA、文档等非公开地址；连接只拨向已验证的地址，因此不会有未经检查的第二次解析选择目标。本地网络主机名（`localhost`、`.localhost`、`.local`）按名称拒绝，字面 IP URL 无需任何解析即可分类。
+- 在字节封顶与 charset 解码之前解码声明的 `Content-Encoding`（`gzip`／`x-gzip`、zlib 包装的 `deflate` 或 `br`；缺失、空白与 `identity` 直接透传）；任何其他声明的编码都会以 `WEB_UNSUPPORTED_CONTENT_TYPE` 响亮失败，绝不返回无法解码的字节。
+- 强制执行 URL 最大长度、解压后度量的响应字节上限（`WEB_FETCH_TOO_LARGE`）、解码主体字符上限、超时（`WEB_FETCH_TIMEOUT`）和重定向跳数上限。
 - 把调用方的中止信号（`WEB_ABORTED`）传播到解析、网络请求与流式读取。
 - 只跟随**同源**重定向；跨源重定向以 `WEB_REDIRECT_BLOCKED` 失败，要求发起新的工具调用（沿用 Claude Code 的 WebFetch 模式）。每一跳都会重新进入同一请求路径，因此每一跳的目标都会重新解析并重新验证。
 - 发送显式的产品 `User-Agent`，绝不伪装成浏览器。
@@ -28,14 +29,14 @@
 
 防护位于可组合的策略模块 `createPrivateNetworkPolicy` 中（从本包导出），其形状使其他抓取提供方可以直接复用：它通过可注入的解析器（默认：经 `dns.lookup(..., { all: true })` 的 OS 解析器）解析主机名，对每个解析出的地址分类，并准确返回已验证的地址列表。提供方把该列表交给连接的 `lookup` 函数，因此 Node 只会拨向已检查的地址——不存在第二次未检查解析选择目标的窗口，在 Node 允许自定义解析器的范围内关闭了解析后连接的 TOCTOU。
 
-被阻止的范围：IPv4 loopback（127/8）、未指定（"本网络"，0/8）、RFC 1918 私有（10/8、172.16/12、192.168/16）、link-local（169.254/16，包括云元数据端点）、CGNAT 共享地址空间（100.64/10）、multicast（224/4）、保留加广播（240/4）与 IANA 文档范围；IPv6 loopback（::1）、未指定（::）、unique-local（fc00::/7）、link-local（fe80::/10）、弃用的 site-local（fec0::/10）、multicast（ff00::/8）、文档（2001:db8::/32）；以及内嵌 IPv4 形式——mapped（`::ffff:a.b.c.d`）、compatible（`::a.b.c.d`）与 NAT64 众所周知前缀（`64:ff9b::/96`）——它们按内嵌的 IPv4 目标分类。
+被阻止的范围：IPv4 loopback（127/8）、未指定（"本网络"，0/8）、RFC 1918 私有（10/8、172.16/12、192.168/16）、link-local（169.254/16，包括云元数据端点）、CGNAT 共享地址空间（100.64/10）、IETF 协议分配（192.0.0/24）、弃用的 6to4 relay anycast（192.88.99.0/24）、benchmarking 空间（198.18.0.0/15）、multicast（224/4）、保留加广播（240/4）与 IANA 文档范围；IPv6 loopback（::1）、未指定（::）、unique-local（fc00::/7）、link-local（fe80::/10）、弃用的 site-local（fec0::/10）、multicast（ff00::/8）、文档（2001:db8::/32）；以及内嵌 IPv4 形式——mapped（`::ffff:a.b.c.d`）、compatible（`::a.b.c.d`）、NAT64 众所周知前缀（`64:ff9b::/96`）与 6to4（`2002::/16`）——它们按内嵌的 IPv4 目标分类：内嵌目标非公开即阻止该地址，内嵌目标公开则仍视为公开。
 
 ## 配置
 
 | 配置键 | 默认值 | 含义 |
 |---|---|---|
 | `maxUrlLength` | `2048` | 接受的请求 URL 最大长度。 |
-| `maxResponseBytes` | `5_000_000` | 响应主体最大字节数。 |
+| `maxResponseBytes` | `5_000_000` | 响应主体最大字节数，按内容编码解码之后度量。 |
 | `maxBodyChars` | `100_000` | 解码主体最大字符数。 |
 | `timeoutMs` | `30_000` | Node 定时器范围内的抓取超时：直接 `ctx.web.fetch()` 调用方的资源兜底，而非面向模型的工具调用预算（后者属于 `toh-tool-call-timeout-policy`）。 |
 | `maxRedirects` | `5` | 同源重定向最大跳数（`0` 表示完全不跟随）。 |

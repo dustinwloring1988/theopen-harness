@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/feature/2026-08-23-web-fetch-private-network-guard.md
-2026-08-23-web-fetch-private-network-guard.md: bc2dccf3e4cc9c4654c42502cfaa87e86a6643cd
-2026-08-23-web-fetch-private-network-guard.zh.md: c28d851bfadfa22d61c80ea535dd7450aa91ed6f
+2026-08-23-web-fetch-private-network-guard.md: 71e6306dbb2d0f70b64b37f5e47ee648666a32a4
+2026-08-23-web-fetch-private-network-guard.zh.md: f9738bd953a394fa1b6ef39f2be54401d399a6b6

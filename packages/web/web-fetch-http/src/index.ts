@@ -36,7 +36,7 @@ export const inject = ['web']
 export interface Config {
   /** Maximum accepted request URL length. */
   maxUrlLength?: number
-  /** Maximum response body size in bytes. */
+  /** Maximum response body size in bytes, measured after content-coding decoding. */
   maxResponseBytes?: number
   /** Maximum decoded body length in characters. */
   maxBodyChars?: number

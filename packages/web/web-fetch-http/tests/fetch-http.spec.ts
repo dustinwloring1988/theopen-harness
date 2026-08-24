@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http'
 import { AddressInfo } from 'node:net'
+import { brotliCompressSync, deflateSync, gzipSync } from 'node:zlib'
 import { Context } from '@buckeyestudio/cordis'
 import WebRuntime from '@buckeyestudio/toh-web'
 import { HttpFetchProvider, LOCAL_FETCH_PROVIDER_ID } from '@buckeyestudio/toh-web-fetch-http'
@@ -105,6 +106,14 @@ describe('private-network classification', () => {
     // CGNAT shared address space (100.64/10).
     ['100.64.0.0', 'shared-address-space'],
     ['100.127.255.255', 'shared-address-space'],
+    // IETF protocol assignments (192.0.0/24) and deprecated 6to4 relay anycast
+    // (192.88.99/24): anycast services inside closed scopes, no public endpoint.
+    ['192.0.0.9', 'ietf-protocol-assignments'],
+    ['192.0.0.255', 'ietf-protocol-assignments'],
+    ['192.88.99.1', 'relay-anycast'],
+    // Benchmarking space (198.18/15) is routed only inside test networks.
+    ['198.18.0.1', 'benchmarking'],
+    ['198.19.255.255', 'benchmarking'],
     // Multicast, reserved, and broadcast.
     ['224.0.0.1', 'multicast'],
     ['239.255.255.255', 'multicast'],
@@ -130,11 +139,18 @@ describe('private-network classification', () => {
     ['::ffff:10.0.0.5', 'private'],
     ['::ffff:127.0.0.1', 'loopback'],
     ['::ffff:169.254.9.9', 'link-local'],
+    ['::ffff:198.18.0.1', 'benchmarking'],
     // The deprecated IPv4-compatible form embeds the same way.
     ['::10.0.0.5', 'private'],
     ['::0.0.0.5', 'unspecified'],
     // The NAT64 well-known prefix carries an embedded IPv4 destination too.
     ['64:ff9b::10.0.0.5', 'private'],
+    ['64:ff9b::192.88.99.1', 'relay-anycast'],
+    // 6to4 (2002::/16) tunnels to its embedded IPv4 destination: a non-public
+    // embedded destination targets a closed scope.
+    ['2002:c0a8:101::', 'private'],
+    ['2002:7f00:1::', 'loopback'],
+    ['2002:c612:1::', 'benchmarking'],
   ]
   it.each(blockedCases)('classifies %s as %s', (address, range) => {
     expect(classifyBlockedRange(address)).toBe(range)
@@ -148,11 +164,18 @@ describe('private-network classification', () => {
     '100.63.255.255',
     '100.128.0.1',
     '169.253.0.1',
+    '192.0.1.0',
+    '192.87.0.1',
+    '192.89.0.1',
+    '198.17.255.255',
+    '198.20.0.0',
     '198.51.101.1',
     '203.0.114.1',
     '2606:4700:4700::1111',
     // Uncompressed (no `::`) presentation parses the same as compressed.
     '2001:4860:4860:0000:0000:0000:0000:8888',
+    // 6to4 with a public embedded destination stays public.
+    '2002:808:808::',
     '::ffff:8.8.8.8',
   ]
   it.each(publicCases.map(address => [address] as const))('classifies %s as public', (address) => {
@@ -229,6 +252,24 @@ describe('private-network policy', () => {
     const records: ResolvedAddress[] = [{ address: '192.168.0.20', family: 4 }]
     const allowing = createPrivateNetworkPolicy({ allowPrivateNetworks: true, resolve: fakeResolver({ 'private.test': records }) })
     await expect(allowing.resolveValidated('private.test')).resolves.toEqual(records)
+  })
+
+  it('blocks benchmarking-space destinations by default and permits them when opted in', async () => {
+    const records: ResolvedAddress[] = [{ address: '198.18.0.1', family: 4 }]
+    const blocking = createPrivateNetworkPolicy({ allowPrivateNetworks: false, resolve: fakeResolver({ 'bench.test': records }) })
+    await expect(blocking.resolveValidated('bench.test'))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED', message: expect.stringContaining('198.18.0.1') as string }))
+    const allowing = createPrivateNetworkPolicy({ allowPrivateNetworks: true, resolve: fakeResolver({ 'bench.test': records }) })
+    await expect(allowing.resolveValidated('bench.test')).resolves.toEqual(records)
+  })
+
+  it('blocks CGNAT shared-address-space destinations by default and permits them when opted in', async () => {
+    const records: ResolvedAddress[] = [{ address: '100.64.1.1', family: 4 }]
+    const blocking = createPrivateNetworkPolicy({ allowPrivateNetworks: false, resolve: fakeResolver({ 'cgnat.test': records }) })
+    await expect(blocking.resolveValidated('cgnat.test'))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED', message: expect.stringContaining('100.64.1.1') as string }))
+    const allowing = createPrivateNetworkPolicy({ allowPrivateNetworks: true, resolve: fakeResolver({ 'cgnat.test': records }) })
+    await expect(allowing.resolveValidated('cgnat.test')).resolves.toEqual(records)
   })
 
   it('blocks local-network names without consulting the resolver', async () => {
@@ -372,6 +413,124 @@ describe('HttpFetchProvider caps', () => {
     handler = (_req, res) => { res.writeHead(200, { 'content-type': 'text/plain; charset=not-a-charset' }); res.end('x') }
     await expect(provider().fetch({ url: base }))
       .rejects.toThrow(expect.objectContaining({ code: 'WEB_UNSUPPORTED_CONTENT_TYPE' }))
+  })
+})
+
+describe('HttpFetchProvider content decoding', () => {
+  it('decodes a gzip body to its text', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'gzip' })
+      res.end(gzipSync(Buffer.from('hello compressed world')))
+    }
+    const result = await provider().fetch({ url: base })
+    expect(result.body).toEqual({ kind: 'text', content: 'hello compressed world' })
+    expect(result.truncated).toBe(false)
+  })
+
+  it('decodes a brotli body to its text', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'br' })
+      res.end(brotliCompressSync(Buffer.from('brotli text')))
+    }
+    const result = await provider().fetch({ url: base })
+    expect(result.body.content).toBe('brotli text')
+  })
+
+  it('decodes a zlib-wrapped deflate body to its text', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'deflate' })
+      res.end(deflateSync(Buffer.from('deflate text')))
+    }
+    const result = await provider().fetch({ url: base })
+    expect(result.body.content).toBe('deflate text')
+  })
+
+  it('treats the deprecated x-gzip label as gzip', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'x-gzip' })
+      res.end(gzipSync(Buffer.from('aliased')))
+    }
+    const result = await provider().fetch({ url: base })
+    expect(result.body.content).toBe('aliased')
+  })
+
+  it('passes an identity-declared body through unchanged', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'identity' })
+      res.end('as sent')
+    }
+    const result = await provider().fetch({ url: base })
+    expect(result.body.content).toBe('as sent')
+  })
+
+  it('treats a blank Content-Encoding header as no coding', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': '' })
+      res.end('blank')
+    }
+    const result = await provider().fetch({ url: base })
+    expect(result.body.content).toBe('blank')
+  })
+
+  it('decompresses BEFORE charset decoding', async () => {
+    // 0xE9 is "é" in ISO-8859-1; decoding the compressed bytes directly would
+    // never produce it.
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain; charset=iso-8859-1', 'content-encoding': 'gzip' })
+      res.end(gzipSync(Buffer.from([0x63, 0x61, 0x66, 0xE9])))
+    }
+    const result = await provider().fetch({ url: base })
+    expect(result.body.content).toBe('café')
+  })
+
+  it('applies the byte cap to DECOMPRESSED bytes', async () => {
+    // The wire transfer is far below the cap; only decompression exceeds it,
+    // so the cap must measure decoded bytes to bound memory.
+    handler = (_req, res) => {
+      const body = gzipSync(Buffer.from('abcdefghij'.repeat(100)))
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'gzip', 'content-length': String(body.byteLength) })
+      res.end(body)
+    }
+    const result = await provider({ maxResponseBytes: 50 }).fetch({ url: base })
+    expect(result.body.content).toBe('abcdefghij'.repeat(5))
+    expect(result.truncated).toBe(true)
+  })
+
+  it('rejects an unknown declared encoding with WEB_UNSUPPORTED_CONTENT_TYPE', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'zstd' })
+      res.end('unreadable')
+    }
+    await expect(provider().fetch({ url: base }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_UNSUPPORTED_CONTENT_TYPE' }))
+  })
+
+  it('reports a corrupt compressed body as WEB_PROVIDER_ERROR instead of returning garbage', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'gzip' })
+      res.end(Buffer.from('this is not gzip'))
+    }
+    await expect(provider().fetch({ url: base }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PROVIDER_ERROR' }))
+  })
+
+  it('still fast-rejects an over-cap Content-Length on a compressed response', async () => {
+    handler = (_req, res) => {
+      const body = gzipSync(Buffer.from('x'.repeat(999_999)))
+      res.writeHead(200, { 'content-type': 'text/plain', 'content-encoding': 'gzip', 'content-length': String(body.byteLength) })
+      res.end(body)
+    }
+    await expect(provider({ maxResponseBytes: 10 }).fetch({ url: base }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_FETCH_TOO_LARGE' }))
+  })
+
+  it('decodes a compressed html body with its content type intact', async () => {
+    handler = (_req, res) => {
+      res.writeHead(200, { 'content-type': 'text/html', 'content-encoding': 'br' })
+      res.end(brotliCompressSync(Buffer.from('<h1>hi</h1>')))
+    }
+    const result = await provider().fetch({ url: base })
+    expect(result.body).toEqual({ kind: 'html', content: '<h1>hi</h1>' })
   })
 })
 
@@ -542,6 +701,12 @@ describe('HttpFetchProvider private-network guard', () => {
 
   it('blocks a literal-IP loopback URL without any resolution', async () => {
     await expect(provider({ allowPrivateNetworks: false }).fetch({ url: 'http://127.0.0.1:9/' }))
+      .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED' }))
+    expect(servedRequests).toBe(0)
+  })
+
+  it('blocks a literal benchmarking-space URL under the shipped default', async () => {
+    await expect(provider({ allowPrivateNetworks: false }).fetch({ url: 'http://198.18.0.1:9/' }))
       .rejects.toThrow(expect.objectContaining({ code: 'WEB_PRIVATE_NETWORK_BLOCKED' }))
     expect(servedRequests).toBe(0)
   })

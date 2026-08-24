@@ -50,6 +50,9 @@ export type NonPublicRange =
   | 'private'
   | 'link-local'
   | 'shared-address-space'
+  | 'ietf-protocol-assignments'
+  | 'relay-anycast'
+  | 'benchmarking'
   | 'multicast'
   | 'reserved'
   | 'broadcast'
@@ -89,6 +92,7 @@ function classifyIPv4(address: string): BlockedRange | undefined {
   const value = ipv4Value(address)
   const octet1 = value >>> 24
   const octet2 = value >>> 16 & 0xff
+  const octet3 = value >>> 8 & 0xff
   if (octet1 === 127) return 'loopback'
   if (octet1 === 0) return 'unspecified'
   // RFC 1918: 10/8, 172.16/12, 192.168/16.
@@ -96,11 +100,19 @@ function classifyIPv4(address: string): BlockedRange | undefined {
   if (octet1 === 169 && octet2 === 254) return 'link-local'
   // CGNAT shared address space: 100.64/10.
   if (octet1 === 100 && octet2 >= 64 && octet2 < 128) return 'shared-address-space'
+  // IETF protocol assignments (192.0.0/24): anycast services such as PCP and
+  // NAT64 discovery that route inside administrative scopes, not the internet.
+  if (octet1 === 192 && octet2 === 0 && octet3 === 0) return 'ietf-protocol-assignments'
+  // Deprecated 6to4 relay anycast (192.88.99/24): returned to IANA by RFC 7526;
+  // no legitimate public endpoint lives here.
+  if (octet1 === 192 && octet2 === 88 && octet3 === 99) return 'relay-anycast'
+  // Benchmarking space (198.18/15): routed only inside test networks.
+  if (octet1 === 198 && octet2 >= 18 && octet2 <= 19) return 'benchmarking'
   if ((octet1 & 0xf0) === 0xe0) return 'multicast'
   if ((octet1 & 0xf0) === 0xf0) return octet1 === 255 && (value & 0x00ff_ffff) === 0x00ff_ffff ? 'broadcast' : 'reserved'
-  if (octet1 === 192 && octet2 === 0 && (value >>> 8 & 0xff) === 2) return 'documentation'
-  if (octet1 === 198 && octet2 === 51 && (value >>> 8 & 0xff) === 100) return 'documentation'
-  if (octet1 === 203 && octet2 === 0 && (value >>> 8 & 0xff) === 113) return 'documentation'
+  if (octet1 === 192 && octet2 === 0 && octet3 === 2) return 'documentation'
+  if (octet1 === 198 && octet2 === 51 && octet3 === 100) return 'documentation'
+  if (octet1 === 203 && octet2 === 0 && octet3 === 113) return 'documentation'
   return undefined
 }
 
@@ -160,6 +172,14 @@ function classifyIPv6(address: string): BlockedRange | undefined {
       if (g7 === 0) return 'unspecified'
     }
     return classifyEmbeddedIPv4(g6, g7)
+  }
+
+  // A 6to4 address (2002::/16) tunnels to the IPv4 destination embedded after
+  // the relay prefix, so a non-public embedded destination targets a closed
+  // scope; with a public embedded destination the address stays public.
+  if (g0 === 0x2002) {
+    const embedded = classifyEmbeddedIPv4(g1, g2)
+    if (embedded !== undefined) return embedded
   }
 
   if ((g0 & 0xfe00) === 0xfc00) return 'unique-local'

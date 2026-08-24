@@ -12,6 +12,8 @@
 import http from 'node:http'
 import https from 'node:https'
 import type { IncomingMessage, RequestOptions } from 'node:http'
+import type { Readable, Transform } from 'node:stream'
+import { createBrotliDecompress, createGunzip, createInflate } from 'node:zlib'
 import { WebError } from '@buckeyestudio/toh-web'
 import type { WebFetchBody, WebFetchProvider, WebFetchRequest, WebFetchResult } from '@buckeyestudio/toh-web'
 import { deadline, timeoutOf } from '@buckeyestudio/toh-timeout'
@@ -24,7 +26,7 @@ import { classifyContentType, decoderForCharset, isSameOrigin, parseCharset, val
 export interface HttpFetchLimits {
   /** Maximum accepted request URL length. */
   maxUrlLength: number
-  /** Maximum response body size in bytes (read is aborted past this). */
+  /** Maximum response body size in bytes, measured after content-coding decoding (read is aborted past this). */
   maxResponseBytes: number
   /** Maximum decoded body length in characters (truncated past this). */
   maxBodyChars: number
@@ -147,7 +149,7 @@ export class HttpFetchProvider implements WebFetchProvider {
     }
   }
 
-  /** Read, byte-cap, classify, and decode the final response body. */
+  /** Decode content-coding, byte-cap, classify, and charset-decode the final response body. */
   private async readBody(response: TransportResponse, finalUrl: URL, signal: AbortSignal): Promise<WebFetchResult> {
     const contentType = response.headers.get('content-type')
     const kind = classifyContentType(contentType)
@@ -181,9 +183,12 @@ export class HttpFetchProvider implements WebFetchProvider {
   }
 
   /**
-   * Read the response stream up to `maxResponseBytes`. A `Content-Length` over
-   * the cap rejects immediately with `WEB_FETCH_TOO_LARGE`; a stream that grows
-   * past the cap is cut short (`truncatedByBytes`) rather than rejected, so a
+   * Read the response body up to `maxResponseBytes`, measured AFTER
+   * content-coding decoding so a compressed body cannot expand past the cap in
+   * memory. A `Content-Length` over the cap rejects immediately with
+   * `WEB_FETCH_TOO_LARGE`; it bounds the wire transfer (the compressed size
+   * when a coding is declared). A stream that yields more decompressed bytes
+   * than the cap is cut short (`truncatedByBytes`) rather than rejected, so a
    * server that under-reports still yields a bounded usable body.
    */
   private async readCapped(response: TransportResponse, signal: AbortSignal): Promise<{ bytes: Uint8Array; truncatedByBytes: boolean }> {
@@ -196,9 +201,22 @@ export class HttpFetchProvider implements WebFetchProvider {
       }
     }
 
-    const stream = response.stream
+    const raw = response.stream
     /* v8 ignore next -- a completed HTTP response always exposes a body stream; the null guard is defensive. */
-    if (stream === null) return { bytes: new Uint8Array(0), truncatedByBytes: false }
+    if (raw === null) return { bytes: new Uint8Array(0), truncatedByBytes: false }
+
+    // Resolve the content coding BEFORE consuming the stream so an unsupported
+    // declared coding fails without reading body bytes — but destroy the raw
+    // stream on that failure so the socket does not leak (matching the
+    // unsupported-charset path in readBody).
+    let encoding: SupportedContentEncoding | undefined
+    try {
+      encoding = parseContentEncoding(response.headers.get('content-encoding'))
+    } catch (error: unknown) {
+      raw.destroy()
+      throw error
+    }
+    const source = encoding === undefined ? raw : decodeContentStream(raw, encoding)
 
     const chunks: Uint8Array[] = []
     let total = 0
@@ -206,9 +224,9 @@ export class HttpFetchProvider implements WebFetchProvider {
     try {
       await new Promise<void>((fulfillRead, rejectRead) => {
         const detach = () => {
-          stream.off('data', onData)
-          stream.off('end', onEnd)
-          stream.off('error', onError)
+          source.off('data', onData)
+          source.off('end', onEnd)
+          source.off('error', onError)
         }
         const onData = (chunk: Buffer) => {
           const remaining = this.limits.maxResponseBytes - total
@@ -234,16 +252,18 @@ export class HttpFetchProvider implements WebFetchProvider {
           detach()
           rejectRead(error)
         }
-        stream.on('data', onData)
-        stream.on('end', onEnd)
-        stream.on('error', onError)
+        source.on('data', onData)
+        source.on('end', onEnd)
+        source.on('error', onError)
       })
     } catch (error: unknown) {
       /* v8 ignore next -- a mid-stream read fault needs a network drop after headers; abort branches are covered by request-phase tests. */
       throw translateAbortOrNetwork(error, signal)
     } finally {
-      /* v8 ignore next -- destroy() after a completed or faulted read is unobserved cleanup; the bytes we need are already collected. */
-      stream.destroy()
+      /* v8 ignore start -- destroy() after a completed or faulted read is unobserved cleanup; the bytes we need are already collected. */
+      raw.destroy()
+      source.destroy()
+      /* v8 ignore stop */
     }
 
     const bytes = new Uint8Array(total)
@@ -254,6 +274,54 @@ export class HttpFetchProvider implements WebFetchProvider {
     }
     return { bytes, truncatedByBytes }
   }
+}
+
+/** The content codings this transport decodes (`x-gzip` normalizes to `gzip`). */
+type SupportedContentEncoding = 'gzip' | 'deflate' | 'br'
+
+/**
+ * Parse the response `Content-Encoding` header into one supported coding.
+ * An absent or empty value and `identity` mean no coding. Any other declared
+ * coding throws {@link WebError} `WEB_UNSUPPORTED_CONTENT_TYPE` — the transport
+ * never hands back bytes it could not decode.
+ *
+ * @param header - the raw `Content-Encoding` header value, or `null` when absent.
+ * @returns the supported coding, or `undefined` when no decoding is needed.
+ */
+function parseContentEncoding(header: string | null): SupportedContentEncoding | undefined {
+  const value = header?.trim().toLowerCase()
+  if (value === undefined || value === '' || value === 'identity') return undefined
+  if (value === 'gzip' || value === 'x-gzip') return 'gzip'
+  if (value === 'deflate' || value === 'br') return value
+  throw new WebError(`unsupported content encoding "${header}"`, 'WEB_UNSUPPORTED_CONTENT_TYPE')
+}
+
+/** The streaming decoder for each supported content coding. */
+const DECOMPRESSORS: Record<SupportedContentEncoding, () => Transform> = {
+  gzip: createGunzip,
+  deflate: createInflate,
+  br: createBrotliDecompress,
+}
+
+/**
+ * Pipe the raw response stream through its declared content-coding decoder and
+ * return the stream whose bytes are the decoded body. `.pipe()` does not
+ * forward source faults, so a socket error mid-body is forwarded explicitly —
+ * otherwise the pending read would hang until the deadline instead of failing.
+ * A standing noop error listener keeps a late decoder fault — arriving after
+ * the read handlers detached — from surfacing as an unhandled 'error' event,
+ * matching the raw stream's own guard.
+ *
+ * @param raw - the undecoded response stream.
+ * @param encoding - the declared content coding to decode.
+ * @returns the decoded-body stream.
+ */
+function decodeContentStream(raw: IncomingMessage, encoding: SupportedContentEncoding): Readable {
+  const decompressor = DECOMPRESSORS[encoding]()
+  raw.on('error', (error) => { decompressor.destroy(error) })
+  decompressor.on('error', () => {})
+  raw.pipe(decompressor)
+  return decompressor
 }
 
 /** HTTP redirect status codes that carry a `Location`. */
