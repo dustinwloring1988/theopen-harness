@@ -12,7 +12,7 @@ The `all-prompts` twin also had zero consumers: no bundle, example, app, or Pyth
 
 ## Decision
 
-One package, [`@buckeyestudio/toh-session-title-llm`](../../../../packages/session/session-title-llm), owns the model-backed title provider. It exports the standard plugin surface (`name`/`inject`/`Config`/`apply`) alongside the shared request policy it already carried, and both twin packages are deleted. Its required validated `cadence: 'first-prompt' | 'all-prompts'` config field selects the message selector; an invalid value or unknown key fails loud at load. Both behaviors stay user-selectable from cordis.yml, and shipped composition (`bundle/base`) keeps the `first-prompt` cadence with unchanged limits.
+One package, [`@buckeyestudio/toh-session-title-llm`](../../../../packages/session/session-title-llm), owns the model-backed title provider. It exports the standard plugin surface (`name`/`inject`/`Config`/`apply`) alongside the shared request policy it already carried, and both twin packages are deleted. Its required and validated `cadence: 'first-prompt' | 'all-prompts'` config field selects the message selector; an invalid value or unknown key fails loudly during loading. Both behaviors stay user-selectable from cordis.yml, and shipped composition (`bundle/base`) keeps the `first-prompt` cadence with unchanged limits.
 
 The registered provider id stays derived from the configured cadence (`session-title-first-prompt-llm` / `session-title-all-prompts-llm`), so durable title sources, auxiliary request records, and recorded provenance keep naming the exact selection behavior that produced them across this repackaging. The jscpd suppressions die with the duplicated schema block; the remaining `Config` is the shared schema object itself.
 
@@ -20,7 +20,7 @@ This change updates the facts in the owning [log-backed session titles decision]
 
 ## Verification
 
-Package tests cover both cadences through the real provider registration (selection, provenance ids, seeded history, route inheritance), direct-construction validation rejects an invalid cadence, and a Loader composition test boots the plugin from cordis.yml and proves an unsupported cadence fails loud at load. The keyless assembled snapshots replay unchanged because the derived provenance ids are stable.
+Package tests cover both cadences through the real provider registration (selection, provenance ids, seeded history, route inheritance), direct-construction validation rejects an invalid cadence, and a Loader composition test boots the plugin from cordis.yml and proves an unsupported cadence fails loudly during loading. The keyless assembled snapshots replay unchanged because the derived provenance ids are stable.
 
 ## Alternatives considered
 

@@ -6,7 +6,7 @@ Status: implemented
 
 ## 问题
 
-两个完整的插件包实现了只会话标题 LLM 提供方，其注册逻辑仅差一个节奏字面量和一个简单的消息选择器：`@buckeyestudio/toh-session-title-first-prompt-llm` 以 `first-prompt` 节奏选取第一条合格的用户消息，`@buckeyestudio/toh-session-title-all-prompts-llm` 以 `all-prompts` 节奏透传所有合格消息。这种拆分的代价是逐字节相同的 `Config` 块（各自都需要 jscpd 抑制），外加重复的清单、不变量伴随插件、双语 README 和测试套件。
+两个完整的插件包实现了会话标题 LLM 提供方，其注册逻辑仅差一个节奏字面量和一个简单的消息选择器：`@buckeyestudio/toh-session-title-first-prompt-llm` 以 `first-prompt` 节奏选取第一条合格的用户消息，`@buckeyestudio/toh-session-title-all-prompts-llm` 以 `all-prompts` 节奏透传所有合格消息。这种拆分的代价是逐字节相同的 `Config` 块（各自都需要 jscpd 抑制），外加重复的清单、不变量伴随插件、双语 README 和测试套件。
 
 `all-prompts` 孪生包还没有任何消费方：没有任何 bundle、示例、应用或 Python 运行时闭包组合它——只有它自己的清单提到它。与此同时，标题服务早已把节奏词表收拢为闭合联合（`SessionTitleAutomaticMode = 'first-prompt' | 'all-prompts'`），因此这些额外的包只增加了表面积，却没有带来任何部署可达的行为。
 

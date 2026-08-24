@@ -12,7 +12,7 @@ Session identity metadata is immutable, and the event log is the replay and fork
 
 ## Decision
 
-The [`session-title` capability family](../../../../packages/session/README.md) owns title state and generation policy. `@buckeyestudio/toh-session-title` provides `ctx.sessionTitle`, a deterministic first-prompt fallback, and a registry for at most one optional asynchronous provider. `@buckeyestudio/toh-session-title-llm` is the one model-backed provider plugin; its required validated `cadence` config selects first-prompt or all-prompts message selection. The shared agent spine mounts only the fallback service. The Web host mounts that service plus the model provider at the `first-prompt` cadence with explicit overridable limits, so a fresh Web session gains an immediate fallback and then a non-blocking model summary. Other compositions mount the provider explicitly with either cadence.
+The [`session-title` capability family](../../../../packages/session/README.md) owns title state and generation policy. `@buckeyestudio/toh-session-title` provides `ctx.sessionTitle`, a deterministic first-prompt fallback, and a registry for at most one optional asynchronous provider. `@buckeyestudio/toh-session-title-llm` is the one model-backed provider plugin; its required and validated `cadence` config selects first-prompt or all-prompts message selection. The shared agent spine mounts only the fallback service. The Web host mounts that service plus the model provider at the `first-prompt` cadence with explicit overridable limits, so a fresh Web session gains an immediate fallback and then a non-blocking model summary. Other compositions mount the provider explicitly with either cadence.
 
 ### Event ownership and folding
 
