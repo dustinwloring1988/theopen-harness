@@ -2,5 +2,5 @@
 # side as of the last confirmed-consistent state. Both languages carry equal authority;
 # after editing either side, bring the other along and re-record with:
 #   pnpm run verify-translation-pairing --write .agents/notes/implemented/bug-fix/2026-08-23-crash-orphaned-staging-temp-sweep.md
-2026-08-23-crash-orphaned-staging-temp-sweep.md: 495f235f6d1e72373cca20f692fac399c18b64a7
-2026-08-23-crash-orphaned-staging-temp-sweep.zh.md: b592e6ce3a8ea60245b9ea20e6d648fcceef30a5
+2026-08-23-crash-orphaned-staging-temp-sweep.md: 22f271fa403342b3be34926266082c08d059b9fe
+2026-08-23-crash-orphaned-staging-temp-sweep.zh.md: 143473aa42dae3066c81bd1b90fd8f0e30771b4c

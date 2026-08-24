@@ -53,6 +53,14 @@ function invokeInit(store: LocalAttachmentStore): Promise<void> {
   return (store as unknown as InitHook)[Service.init]()
 }
 
+/** Collect the sweep-related debug messages emitted through the context logger. */
+function sweptDebugs(ctx: Context): string[] {
+  return (vi.mocked(ctx.logger.debug).mock.calls
+    .map(([message]) => String(message))
+    .filter(message => message.includes('crash-orphaned staging files')
+      || message.includes('staging sweep skipped')))
+}
+
 beforeEach(() => {
   rmControl.failPath = undefined
 })
@@ -81,11 +89,14 @@ describe('attachment staging-residue sweep helper', () => {
     await writeFile(freshStage, 'partial')
     await backdate(staleStage)
 
-    // A *.tmp name beside a cache object is provable garbage at any age.
+    // A *.tmp name beside a cache object proves nothing published is affected,
+    // but not that its writer is dead: only the stale one is old enough to be
+    // residue, while a fresh one may be a live peer's rename-in-waiting.
     const staleTemp = join(bucket, 'ab12.uuid-1.tmp')
     const freshTemp = join(bucket, 'ab12.uuid-2.tmp')
     await writeFile(staleTemp, 'partial')
     await writeFile(freshTemp, 'partial')
+    await backdate(staleTemp)
 
     // A cached variant never carries .tmp and must survive even when stale.
     const cachedVariant = join(bucket, 'ab12')
@@ -97,14 +108,14 @@ describe('attachment staging-residue sweep helper', () => {
     const liveObject = join(objects, 'cd'.padEnd(64, '0'))
     await writeFile(liveObject, 'object-bytes')
 
-    // The cutoff sits between the two staging files' mtimes.
+    // The cutoff sits between each pair's mtimes.
     const swept = await sweepStagingResidue(storageRoot, Date.now() - 1_800_000)
 
-    expect(swept).toBe(3)
+    expect(swept).toBe(2)
     expect(existsSync(staleStage)).toBe(false)
     expect(existsSync(staleTemp)).toBe(false)
-    expect(existsSync(freshTemp)).toBe(false)
     expect(existsSync(freshStage)).toBe(true)
+    expect(existsSync(freshTemp)).toBe(true)
     expect(existsSync(cachedVariant)).toBe(true)
     expect(existsSync(stray)).toBe(true)
     expect(existsSync(liveObject)).toBe(true)
@@ -121,6 +132,7 @@ describe('attachment staging-residue sweep helper', () => {
     await writeFile(locked, 'partial')
     await writeFile(removable, 'partial')
     await backdate(locked)
+    await backdate(removable)
     rmControl.failPath = locked
 
     const swept = await sweepStagingResidue(storageRoot, Date.now())
@@ -153,10 +165,10 @@ describe('local attachment store open-time sweep', () => {
     const bucket = join(storageRoot, 'request-images', 'cd')
     await mkdir(tmp, { recursive: true })
     await mkdir(bucket, { recursive: true })
-    // Planted before open: the stale entry predates the process-start cutoff
-    // and is collected; the fresh and future-dated ones stand in for a
-    // concurrent writer's in-flight temp created after this process started
-    // and survive — a mount-time cutoff would collect the fresh one.
+    // Planted before open: the stale entries predate the process-start cutoff
+    // and are collected; the fresh and future-dated ones stand in for a
+    // concurrent writer's in-flight temps on both surfaces and survive — a
+    // mount-time cutoff would collect the fresh one.
     const staleStage = join(tmp, 'orphaned-uuid')
     const liveStage = join(tmp, 'in-flight-uuid')
     const freshStage = join(tmp, 'fresh-uuid')
@@ -167,7 +179,10 @@ describe('local attachment store open-time sweep', () => {
     const future = new Date(Date.now() + 3_600_000)
     await utimes(liveStage, future, future)
     const orphanTemp = join(bucket, 'ef01.uuid-4.tmp')
+    const peerTemp = join(bucket, 'ef01.uuid-5.tmp')
     await writeFile(orphanTemp, 'partial')
+    await writeFile(peerTemp, 'partial')
+    await backdate(orphanTemp)
 
     const ctx = new Context()
     const store = new LocalAttachmentStore(ctx, { tohHome: home })
@@ -177,6 +192,7 @@ describe('local attachment store open-time sweep', () => {
     expect(existsSync(liveStage)).toBe(true)
     expect(existsSync(freshStage)).toBe(true)
     expect(existsSync(orphanTemp)).toBe(false)
+    expect(existsSync(peerTemp)).toBe(true)
     expect(existsSync(tmp)).toBe(true)
 
     // The mounted store still publishes and serves objects after sweeping.
@@ -184,17 +200,39 @@ describe('local attachment store open-time sweep', () => {
     await expect(store.readImage(ref)).resolves.toEqual({ ref, data: PNG })
   })
 
-  it('still opens when the sweep fails to enumerate', async () => {
+  it('logs the swept count at debug when residue is removed', async () => {
+    const { home, storageRoot } = await freshHome()
+    const tmp = join(storageRoot, 'tmp')
+    await mkdir(tmp, { recursive: true })
+    const staleStage = join(tmp, 'orphaned-uuid')
+    await writeFile(staleStage, 'partial')
+    await backdate(staleStage)
+    const ctx = new Context()
+    const store = new LocalAttachmentStore(ctx, { tohHome: home })
+    vi.spyOn(ctx.logger, 'debug')
+
+    await invokeInit(store)
+
+    expect(sweptDebugs(ctx)).toEqual([
+      expect.stringContaining('swept 1 crash-orphaned staging files'),
+    ])
+  })
+
+  it('still opens when the sweep fails to enumerate, logging the error without counts', async () => {
     const { home, storageRoot } = await freshHome()
     await mkdir(storageRoot, { recursive: true })
     // A file where the staging directory belongs makes the sweep reject; the
     // mount must survive because the sweep is best-effort.
     await writeFile(join(storageRoot, 'tmp'), 'not a directory')
-
     const ctx = new Context()
     const store = new LocalAttachmentStore(ctx, { tohHome: home })
+    vi.spyOn(ctx.logger, 'debug')
+
     await invokeInit(store)
 
     expect(ctx.attachments).toBeDefined()
+    const [skipped] = sweptDebugs(ctx)
+    expect(skipped).toContain('staging sweep skipped')
+    expect(skipped).not.toContain('swept')
   })
 })

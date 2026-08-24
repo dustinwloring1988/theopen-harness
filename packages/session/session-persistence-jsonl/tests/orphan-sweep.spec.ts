@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Context } from '@buckeyestudio/cordis'
 import { existsSync } from 'node:fs'
-import { mkdtemp, mkdir, rm, writeFile, readFile } from 'node:fs/promises'
+import { mkdtemp, mkdir, rm, utimes, writeFile, readFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import SessionStore, { SessionId } from '@buckeyestudio/toh-session'
@@ -34,6 +34,20 @@ async function freshRoot(): Promise<string> {
   return dir
 }
 
+/** Backdate one path one hour so a startup sweep treats it as orphaned. */
+async function backdate(path: string): Promise<void> {
+  const stale = new Date(Date.now() - 3_600_000)
+  await utimes(path, stale, stale)
+}
+
+/** Collect the sweep-related debug messages emitted through the context logger. */
+function sweptDebugs(ctx: Context): string[] {
+  return (vi.mocked(ctx.logger.debug).mock.calls
+    .map(([message]) => String(message))
+    .filter(message => message.includes('crash-orphaned staging temporaries')
+      || message.includes('orphaned-temp sweep')))
+}
+
 afterEach(async () => {
   sweepFailure.root = undefined
   vi.restoreAllMocks()
@@ -60,29 +74,31 @@ describe('JsonlSessionPersistence: orphaned staging-temp sweep', () => {
     await ctx.plugin(SessionStore)
   }
 
-  it('removes crash-orphaned temporaries at open and preserves logs and non-matching files', async () => {
+  it('removes temporaries predating this process and preserves everything else', async () => {
     const root = await freshRoot()
     await seedLiveLog(root)
     const dir = sessionDir(root, '/work', id)
     const project = projectDir(root, '/work')
 
-    // Both residues are indistinguishable by mtime age; the *.tmp suffix is
-    // the garbage proof because publication always renames away from it.
-    const oldTmp = join(dir, 'session.jsonl.deadbeef.tmp')
-    const newTmp = join(dir, 'session.jsonl.cafe01.tmp')
-    await writeFile(oldTmp, '{"type":"turn/star')
-    await writeFile(newTmp, '{"type":"user/messa')
+    // Only age separates crash residue from an in-flight write: the stale
+    // temp predates this process, the fresh one could be a live peer's.
+    const orphanTmp = join(dir, 'session.jsonl.deadbeef.tmp')
+    const peerTmp = join(dir, 'session.jsonl.cafe01.tmp')
+    await writeFile(orphanTmp, '{"type":"turn/star')
+    await writeFile(peerTmp, '{"type":"user/messa')
+    await backdate(orphanTmp)
     const stray = join(dir, 'notes.txt')
     await writeFile(stray, 'not a temp')
     // Temps only ever exist inside session directories; a stale *.tmp beside
     // (not inside) a session directory is outside the sweep's tight scope.
     const misplacedTmp = join(project, 'session.jsonl.stray.tmp')
     await writeFile(misplacedTmp, '{"type":"turn/star')
+    await backdate(misplacedTmp)
 
     await ctx.plugin(JsonlSessionPersistence, { root, compression: 'none' })
 
-    expect(existsSync(oldTmp)).toBe(false)
-    expect(existsSync(newTmp)).toBe(false)
+    expect(existsSync(orphanTmp)).toBe(false)
+    expect(existsSync(peerTmp)).toBe(true)
     expect(existsSync(stray)).toBe(true)
     expect(existsSync(misplacedTmp)).toBe(true)
 
@@ -91,12 +107,27 @@ describe('JsonlSessionPersistence: orphaned staging-temp sweep', () => {
     expect((await ctx.sessionPersistence.list()).map(header => header.id)).toContain(id)
   })
 
+  it('spares a simulated peer writer temporary created after this process started', async () => {
+    const root = await freshRoot()
+    await seedLiveLog(root)
+    // A peer materializing right now writes its temp after this process
+    // started; the fresh mtime stands in for the publish still in flight.
+    const peerTemp = join(sessionDir(root, '/work', id), 'session.jsonl.ab12cd.tmp')
+    await writeFile(peerTemp, '{"type":"turn/star')
+
+    await ctx.plugin(JsonlSessionPersistence, { root, compression: 'none' })
+
+    expect(existsSync(peerTemp)).toBe(true)
+  })
+
   it('loads the surviving log byte-identically after sweeping', async () => {
     const root = await freshRoot()
     await seedLiveLog(root)
     const finalPath = logPath(root, '/work', id, 'none')
     const before = await readFile(finalPath, 'utf8')
-    await writeFile(join(sessionDir(root, '/work', id), 'session.jsonl.ab12cd.tmp'), 'partial')
+    const orphan = join(sessionDir(root, '/work', id), 'session.jsonl.ab12cd.tmp')
+    await writeFile(orphan, 'partial')
+    await backdate(orphan)
 
     await ctx.plugin(JsonlSessionPersistence, { root, compression: 'none' })
 
@@ -105,14 +136,33 @@ describe('JsonlSessionPersistence: orphaned staging-temp sweep', () => {
     expect(inspection.events.map(event => event.type)).toEqual(oneTurnLog().map(event => event.type))
   })
 
-  it('still opens when the sweep cannot enumerate the root', async () => {
+  it('logs the swept count at debug when residue is removed', async () => {
+    const root = await freshRoot()
+    await seedLiveLog(root)
+    const orphan = join(sessionDir(root, '/work', id), 'session.jsonl.deadbeef.tmp')
+    await writeFile(orphan, '{"type":"turn/star')
+    await backdate(orphan)
+    vi.spyOn(ctx.logger, 'debug')
+
+    await ctx.plugin(JsonlSessionPersistence, { root, compression: 'none' })
+
+    expect(sweptDebugs(ctx)).toEqual([
+      expect.stringContaining('swept 1 crash-orphaned staging temporaries'),
+    ])
+  })
+
+  it('still opens when the sweep cannot enumerate the root, logging the error without counts', async () => {
     const root = await freshRoot()
     sweepFailure.root = root
     await mkdir(join(root, 'project-x', 'sess'), { recursive: true })
+    vi.spyOn(ctx.logger, 'debug')
 
     const fiber = await ctx.plugin(JsonlSessionPersistence, { root, compression: 'none' })
 
     expect(ctx.sessionPersistence).toBeDefined()
+    const [skipped] = sweptDebugs(ctx)
+    expect(skipped).toContain('sweep skipped')
+    expect(skipped).not.toContain('swept')
     await fiber.dispose()
   })
 

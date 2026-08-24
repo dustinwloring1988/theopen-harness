@@ -186,9 +186,10 @@ export class LocalAttachmentStore extends AttachmentStore {
 
   /**
    * Sweep staging residue orphaned by a previous process's crash: entries of
-   * the private `tmp/` staging directory older than this process's start, and
-   * every `*.tmp` file beside a request-image cache object (publication never
-   * targets those names). The sweep is best-effort and never blocks the mount.
+   * the private `tmp/` staging directory and `*.tmp` files beside request-
+   * image cache objects, each collected only when its own mtime predates this
+   * process's start, since a newer file may belong to a live peer sharing the
+   * root. The sweep is best-effort and never blocks the mount.
    */
   protected async [Service.init](): Promise<void> {
     try {

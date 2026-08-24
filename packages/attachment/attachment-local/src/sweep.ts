@@ -2,12 +2,14 @@
  * Best-effort startup sweep of crash-orphaned staging residue in a local
  * attachment root. Object publication stages under `tmp/<uuid>` and hard-links
  * to the content-addressed target; request-image publication writes
- * `<hash>.<uuid>.tmp` beside the cache object and renames it into place. A
- * `*.tmp` name beside a cache object is therefore provable garbage — no
- * published variant ever carries that suffix — while `tmp/` staging entries
- * are indistinguishable from an in-flight write by name, so only those older
- * than this process's start are collected. The store sweeps both locations
- * once when it mounts.
+ * `<hash>.<uuid>.tmp` beside the cache object and renames it into place. No
+ * published object or cached variant ever takes a staged or `.tmp` name, and
+ * this process has created nothing yet at its own mount time, so residue from
+ * a writer that died before publishing is exactly the set of candidates older
+ * than this process's start — anything newer may belong to a live peer sharing
+ * the root and waits for a later mount. Both swept locations apply that age
+ * discriminator to each candidate's own (never symlink-followed) mtime. The
+ * store sweeps both locations once when it mounts.
  *
  * @module @buckeyestudio/toh-attachment-local/sweep
  */
@@ -19,11 +21,11 @@ import { join } from 'node:path'
 const TEMP_SUFFIX = /\.tmp$/
 
 /**
- * Delete crash residue below `root`: every entry of `<root>/tmp` whose own
- * mtime predates `startedBeforeMs`, plus every `*.tmp` file in
- * `<root>/request-images/<prefix>/`. Stored objects, cached variants, and
- * non-matching files are untouched. Individual failures are skipped so one
- * locked entry cannot hide the rest; only an enumeration failure propagates.
+ * Delete crash residue below `root`: every entry of `<root>/tmp` and every
+ * `*.tmp` file in `<root>/request-images/<prefix>/` whose own mtime predates
+ * `startedBeforeMs`. Stored objects, cached variants, and non-matching files
+ * are untouched. Individual failures are skipped so one locked entry cannot
+ * hide the rest; only an enumeration failure propagates.
  * @param root - absolute versioned attachment storage root (`attachments/v1`).
  * @param startedBeforeMs - epoch milliseconds of this process's start.
  * @returns the number of files removed.
@@ -31,7 +33,7 @@ const TEMP_SUFFIX = /\.tmp$/
  */
 export async function sweepStagingResidue(root: string, startedBeforeMs: number): Promise<number> {
   return await sweepTmpDir(join(root, 'tmp'), startedBeforeMs)
-    + await sweepRequestImageTemps(join(root, 'request-images'))
+    + await sweepRequestImageTemps(join(root, 'request-images'), startedBeforeMs)
 }
 
 /** Remove every stale file directly inside the private staging directory. */
@@ -51,8 +53,8 @@ async function sweepTmpDir(staging: string, startedBeforeMs: number): Promise<nu
   return swept
 }
 
-/** Remove every `*.tmp` file inside each two-hex-character request-image bucket. */
-async function sweepRequestImageTemps(cacheRoot: string): Promise<number> {
+/** Remove every stale `*.tmp` file inside each two-hex-character request-image bucket. */
+async function sweepRequestImageTemps(cacheRoot: string, startedBeforeMs: number): Promise<number> {
   let swept = 0
   for (const bucket of await listDirectories(cacheRoot)) {
     let entries
@@ -65,13 +67,7 @@ async function sweepRequestImageTemps(cacheRoot: string): Promise<number> {
     for (const entry of entries) {
       if (!TEMP_SUFFIX.test(entry.name)) continue
       if (!entry.isFile() && !entry.isSymbolicLink()) continue
-      try {
-        // rm on a symlink deletes the link itself; it never follows into a target.
-        await rm(join(bucket, entry.name), { force: true })
-        swept += 1
-      } catch {
-        // A vanished or locked temp stays behind; the next startup retries it.
-      }
+      if (await removeIfStale(join(bucket, entry.name), startedBeforeMs)) swept += 1
     }
   }
   return swept

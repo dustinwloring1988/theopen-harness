@@ -1,36 +1,40 @@
 /**
  * Best-effort startup sweep of crash-orphaned staging temporaries in a JSONL
  * storage root. Materialization writes `session<suffix>.<random>.tmp` beside
- * the final log and publishes it by link or no-overwrite rename, so any
- * surviving `*.tmp` file inside a session directory is residue from a process
- * that died between the temp write and publication — discovery never reads
- * those names. The sweep runs once when the backend mounts.
+ * the final log and publishes it by link or no-overwrite rename, so no
+ * published log ever carries the suffix while this process has created no
+ * temporary at its own mount time. A surviving `*.tmp` file inside a session
+ * directory is therefore residue when its mtime predates this process's start;
+ * anything newer may belong to a live peer sharing the root and waits for a
+ * later mount. The sweep runs once when the backend mounts.
  *
  * @module toh-session-persistence-jsonl/sweep
  */
 
-import { readdir, rm } from 'node:fs/promises'
+import { lstat, readdir, rm } from 'node:fs/promises'
 import { join } from 'node:path'
 
 /** Staging temporaries always carry this suffix; published logs never do. */
 const TEMP_SUFFIX = /\.tmp$/
 
 /**
- * Delete every `*.tmp` file inside every session directory below `root`. The
- * name is the garbage proof: a published log always takes the
- * `session.jsonl`/`session.jsonl.zstd` form, never `*.tmp`. Directories,
- * non-matching files, and logs are untouched. Individual failures are skipped
- * so one locked entry cannot hide the rest; only a failure to enumerate
- * propagates.
+ * Delete every `*.tmp` file inside every session directory below `root` whose
+ * own mtime predates `startedBeforeMs`. Publication always targets the
+ * `session.jsonl`/`session.jsonl.zstd` form, never `*.tmp`, so no published
+ * log is reachable, and the age cutoff keeps an in-flight write by a live peer
+ * safe. Directories, non-matching files, and logs are untouched. Individual
+ * failures are skipped so one locked entry cannot hide the rest; only a
+ * failure to enumerate propagates.
  * @param root - resolved JSONL storage root (may not exist yet).
+ * @param startedBeforeMs - epoch milliseconds of this process's start.
  * @returns the number of temporaries removed.
  * @throws the enumeration error when the root or a project directory cannot be read.
  */
-export async function sweepOrphanedTemps(root: string): Promise<number> {
+export async function sweepOrphanedTemps(root: string, startedBeforeMs: number): Promise<number> {
   let swept = 0
   for (const project of await listDirectories(root)) {
     for (const dir of await listDirectories(project)) {
-      swept += await sweepDirectoryTemps(dir)
+      swept += await sweepDirectoryTemps(dir, startedBeforeMs)
     }
   }
   return swept
@@ -51,8 +55,8 @@ async function listDirectories(path: string): Promise<string[]> {
 }
 /* jscpd:ignore-end */
 
-/** Remove `*.tmp` files directly inside one session directory. */
-async function sweepDirectoryTemps(dir: string): Promise<number> {
+/** Remove stale `*.tmp` files directly inside one session directory. */
+async function sweepDirectoryTemps(dir: string, startedBeforeMs: number): Promise<number> {
   let swept = 0
   let entries
   try {
@@ -66,6 +70,9 @@ async function sweepDirectoryTemps(dir: string): Promise<number> {
     if (!entry.isFile() && !entry.isSymbolicLink()) continue
     const path = join(dir, entry.name)
     try {
+      // lstat never follows a symlink: a planted link must not borrow the freshness of its target.
+      const info = await lstat(path)
+      if (info.mtimeMs >= startedBeforeMs) continue
       // rm on a symlink deletes the link itself; it never follows into a target.
       await rm(path, { force: true })
       swept += 1
