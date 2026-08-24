@@ -19,6 +19,9 @@
       "path": "../../llm/llm"
     },
     {
+      "path": "../../skill/skill"
+    },
+    {
       "path": "../../core/tools"
     },
     {

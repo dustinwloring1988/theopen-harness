@@ -47,6 +47,7 @@
     "@buckeyestudio/toh-loader-smoke": "workspace:*",
     "@buckeyestudio/toh-lsp": "workspace:*",
     "@buckeyestudio/toh-lsp-stdio": "workspace:*",
+    "@buckeyestudio/toh-mcp-client": "workspace:*",
     "@buckeyestudio/toh-permission-presets": "workspace:*",
     "@buckeyestudio/toh-plan-mode": "workspace:*",
     "@buckeyestudio/toh-terminal": "workspace:*",

@@ -338,8 +338,8 @@ const SERVICE_ROLES: ServiceRole[] = [
     title: 'Skill provider registry',
     mode: 'seam',
     implementations: ['skill-badge', 'skill-filesystem'],
-    consumers: ['tool-skill'],
-    note: 'Merges provider skill catalogs; tool-skill renders the session-prefix catalog and loads complete skill bodies.',
+    consumers: ['mcp-client', 'tool-skill'],
+    note: 'Merges provider skill catalogs; tool-skill renders the session-prefix catalog and loads complete skill bodies, and mcp-client publishes connected MCP servers\' prompts as opt-in provider candidates.',
   },
   {
     key: 'agents',

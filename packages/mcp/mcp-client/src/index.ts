@@ -1,14 +1,17 @@
 /**
  * MCP client bridge plugin: connects to an external MCP server and registers
  * its tools on `ctx.tools` under server-qualified public names
- * (`mcp__<serverName>__<rawName>`). Each plugin instance connects to one MCP
+ * (`mcp__<serverName>__<rawName>`). When `prompts.enabled` is set, the same
+ * connection also publishes the server's MCP Prompts as skill-provider
+ * candidates on `ctx.skills`. Each plugin instance connects to one MCP
  * server; load multiple instances in `cordis.yml` for multiple servers.
  *
  * Namespace plugin (named exports, no default export). Lifecycle is
  * effect-scoped: disposal disconnects from the server, unregisters all tools,
- * and releases the `serverName` namespace reservation. HMR hot-swaps by
- * disposing the old instance and creating a new one; identical `serverName`
- * reproduces identical public tool names.
+ * unregisters the prompts skill provider, and releases the `serverName`
+ * namespace reservation. HMR hot-swaps by disposing the old instance and
+ * creating a new one; identical `serverName` reproduces identical public tool
+ * names.
  *
  * @module @buckeyestudio/toh-mcp-client
  */
@@ -18,11 +21,16 @@ import z from '@buckeyestudio/schemastery'
 import { MAX_TIMER_DELAY_MS } from '@buckeyestudio/toh-timeout'
 import { RECONNECT_DEFAULTS, resolveReconnectPolicy, startConnection } from './connection.ts'
 import type { ReconnectConfig } from './connection.ts'
-// Side-effect type import: declaration-merges `ctx.tools` onto Context.
+import { PROMPTS_DEFAULTS, registerPromptsBridge, resolvePromptsPolicy } from './prompts.ts'
+import type { PromptsBridge, PromptsConfig } from './prompts.ts'
+// Side-effect type imports: declaration-merge `ctx.tools` and `ctx.skills`.
+import type {} from '@buckeyestudio/toh-skill'
 import type {} from '@buckeyestudio/toh-tools'
 
 export type { McpResult } from './tools.ts'
 export type { ReconnectConfig, ResolvedReconnectPolicy } from './connection.ts'
+export type { PromptsConfig, PromptLocator, ResolvedPromptsPolicy } from './prompts.ts'
+export { PROMPTS_DEFAULTS, promptSkillSlug, resolvePromptsPolicy } from './prompts.ts'
 
 /** Cordis plugin name used by loader diagnostics. */
 export const name = 'mcp-client'
@@ -70,6 +78,8 @@ export interface StdioConfig {
   failOnStartupError: boolean
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
   reconnect?: ReconnectConfig
+  /** MCP Prompts bridged into the skill registry; omission leaves prompts unbridged. */
+  prompts?: PromptsConfig
 }
 
 /** Config for connecting to an MCP server over Streamable HTTP (SSE). */
@@ -92,6 +102,8 @@ export interface StreamableHttpConfig {
   failOnStartupError: boolean
   /** Automatic reconnect policy after a lost connection; omission uses the defaults. */
   reconnect?: ReconnectConfig
+  /** MCP Prompts bridged into the skill registry; omission leaves prompts unbridged. */
+  prompts?: PromptsConfig
 }
 
 /** Configuration for one stdio or Streamable HTTP MCP server. */
@@ -102,6 +114,11 @@ const Reconnect: z<ReconnectConfig> = z.object({
   initialDelayMs: z.number().min(1).max(MAX_TIMER_DELAY_MS).default(RECONNECT_DEFAULTS.initialDelayMs),
   maxDelayMs: z.number().min(1).max(MAX_TIMER_DELAY_MS).default(RECONNECT_DEFAULTS.maxDelayMs),
   maxAttempts: z.number().step(1).min(1).max(Number.MAX_SAFE_INTEGER).default(RECONNECT_DEFAULTS.maxAttempts),
+})
+
+const Prompts: z<PromptsConfig> = z.object({
+  enabled: z.boolean().default(PROMPTS_DEFAULTS.enabled),
+  modelInvocable: z.boolean().default(PROMPTS_DEFAULTS.modelInvocable),
 })
 
 export const Config = z.union([
@@ -115,6 +132,7 @@ export const Config = z.union([
     toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
     failOnStartupError: z.boolean().default(false),
     reconnect: Reconnect,
+    prompts: Prompts,
   }),
   z.object({
     transport: z.const('streamable-http'),
@@ -124,6 +142,7 @@ export const Config = z.union([
     toolCallTimeoutMs: z.number().default(DEFAULT_TOOL_CALL_TIMEOUT_MS),
     failOnStartupError: z.boolean().default(false),
     reconnect: Reconnect,
+    prompts: Prompts,
   }),
 ]) as unknown as z<Config>
 
@@ -142,6 +161,25 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
   // construction that bypassed Schemastery) rejects THIS instance before any
   // effect registers.
   const reconnect = resolveReconnectPolicy(config.reconnect, `mcp-client(${config.serverName}): reconnect`)
+  const promptsPolicy = resolvePromptsPolicy(config.prompts, `mcp-client(${config.serverName}): prompts`)
+
+  // Prompts bridging is opt-in and needs the skill registry. A missing service
+  // is a self-contained misconfiguration: fail this instance at load instead
+  // of silently dropping the configured bridge.
+  let promptsBridge: PromptsBridge | undefined
+  if (promptsPolicy.enabled) {
+    const skills = ctx.get('skills')
+    if (skills === undefined) {
+      throw new Error(
+        `mcp-client(${config.serverName}): prompts.enabled requires the skill registry — mount @buckeyestudio/toh-skill or set prompts.enabled: false`,
+      )
+    }
+    promptsBridge = registerPromptsBridge(ctx, skills, {
+      serverName: config.serverName,
+      modelInvocable: promptsPolicy.modelInvocable,
+      toolCallTimeoutMs: config.toolCallTimeoutMs,
+    })
+  }
 
   // Reserve the namespace next: a duplicate `serverName` fails THIS instance
   // at load with an actionable error and leaves the earlier instance intact.
@@ -162,8 +200,9 @@ export async function apply(ctx: Context, config: Config): Promise<void> {
 
   // The supervisor owns the client/transport generations, the reconnect
   // loop, and the live tool registrations; disposal stops reconnection,
-  // quiesces in-flight work, and unregisters the current generation.
-  const connection = startConnection(ctx, config, reconnect)
+  // quiesces in-flight work, and unregisters the current generation (plus
+  // the prompts skill provider, when bridging is enabled).
+  const connection = startConnection(ctx, config, reconnect, promptsBridge)
 
   ctx.effect(() => {
     return () => connection.dispose()

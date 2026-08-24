@@ -1,0 +1,25 @@
+# Exercise the bridged MCP Prompts through the shipped ACP app and Loader entry path.
+# The client row activates ahead of the app tree, so its tools and prompt
+# candidates are registered before the server accepts any session. The
+# scenario workspace supplies the deterministic stdio MCP server used by this
+# test composition.
+- id: mcp-fixture
+  name: '@buckeyestudio/toh-mcp-client'
+  config:
+    transport: stdio
+    serverName: fixture
+    command: !!js process.execPath
+    args: ['./mcp-fixture-server.mjs']
+    failOnStartupError: true
+    reconnect:
+      enabled: true
+      initialDelayMs: 5
+      maxDelayMs: 40
+      maxAttempts: 5
+    prompts:
+      enabled: true
+
+- id: base
+  name: '@buckeyestudio/cordis-plugin-include'
+  config:
+    path: ../cordis.yml
