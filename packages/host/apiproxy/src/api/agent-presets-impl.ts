@@ -23,6 +23,34 @@ export interface AgentPresetsDeps {
   agentFor: (sessionId: SessionId) => Promise<{ agent: Agent } | { error: RpcError }>
 }
 
+/**
+ * Run one operation behind its key's queue: each call chains onto the previous
+ * call's settlement, so concurrent calls for one key compose in arrival order.
+ * The link stored under the key is the settled (never-rejecting) derivative of
+ * the caller's turn, and the cleanup compares against THAT object — comparing
+ * the raw turn never matches, so the entry and every retained closure would
+ * survive each call and grow the map for the host lifetime.
+ * @param queues - per-key operation chains, mutated for the duration of the call.
+ * @param key - the key whose chain this call joins.
+ * @param operation - the operation to run once earlier calls have settled.
+ * @returns the operation's own outcome, rejections included.
+ */
+export async function runQueued<K, T>(
+  queues: Map<K, Promise<unknown>>,
+  key: K,
+  operation: () => Promise<T>,
+): Promise<T> {
+  const queued = queues.get(key) ?? Promise.resolve()
+  const turn = queued.then(operation)
+  const settled = turn.catch(() => undefined)
+  queues.set(key, settled)
+  try {
+    return await turn
+  } finally {
+    if (queues.get(key) === settled) queues.delete(key)
+  }
+}
+
 /** The roster is absent: this deployment composes no agent presets at all. */
 function noRoster(agentPreset: string): RpcError {
   return {
@@ -132,14 +160,7 @@ export function createAgentPresetsImpl(ctx: Context, defaults: ApiProxyDefaults,
           })
         }
       }
-      const queued = presetSwitches.get(sessionId) ?? Promise.resolve()
-      const turn = queued.then(swap)
-      presetSwitches.set(sessionId, turn.catch(() => undefined))
-      try {
-        return await turn
-      } finally {
-        if (presetSwitches.get(sessionId) === turn) presetSwitches.delete(sessionId)
-      }
+      return runQueued(presetSwitches, sessionId, swap)
     },
 
     // Authoring is privileged (see PRIVILEGED_METHODS in toh-client-connection):

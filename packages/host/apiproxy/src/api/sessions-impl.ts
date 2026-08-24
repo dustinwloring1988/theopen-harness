@@ -160,10 +160,10 @@ class AgentPresetConflict extends Error {
     readonly existingPreset: string | undefined,
   ) {
     super(
-      existingPreset === undefined
+      (existingPreset === undefined
         ? `session "${sessionId}" records no agent preset, so it cannot be adopted under one; `
-        + 'a deployment composing no roster records none on any session — '
-        : `session "${sessionId}" already runs agent preset ${JSON.stringify(existingPreset)}; `
+          + 'a deployment composing no roster records none on any session — '
+        : `session "${sessionId}" already runs agent preset ${JSON.stringify(existingPreset)}; `)
       + `requested ${JSON.stringify(requestedPreset)}. A session's preset is fixed at creation.`,
     )
   }
