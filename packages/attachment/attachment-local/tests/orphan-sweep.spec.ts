@@ -154,12 +154,15 @@ describe('local attachment store open-time sweep', () => {
     await mkdir(tmp, { recursive: true })
     await mkdir(bucket, { recursive: true })
     // Planted before open: the stale entry predates the process-start cutoff
-    // and is collected; the future-dated one stands in for a concurrent
-    // writer's in-flight temp created after this process started and survives.
+    // and is collected; the fresh and future-dated ones stand in for a
+    // concurrent writer's in-flight temp created after this process started
+    // and survive — a mount-time cutoff would collect the fresh one.
     const staleStage = join(tmp, 'orphaned-uuid')
     const liveStage = join(tmp, 'in-flight-uuid')
+    const freshStage = join(tmp, 'fresh-uuid')
     await writeFile(staleStage, 'partial')
     await writeFile(liveStage, 'partial')
+    await writeFile(freshStage, 'partial')
     await backdate(staleStage)
     const future = new Date(Date.now() + 3_600_000)
     await utimes(liveStage, future, future)
@@ -172,6 +175,7 @@ describe('local attachment store open-time sweep', () => {
 
     expect(existsSync(staleStage)).toBe(false)
     expect(existsSync(liveStage)).toBe(true)
+    expect(existsSync(freshStage)).toBe(true)
     expect(existsSync(orphanTemp)).toBe(false)
     expect(existsSync(tmp)).toBe(true)
 

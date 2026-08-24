@@ -1,6 +1,7 @@
 /** Local durable attachment backend rooted below `TOH_HOME`. @module @buckeyestudio/toh-attachment-local */
 
 import { join, resolve } from 'node:path'
+import { performance } from 'node:perf_hooks'
 import { Context, Service } from '@buckeyestudio/cordis'
 import z from '@buckeyestudio/schemastery'
 import { AttachmentStore } from '@buckeyestudio/toh-attachment'
@@ -191,7 +192,7 @@ export class LocalAttachmentStore extends AttachmentStore {
    */
   protected async [Service.init](): Promise<void> {
     try {
-      const swept = await sweepStagingResidue(this.root, Date.now())
+      const swept = await sweepStagingResidue(this.root, performance.timeOrigin)
       if (swept > 0) this.ctx.logger.debug(`attachment-local: swept ${swept} crash-orphaned staging files`)
     } catch (error) {
       // Residue is harmless: publication never reads staging or *.tmp names.
