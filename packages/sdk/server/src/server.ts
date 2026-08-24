@@ -48,8 +48,11 @@ function successStatus(reason: string, options: HarnessSdkJsonRpcServerOptions):
 
 /**
  * SDK server over one booted harness context and transport peer. Construction
- * subscribes to session, agent, and subagent lifecycle events until shutdown;
- * reinitialization is unsupported.
+ * subscribes to session, agent, and subagent lifecycle events until shutdown.
+ * Repeated initialize calls queue in arrival order and replace the previously
+ * server-mounted adapter; switching to another registered provider disposes
+ * that adapter instead of mounting. Initialize during or after shutdown is
+ * refused, and shutdown waits for handshakes accepted before it began.
  */
 export class HarnessSdkJsonRpcServer {
   private cwd = process.cwd()
@@ -57,9 +60,12 @@ export class HarnessSdkJsonRpcServer {
   private model = 'deepseek-official'
   private maxTokens: number | undefined
   private llmFiber: { dispose(): Promise<void> } | undefined
+  private llmFiberProvider: string | undefined
+  private pendingLlmDisposal: Promise<void> | undefined
   private readonly sessions = new Map<string, SessionRecord>()
   private readonly sessionCreations = new Map<string, Promise<SessionRecord>>()
   private readonly disposers: (() => void)[] = []
+  private initializeTail: Promise<void> | undefined
   private shutdownTask: Promise<Record<string, never>> | undefined
   private shuttingDown = false
 
@@ -105,11 +111,22 @@ export class HarnessSdkJsonRpcServer {
   }
 
   /**
-   * Configure the SDK route, mounting the DeepSeek fallback only when unowned.
+   * Configure the SDK route, replacing any previously server-mounted adapter;
+   * selecting another registered provider disposes that adapter without a
+   * replacement mount. Concurrent calls queue in arrival order; a call that
+   * overlaps shutdown is rejected and disposes the adapter it mounted, if any.
    * @param params - SDK handshake parameters.
    * @returns server identity for the handshake.
    */
   async initialize(params: InitializeParams): Promise<InitializeResult> {
+    const previous = this.initializeTail ?? Promise.resolve()
+    const task = previous.then(() => this.performInitialize(params))
+    this.initializeTail = task.then(() => undefined, () => undefined)
+    return task
+  }
+
+  private async performInitialize(params: InitializeParams): Promise<InitializeResult> {
+    if (this.shuttingDown) throw new Error('SDK server is shutting down')
     if (params.maxTokens !== undefined
       && (!Number.isSafeInteger(params.maxTokens) || params.maxTokens <= 0)) {
       throw new TypeError('initialize maxTokens must be a positive safe integer')
@@ -118,11 +135,63 @@ export class HarnessSdkJsonRpcServer {
     this.provider = params.provider
     this.model = params.model
     this.maxTokens = params.maxTokens
+
+    // A mounted fallback registers its own provider, so a repeated initialize
+    // for that provider releases it before the adapter-presence check;
+    // otherwise the check reads the fallback as an external owner and keeps
+    // the stale mount past its replacement.
+    if (this.llmFiber !== undefined && this.llmFiberProvider === this.provider) {
+      await this.disposeServerMountedFiber()
+      if (this.shutdownStarted()) throw new Error('SDK server is shutting down')
+    }
     if (!this.hasAdapterFor(this.provider)) {
       if (this.provider !== 'deepseek-official') throw new Error(`no adapter registered for provider "${this.provider}"`)
-      this.llmFiber = await this.ctx.plugin(LlmDeepSeek, {})
+      await this.disposeServerMountedFiber()
+      const mounted = await this.ctx.plugin(LlmDeepSeek, {})
+      this.llmFiber = mounted
+      this.llmFiberProvider = this.provider
+      // A shutdown that started mid-mount waits behind this handshake, so the
+      // disposal routes through the tracked helper: success releases
+      // ownership, failure keeps the fiber stored for the teardown sweep to
+      // retry and report while the rejection reaches this caller.
+      if (this.shutdownStarted()) {
+        await this.disposeServerMountedFiber()
+        throw new Error('SDK server is shutting down')
+      }
+    } else if (this.llmFiber !== undefined && this.llmFiberProvider !== this.provider) {
+      // The selected provider owns its adapter, so the server-mounted fallback
+      // for the previous provider is obsolete even though no replacement mounts.
+      await this.disposeServerMountedFiber()
+      // Nothing remains for this run to mount or sweep, but a shutdown that
+      // started mid-disposal still surfaces as this call's rejection instead
+      // of a success response that every later request contradicts.
+      if (this.shutdownStarted()) throw new Error('SDK server is shutting down')
     }
     return { serverInfo: { name: 'theopen-harness-sdk-runtime', version: '0.0.1' } }
+  }
+
+  /**
+   * Dispose the current server-mounted adapter once, tracking the attempt so a
+   * concurrent shutdown awaits it instead of issuing a second disposal.
+   * Success releases ownership; failure leaves the fiber in {@linkcode llmFiber}
+   * for shutdown to retry and report while the rejection propagates to the
+   * initialize caller.
+   */
+  private async disposeServerMountedFiber(): Promise<void> {
+    const superseded = this.llmFiber
+    if (superseded === undefined) return
+    const disposal = Promise.resolve().then(() => superseded.dispose())
+    this.pendingLlmDisposal = disposal.then(() => undefined, () => undefined)
+    await disposal
+    if (this.llmFiber === superseded) {
+      this.llmFiber = undefined
+      this.llmFiberProvider = undefined
+    }
+  }
+
+  /** Read after any await: concurrent shutdown flips the flag across suspension points. */
+  private shutdownStarted(): boolean {
+    return this.shuttingDown
   }
 
   /**
@@ -145,7 +214,8 @@ export class HarnessSdkJsonRpcServer {
 
   /**
    * Dispose server-owned agents, adapter, and subscriptions to quiescence.
-   * The surrounding context remains running.
+   * Handshakes accepted before shutdown entry settle first. The surrounding
+   * context remains running.
    * @returns empty JSON-RPC result.
    */
   shutdown(): Promise<Record<string, never>> {
@@ -155,6 +225,15 @@ export class HarnessSdkJsonRpcServer {
 
   private async performShutdown(): Promise<Record<string, never>> {
     this.shuttingDown = true
+    // Handshakes accepted before shutdown entry finish first: each mount
+    // either lands in llmFiber for the sweep below or disposes itself, and a
+    // superseded disposal settles before the teardown snapshot is taken. The
+    // tail never rejects; its per-call errors already reached their callers.
+    const initializationTail = this.initializeTail
+    if (initializationTail !== undefined) await initializationTail
+    const pendingDisposal = this.pendingLlmDisposal
+    if (pendingDisposal !== undefined) await pendingDisposal
+    this.pendingLlmDisposal = undefined
     const pendingCreations = [...this.sessionCreations.values()]
     await Promise.allSettled(pendingCreations)
     this.sessionCreations.clear()
@@ -173,6 +252,7 @@ export class HarnessSdkJsonRpcServer {
       ...(this.llmFiber === undefined ? [] : [Promise.resolve().then(() => this.llmFiber?.dispose())]),
     ])
     this.llmFiber = undefined
+    this.llmFiberProvider = undefined
     failures.push(...teardownResults
       .filter((result): result is PromiseRejectedResult => result.status === 'rejected')
       .map(result => result.reason as unknown))
