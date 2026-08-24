@@ -75,6 +75,7 @@ const GROUP_ORDER = [
   'e2b',
   'fs',
   'skill',
+  'memory',
   'compact',
   'subagent',
   'tasks',
@@ -284,7 +285,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'tools',
     title: 'Tool registry and guarded execution pipeline',
     mode: 'core',
-    consumers: ['agent-loop', 'tool-ask-user', 'tool-bash', 'tool-cordis', 'tool-fs', 'tool-terminal', 'tool-skill', 'tool-subagent', 'tool-todo', 'tool-web'],
+    consumers: ['agent-loop', 'tool-ask-user', 'tool-bash', 'tool-cordis', 'tool-fs', 'tool-memory', 'tool-terminal', 'tool-skill', 'tool-subagent', 'tool-todo', 'tool-web'],
     note: 'Registers capabilities, owns Code Mode transport, and routes calls through pre-policy, monotonic guards, around dispatch, post-policy, and final-result observation.',
   },
   {
@@ -340,6 +341,15 @@ const SERVICE_ROLES: ServiceRole[] = [
     implementations: ['skill-badge', 'skill-filesystem'],
     consumers: ['tool-skill'],
     note: 'Merges provider skill catalogs; tool-skill renders the session-prefix catalog and loads complete skill bodies.',
+  },
+  {
+    key: 'memory',
+    pkg: 'memory',
+    title: 'Cross-session fact memory seam',
+    mode: 'seam',
+    implementations: ['memory-local'],
+    consumers: ['tool-memory'],
+    note: 'Providers own where facts persist and how queries match (keyword subset today); the registry owns the provider map, execution-time selection, and memory/changed emissions, and tool-memory exposes remember/recall/forget to the model.',
   },
   {
     key: 'agents',

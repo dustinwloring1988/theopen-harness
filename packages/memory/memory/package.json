@@ -1,0 +1,48 @@
+{
+  "name": "@buckeyestudio/toh-memory",
+  "description": "Cross-session fact memory registry seam for the TheOpen Harness",
+  "version": "0.1.1-rc.2",
+  "publishConfig": {
+    "access": "public"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dustinwloring1988/theopen-harness.git",
+    "directory": "packages/memory/memory"
+  },
+  "type": "module",
+  "main": "lib/index.js",
+  "types": "lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./lib/types/index.d.ts",
+      "default": "./lib/index.js"
+    },
+    "./invariant": {
+      "types": "./lib/types/invariant.d.ts",
+      "default": "./lib/invariant.js"
+    },
+    "./src/*": "./src/*",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/invariant.js",
+    "lib/types/**/*.d.ts"
+  ],
+  "license": "MIT",
+  "author": "buckeyestudio",
+  "peerDependencies": {
+    "@buckeyestudio/toh-brand": "workspace:^",
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/cordis": "workspace:^"
+  },
+  "dependencies": {
+    "@buckeyestudio/schemastery": "workspace:^"
+  },
+  "devDependencies": {
+    "@buckeyestudio/toh-brand": "workspace:^",
+    "@buckeyestudio/toh-invariants": "workspace:^",
+    "@buckeyestudio/cordis": "workspace:^"
+  }
+}

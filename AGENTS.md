@@ -22,6 +22,7 @@ packages/    @buckeyestudio/toh-<pkg> workspaces at packages/<group>/<pkg>/
   fs/          filesystem capability + policy
   lsp/         language-server capability
   skill/       skill provider registry + local impl + catalog/loader tool
+  memory/      cross-session fact memory seam + local provider + tools
   web/         web capability: Service Definition + search/fetch providers + tool Consumer
   compaction/     compaction capability + basic provider
   context/     request-context plugins

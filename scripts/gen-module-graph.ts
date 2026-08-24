@@ -25,6 +25,7 @@ const GROUP_ORDER = [
   'bash',
   'fs',
   'skill',
+  'memory',
   'compact',
   'subagent',
   'web',
