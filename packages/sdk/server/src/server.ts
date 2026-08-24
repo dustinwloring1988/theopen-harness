@@ -134,19 +134,29 @@ export class HarnessSdkJsonRpcServer {
     this.provider = params.provider
     this.model = params.model
     this.maxTokens = params.maxTokens
+
+    // A mounted fallback registers its own provider, so a repeated initialize
+    // for that provider releases it before the adapter-presence check;
+    // otherwise the check reads the fallback as an external owner and keeps
+    // the stale mount past its replacement.
+    if (this.llmFiber !== undefined && this.llmFiberProvider === this.provider) {
+      await this.disposeServerMountedFiber()
+      if (this.shutdownStarted()) throw new Error('SDK server is shutting down')
+    }
     if (!this.hasAdapterFor(this.provider)) {
       if (this.provider !== 'deepseek-official') throw new Error(`no adapter registered for provider "${this.provider}"`)
       await this.disposeServerMountedFiber()
       const mounted = await this.ctx.plugin(LlmDeepSeek, {})
-      // A shutdown that started mid-mount sweeps only after this handshake
-      // settles, so disposing the unstored mount here keeps its cleanup inside
-      // the awaited initialization tail instead of racing the teardown sweep.
-      if (this.shutdownStarted()) {
-        await mounted.dispose()
-        throw new Error('SDK server is shutting down')
-      }
       this.llmFiber = mounted
       this.llmFiberProvider = this.provider
+      // A shutdown that started mid-mount waits behind this handshake, so the
+      // disposal routes through the tracked helper: success releases
+      // ownership, failure keeps the fiber stored for the teardown sweep to
+      // retry and report while the rejection reaches this caller.
+      if (this.shutdownStarted()) {
+        await this.disposeServerMountedFiber()
+        throw new Error('SDK server is shutting down')
+      }
     } else if (this.llmFiber !== undefined && this.llmFiberProvider !== this.provider) {
       // The selected provider owns its adapter, so the server-mounted fallback
       // for the previous provider is obsolete even though no replacement mounts.

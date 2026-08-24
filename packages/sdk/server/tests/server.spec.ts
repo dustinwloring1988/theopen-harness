@@ -949,14 +949,9 @@ describe('HarnessSdkJsonRpcServer', () => {
   })
 
   it('awaits an in-flight superseded disposal before completing shutdown', async () => {
-    const disposed: number[] = []
     const disposalGate = Promise.withResolvers<'released'>()
     const firstFiber = { dispose: vi.fn(() => disposalGate.promise) }
-    let mounts = 0
-    const plugin = vi.fn(async () => {
-      mounts += 1
-      return mounts === 1 ? firstFiber : adapterFiber(2, disposed)
-    })
+    const plugin = vi.fn(async () => firstFiber)
     const server = new HarnessSdkJsonRpcServer(makeAdapterContext(plugin), new FakeTransport())
     const params = { cwd: '.', provider: 'deepseek-official', model: 'model' }
 
@@ -976,7 +971,9 @@ describe('HarnessSdkJsonRpcServer', () => {
     await expect(second).rejects.toThrow('SDK server is shutting down')
     await shutdownTask
     expect(firstFiber.dispose).toHaveBeenCalledOnce()
-    expect(disposed).toEqual([2])
+    // The overlapping repeat rejects before mounting a replacement, so no
+    // fresh adapter ever exists for the sweep to dispose.
+    expect(plugin).toHaveBeenCalledTimes(1)
   })
 
   it('retains cleanup ownership when superseded disposal fails so shutdown retries and reports it', async () => {
@@ -996,6 +993,32 @@ describe('HarnessSdkJsonRpcServer', () => {
     expect(failingDispose).toHaveBeenCalledOnce()
 
     await expect(server.shutdown()).rejects.toThrow('superseded disposal failed 2')
+    expect(failingDispose).toHaveBeenCalledTimes(2)
+    expect(plugin).toHaveBeenCalledTimes(1)
+  })
+
+  it('keeps a fresh mount owned when its shutdown-overlap disposal fails so shutdown retries and reports it', async () => {
+    let attempts = 0
+    const failingDispose = vi.fn(async () => {
+      attempts += 1
+      throw new Error(`shutdown-overlap disposal failed ${attempts}`)
+    })
+    const mount = Promise.withResolvers<{ dispose: () => Promise<void> }>()
+    const plugin = vi.fn(() => mount.promise)
+    const server = new HarnessSdkJsonRpcServer(makeAdapterContext(plugin), new FakeTransport())
+
+    const initialization = server.initialize({ cwd: '.', provider: 'deepseek-official', model: 'model' })
+    await vi.waitFor(() => { expect(plugin).toHaveBeenCalledTimes(1) })
+    const shutdownTask = server.shutdown()
+    mount.resolve({ dispose: failingDispose })
+
+    // The disposal rejection reaches this caller instead of dying in the
+    // initialization tail, and the failed fiber stays server-owned.
+    await expect(initialization).rejects.toThrow('shutdown-overlap disposal failed 1')
+
+    // Shutdown retries the retained fiber once the tail settles and reports
+    // the retry failure instead of completing quietly.
+    await expect(shutdownTask).rejects.toThrow('shutdown-overlap disposal failed 2')
     expect(failingDispose).toHaveBeenCalledTimes(2)
     expect(plugin).toHaveBeenCalledTimes(1)
   })
@@ -1056,6 +1079,85 @@ describe('HarnessSdkJsonRpcServer', () => {
     expect(shutdownSettled).toBe(true)
     expect(plugin).toHaveBeenCalledTimes(1)
     expect(fallbackFiber.dispose).toHaveBeenCalledOnce()
+  })
+
+  it('replaces the server-mounted fallback when a repeat initialize selects its own registration', async () => {
+    const disposed: number[] = []
+    let mounts = 0
+    let live = false
+    const plugin = vi.fn(async () => {
+      mounts += 1
+      live = true
+      return {
+        dispose: vi.fn(() => {
+          live = false
+          disposed.push(mounts)
+          return Promise.resolve()
+        }),
+      }
+    })
+    // The mounted fallback registers its own provider, so the next initialize
+    // observes an adapter for that provider until the fallback disposes.
+    const ctx = {
+      on: vi.fn(() => () => undefined),
+      agents: { create: vi.fn(), get: () => undefined },
+      get: () => (live ? { listProviders: () => [{ id: 'deepseek-official', name: 'DeepSeek' }] } : undefined),
+      plugin,
+    } as unknown as Context
+    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+    const params = { cwd: '.', provider: 'deepseek-official', model: 'model' }
+
+    await server.initialize(params)
+    expect(plugin).toHaveBeenCalledTimes(1)
+
+    await server.initialize(params)
+    // The fallback's own registration must not read as an external owner:
+    // the repeat handshake replaces it with a fresh mount.
+    expect(plugin).toHaveBeenCalledTimes(2)
+    expect(disposed).toEqual([1])
+
+    await server.shutdown()
+    expect(disposed).toEqual([1, 2])
+  })
+
+  it('rejects a repeat initialize whose fallback replacement disposal overlaps shutdown', async () => {
+    const disposed: number[] = []
+    let live = false
+    const disposalGate = Promise.withResolvers<'released'>()
+    const plugin = vi.fn(async () => ({
+      dispose: vi.fn(() => {
+        live = false
+        disposed.push(1)
+        return disposalGate.promise
+      }),
+    }))
+    // Same stand-in as above: the mounted fallback registers its own provider.
+    const ctx = {
+      on: vi.fn(() => () => undefined),
+      agents: { create: vi.fn(), get: () => undefined },
+      get: () => (live ? { listProviders: () => [{ id: 'deepseek-official', name: 'DeepSeek' }] } : undefined),
+      plugin,
+    } as unknown as Context
+    const server = new HarnessSdkJsonRpcServer(ctx, new FakeTransport())
+
+    await server.initialize({ cwd: '.', provider: 'deepseek-official', model: 'model' })
+    const repeated = server.initialize({ cwd: '.', provider: 'deepseek-official', model: 'model' })
+    await vi.waitFor(() => { expect(disposed).toEqual([1]) })
+
+    const shutdownTask = server.shutdown()
+    let shutdownSettled = false
+    void shutdownTask.then(() => { shutdownSettled = true }, () => { shutdownSettled = true })
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect(shutdownSettled).toBe(false)
+
+    // The replacement disposal completes cleanly, but the handshake it
+    // belonged to overlaps shutdown and rejects without mounting again.
+    disposalGate.resolve('released')
+    await expect(repeated).rejects.toThrow('SDK server is shutting down')
+    await shutdownTask
+    expect(shutdownSettled).toBe(true)
+    expect(plugin).toHaveBeenCalledTimes(1)
+    expect(disposed).toEqual([1])
   })
 
   it('refuses initialize after shutdown without mounting another adapter', async () => {
