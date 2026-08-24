@@ -186,6 +186,8 @@ export function registerPromptsBridge(ctx: Context, skills: SkillRegistry, opts:
   let candidates: readonly SkillCandidate[] = []
   /** Discovery has completed at least once without a fetch failure. */
   let complete = false
+  /** True between a sync's entry and its commit-or-failure settlement. */
+  let syncing = false
   let disposed = false
 
   const fallbackDescription = `MCP prompt provided by server "${opts.serverName}".`
@@ -234,14 +236,14 @@ export function registerPromptsBridge(ctx: Context, skills: SkillRegistry, opts:
     },
     async get(candidate: SkillCandidate, options: SkillLookupOptions): Promise<SkillDefinition | undefined> {
       options.signal?.throwIfAborted()
-      // A candidate's locator and argument metadata describe the listing
-      // generation that produced them. While a reconnect or list_changed
-      // re-sync is in flight, the live generation is already newer than the
-      // published catalog — report unloadable so consumers retry through
-      // invalidation instead of sending this catalog's raw name to another
-      // server state.
+      // A candidate's locator and argument metadata describe the listing that
+      // produced them. While a newer listing — a reconnect or a same-generation
+      // list_changed re-sync — is in flight, or the committed listing's
+      // generation is no longer live, report unloadable so consumers retry
+      // through invalidation instead of sending stale names and argument
+      // metadata to a server state the catalog may no longer describe.
       const generation = catalogGeneration
-      if (generation === undefined || disposed || generation !== currentGeneration) return undefined
+      if (generation === undefined || disposed || syncing || generation !== currentGeneration) return undefined
       const locator = candidate.locator as PromptLocator
       let result: { messages?: unknown }
       try {
@@ -254,8 +256,9 @@ export function registerPromptsBridge(ctx: Context, skills: SkillRegistry, opts:
           },
         )
       } catch {
-        // The generation can be closing mid-outage or the server can reject
-        // the read; the skill contract reports an unloadable body as undefined.
+        // Cancellation propagates to its caller; a mid-outage generation close
+        // or a server-side rejection reports the body as unloadable.
+        options.signal?.throwIfAborted()
         return undefined
       }
       options.signal?.throwIfAborted()
@@ -278,6 +281,7 @@ export function registerPromptsBridge(ctx: Context, skills: SkillRegistry, opts:
   async function sync(generation: Client): Promise<void> {
     if (disposed) return
     currentGeneration = generation
+    syncing = true
     try {
       const records = await listAllPrompts(generation)
       const seenSlugs = new Map<string, string>()
@@ -294,6 +298,8 @@ export function registerPromptsBridge(ctx: Context, skills: SkillRegistry, opts:
       // consumers retry through an incomplete observation.
       complete = false
       ctx.logger.warn(`${label}: prompt synchronization failed: ${String(error)}`)
+    } finally {
+      syncing = false
     }
     invalidate?.()
   }

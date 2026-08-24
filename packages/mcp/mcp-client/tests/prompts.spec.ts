@@ -314,6 +314,19 @@ describe('prompts bridging lifecycle', () => {
     await expect(ctx.skills.get('code-review')).resolves.toBeUndefined()
   })
 
+  it('propagates caller cancellation raised while prompts/get is in flight', async () => {
+    await apply(ctx, stdioConfig({ prompts: { enabled: true } }))
+    expect(await skillNames(ctx)).toEqual(['code-review'])
+
+    mockGetPrompt.mockImplementationOnce(() => new Promise<never>(() => {}))
+    const controller = new AbortController()
+    const pending = ctx.skills.get('code-review', { signal: controller.signal })
+    await vi.waitFor(() => { expect(mockGetPrompt).toHaveBeenCalled() })
+
+    controller.abort()
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' })
+  })
+
   it('keeps tools alive and recovers on the next notification when a prompt slug collides', async () => {
     const { warns } = captureLogs(ctx)
     mockListPrompts.mockResolvedValue(listingPrompts(
@@ -422,6 +435,51 @@ describe('prompts bridging lifecycle', () => {
       await expect(skillNames(ctx)).resolves.toEqual(['revived-prompt'])
     })
     await expect(ctx.skills.get('revived-prompt')).resolves.toBeDefined()
+  })
+
+  it('refuses lookups while a same-generation list_changed re-sync is in flight and recovers after commit', async () => {
+    await apply(ctx, stdioConfig({ prompts: { enabled: true } }))
+    expect(await skillNames(ctx)).toEqual(['code-review'])
+    expect(mockGetPrompt).not.toHaveBeenCalled()
+
+    let releaseList: (() => void) | undefined
+    const listed = new Promise<void>((resolve) => { releaseList = resolve })
+    mockListPrompts.mockImplementationOnce(async () => {
+      await listed
+      return listingPrompts({ name: 'fresh_prompt' })
+    })
+
+    const resync = handlerFor(PromptListChangedNotificationSchema)()
+    await vi.waitFor(() => { expect(mockListPrompts).toHaveBeenCalledTimes(2) })
+
+    // The replacement listing has not committed yet, so the old catalog's raw
+    // name must not reach the server mid-resync.
+    await expect(ctx.skills.get('code-review')).resolves.toBeUndefined()
+    expect(mockGetPrompt).not.toHaveBeenCalled()
+
+    releaseList!()
+    await resync
+    await vi.waitFor(async () => {
+      await expect(skillNames(ctx)).resolves.toEqual(['fresh-prompt'])
+    })
+    await expect(ctx.skills.get('fresh-prompt')).resolves.toBeDefined()
+    expect(mockGetPrompt).toHaveBeenCalledWith({ name: 'fresh_prompt' })
+  })
+
+  it('keeps the previous catalog loadable after a failed same-generation re-sync', async () => {
+    const { warns } = captureLogs(ctx)
+    await apply(ctx, stdioConfig({ prompts: { enabled: true } }))
+    expect(await skillNames(ctx)).toEqual(['code-review'])
+
+    mockListPrompts.mockRejectedValueOnce(new Error('re-list failed'))
+    await handlerFor(PromptListChangedNotificationSchema)()
+
+    // Fetch-phase containment: the live generation did list these prompts, so
+    // the last good catalog keeps loading until the next sync commits.
+    expect(warns.some(line => line.includes('prompt synchronization failed'))).toBe(true)
+    expect(await skillNames(ctx)).toEqual(['code-review'])
+    await expect(ctx.skills.get('code-review')).resolves.toBeDefined()
+    expect(mockGetPrompt).toHaveBeenCalledWith({ name: 'code_review' })
   })
 
   it('empties the catalog when the reconnect budget is exhausted', async () => {
