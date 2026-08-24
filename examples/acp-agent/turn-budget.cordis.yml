@@ -1,0 +1,15 @@
+# Turn-budget-scenario overlay: mount the opt-in policy with limits the
+# scripted transcript reaches (advisory steer at step 3, hard cancel at step 5).
+# The overlay changes no tool or prompt composition, so its scenario shares the
+# default header class.
+- id: base
+  name: '@buckeyestudio/cordis-plugin-include'
+  config:
+    path: ./cordis.yml
+    patches:
+      - insert:
+          - id: turn-budget-policy
+            name: '@buckeyestudio/toh-turn-budget-policy'
+            config:
+              warnAtSteps: 3
+              maxStepsPerTurn: 5

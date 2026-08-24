@@ -33,6 +33,7 @@
   "license": "MIT",
   "author": "buckeyestudio",
   "peerDependencies": {
+    "@buckeyestudio/toh-launch-environment": "workspace:^",
     "@buckeyestudio/toh-invariants": "workspace:^",
     "@buckeyestudio/toh-llm": "workspace:^",
     "@buckeyestudio/cordis": "workspace:^"
@@ -41,6 +42,7 @@
     "@buckeyestudio/schemastery": "workspace:^"
   },
   "devDependencies": {
+    "@buckeyestudio/toh-launch-environment": "workspace:^",
     "@buckeyestudio/toh-invariants": "workspace:^",
     "@buckeyestudio/toh-llm": "workspace:^",
     "@buckeyestudio/cordis": "workspace:^"

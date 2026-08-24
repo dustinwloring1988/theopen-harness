@@ -21,6 +21,7 @@ import {
 import type {} from '@buckeyestudio/toh-agent-presets/types'
 import { GoalId } from '@buckeyestudio/toh-goal'
 import { createApiProxy } from '../src/api-proxy.ts'
+import { runQueued } from '../src/api/agent-presets-impl.ts'
 import { describe, expect, it } from 'vitest'
 
 let nextRpc = 0
@@ -180,6 +181,11 @@ describe('session.create with an agent preset', () => {
     expect(response.result.ok).toBe(false)
     if (response.result.ok) throw new Error('unreachable')
     expect(response.result.error.code).toBe('agent-preset-conflict')
+    // Both branches share the suffix: the message names the requested preset
+    // and ends with the fixation rule, not an em dash.
+    expect(response.result.error.message).toContain('already runs agent preset "minimal"')
+    expect(response.result.error.message).toContain('requested "standard"')
+    expect(response.result.error.message.endsWith("A session's preset is fixed at creation.")).toBe(true)
     expect(response.result.error.details).toEqual({
       sessionId: 's4',
       requestedPreset: 'standard',
@@ -243,6 +249,11 @@ describe('session.create with an agent preset', () => {
     if (response.result.ok) throw new Error('unreachable')
     expect(response.result.error.code).toBe('agent-preset-conflict')
     expect(response.result.error.message).toContain('records no agent preset')
+    // The no-preset branch carries the same suffix as the existing-preset one:
+    // ungrouped, the ternary binds looser than `+` and the message ended at
+    // the em dash without ever naming the requested preset.
+    expect(response.result.error.message).toContain('requested "standard"')
+    expect(response.result.error.message.endsWith("A session's preset is fixed at creation.")).toBe(true)
     expect(response.result.error.details).toEqual({
       sessionId: 's7',
       requestedPreset: 'standard',
@@ -464,6 +475,63 @@ describe('agentPreset.select', () => {
     expect(response.result.ok).toBe(false)
     if (response.result.ok) throw new Error('unreachable')
     expect(response.result.error.code).toBe('agent-preset-not-found')
+  })
+})
+
+describe('the per-session switch queue', () => {
+  it('deletes a session entry once its switch settles', async () => {
+    const queues = new Map<string, Promise<unknown>>()
+
+    const outcome = await runQueued(queues, 's1', () => Promise.resolve('swapped'))
+
+    // The stored link must be the object the cleanup compares against, or the
+    // entry survives every select and the map grows for the host lifetime.
+    expect(outcome).toBe('swapped')
+    expect(queues.size).toBe(0)
+  })
+
+  it('deletes the entry even when the switch rejects', async () => {
+    const queues = new Map<string, Promise<unknown>>()
+    const failed = runQueued(queues, 's1', () => Promise.reject(new Error('swap failed')))
+
+    await expect(failed).rejects.toThrow('swap failed')
+
+    expect(queues.size).toBe(0)
+  })
+
+  it('keeps later switches queued behind a rejected one, then cleans up', async () => {
+    const queues = new Map<string, Promise<unknown>>()
+    const order: string[] = []
+    const first = runQueued(queues, 's1', async () => {
+      order.push('first')
+      throw new Error('first failed')
+    })
+    const second = runQueued(queues, 's1', async () => {
+      order.push('second')
+      return 'second swapped'
+    })
+
+    await expect(first).rejects.toThrow('first failed')
+    expect(await second).toBe('second swapped')
+    expect(order).toEqual(['first', 'second'])
+    expect(queues.size).toBe(0)
+  })
+
+  it('cleans each session independently', async () => {
+    const queues = new Map<string, Promise<unknown>>()
+    let releaseFirst: (() => void) | undefined
+    const first = runQueued(queues, 's1', () => new Promise<void>((resolve) => { releaseFirst = resolve }))
+    void runQueued(queues, 's2', () => Promise.resolve())
+
+    // s2 settled while s1 was still queued: only s1 keeps an entry...
+    await new Promise(resolve => setTimeout(resolve, 0))
+    expect([...queues.keys()]).toEqual(['s1'])
+
+    releaseFirst?.()
+    await first
+
+    // ...and it goes once its own switch settles.
+    expect(queues.size).toBe(0)
   })
 })
 

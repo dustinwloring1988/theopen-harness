@@ -21,7 +21,7 @@ Five regrouping decisions remain current; every other group keeps its prior boun
 
 | Group | Members (folder names) | From |
 |---|---|---|
-| `session/` | session-persistence, session-persistence-jsonl, session-persistence-sqlite, session-checkpoint-policy, session-projection, session-projection-cache, session-title, session-title-llm, session-title-first-prompt-llm, session-title-all-prompts-llm, session-telemetry, session-telemetry-otel | `session-persistence/` + `session-projection/` + `session-title/` + `telemetry/` |
+| `session/` | session-persistence, session-persistence-jsonl, session-persistence-sqlite, session-checkpoint-policy, session-projection, session-projection-cache, session-title, session-title-llm, session-telemetry, session-telemetry-otel | `session-persistence/` + `session-projection/` + `session-title/` + `telemetry/` |
 | `interaction/` | user-questions, user-approval, permission-presets, tool-ask-user, commands, tui | `ui/` |
 | `boot/` | app-boot | `ui/` |
 | `guard/` | repeat-tool-reminder, timeout-policy | `guard/` + `timeout/` |

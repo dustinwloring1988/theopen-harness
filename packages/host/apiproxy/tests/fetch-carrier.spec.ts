@@ -623,11 +623,21 @@ describe('handler carrier-layer statuses', () => {
   })
 
   it('500s when the impl itself throws', async () => {
-    const crashing = toFetchHandler(fakeApi({ crashOn: 'session.list' }))
-    const body = JSON.stringify({ type: 'client-request', rpcId: 'r-11', method: 'session.list', payload: {} })
-    const response = await crashing.fetch(new Request('http://x/api/session.list', { method: 'POST', headers: { 'content-type': 'application/json' }, body }))
-    expect(response.status).toBe(500)
-    expect(await response.text()).toContain('impl crashed')
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    try {
+      const crashing = toFetchHandler(fakeApi({ crashOn: 'session.list' }))
+      const body = JSON.stringify({ type: 'client-request', rpcId: 'r-11', method: 'session.list', payload: {} })
+      const response = await crashing.fetch(new Request('http://x/api/session.list', { method: 'POST', headers: { 'content-type': 'application/json' }, body }))
+      expect(response.status).toBe(500)
+      const text = await response.text()
+      expect(text).toMatch(/^handler failure \(id [0-9a-f-]+\)$/)
+      expect(text).not.toContain('impl crashed')
+      const logged = String(errorSpy.mock.calls.at(-1)?.join(' '))
+      expect(logged).toContain(`handler failure (id ${text.match(/\(id ([0-9a-f-]+)\)/)?.[1] ?? ''})`)
+      expect(logged).toContain('impl crashed')
+    } finally {
+      errorSpy.mockRestore()
+    }
   })
 
   it('routes /api/respond, rejecting malformed client-responses as a receipt', async () => {

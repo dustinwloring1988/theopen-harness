@@ -396,7 +396,7 @@
         "tests/**/*.ts"
       ]
     },
-    "packages/session/session-title-first-prompt-llm": {
+    "packages/session/session-title-llm": {
       "entry": [
         "tests/**/*.spec.ts",
         "tests/**/*.e2e.ts"

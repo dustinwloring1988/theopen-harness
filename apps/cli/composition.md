@@ -24,7 +24,7 @@ flowchart LR
   cfg --> plugin_toh_base_typert_gateway
   plugin_toh_base_session_title["session-title<br/>@buckeyestudio/toh-session-title"]
   cfg --> plugin_toh_base_session_title
-  plugin_toh_base_session_title_llm["session-title-llm<br/>@buckeyestudio/toh-session-title-first-prompt-llm"]
+  plugin_toh_base_session_title_llm["session-title-llm<br/>@buckeyestudio/toh-session-title-llm"]
   cfg --> plugin_toh_base_session_title_llm
   plugin_toh_base_user_questions["user-questions<br/>@buckeyestudio/toh-user-questions"]
   cfg --> plugin_toh_base_user_questions
@@ -148,6 +148,8 @@ flowchart LR
   cfg --> plugin_toh_base_tool_str_replace_editor
   plugin_toh_base_repeat_tool_reminder["repeat-tool-reminder<br/>@buckeyestudio/toh-repeat-tool-reminder"]
   cfg --> plugin_toh_base_repeat_tool_reminder
+  plugin_toh_base_turn_budget_policy["turn-budget-policy<br/>@buckeyestudio/toh-turn-budget-policy"]
+  cfg --> plugin_toh_base_turn_budget_policy
   plugin_toh_base_web["web<br/>@buckeyestudio/toh-web"]
   cfg --> plugin_toh_base_web
   plugin_toh_base_web_search_deepseek["web-search-deepseek<br/>@buckeyestudio/toh-web-search-deepseek"]
@@ -176,7 +178,7 @@ flowchart LR
 | `typert-loader` | `@buckeyestudio/toh-typert-loader` |
 | `typert-gateway` | `@buckeyestudio/toh-api-gateway` |
 | `session-title` | `@buckeyestudio/toh-session-title` |
-| `session-title-llm` | `@buckeyestudio/toh-session-title-first-prompt-llm` |
+| `session-title-llm` | `@buckeyestudio/toh-session-title-llm` |
 | `user-questions` | `@buckeyestudio/toh-user-questions` |
 | `agent` | `@buckeyestudio/toh-agent` |
 | `agent-default-model` | `@buckeyestudio/toh-agent-default-model` |
@@ -238,6 +240,7 @@ flowchart LR
 | `tool-ralph` | `@buckeyestudio/toh-tool-ralph` |
 | `tool-str-replace-editor` | `@buckeyestudio/toh-tool-str-replace-editor` |
 | `repeat-tool-reminder` | `@buckeyestudio/toh-repeat-tool-reminder` |
+| `turn-budget-policy` | `@buckeyestudio/toh-turn-budget-policy` |
 | `web` | `@buckeyestudio/toh-web` |
 | `web-search-deepseek` | `@buckeyestudio/toh-web-search-deepseek` |
 | `tool-web` | `@buckeyestudio/toh-tool-web` |

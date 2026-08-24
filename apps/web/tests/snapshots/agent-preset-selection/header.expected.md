@@ -9,3 +9,6 @@
 - button "Session log":
   - text: Session log
   - img
+- button "Markdown":
+  - text: Markdown
+  - img
