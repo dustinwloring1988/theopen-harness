@@ -114,6 +114,7 @@
     "@buckeyestudio/toh-user-approval": "workspace:^",
     "@buckeyestudio/toh-user-questions": "workspace:^",
     "@buckeyestudio/toh-web": "workspace:^",
+    "@buckeyestudio/toh-web-fetch-http": "workspace:^",
     "@buckeyestudio/toh-web-search-deepseek": "workspace:^",
     "@buckeyestudio/toh-workflow-worker-thread": "workspace:^",
     "@buckeyestudio/toh-agent-instructions": "workspace:^"

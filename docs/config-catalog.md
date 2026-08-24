@@ -346,7 +346,7 @@ export interface Config {
 }
 ```
 
-Source: [`packages/attachment/attachment-local/src/index.ts:51`](../packages/attachment/attachment-local/src/index.ts)
+Source: [`packages/attachment/attachment-local/src/index.ts:52`](../packages/attachment/attachment-local/src/index.ts)
 
 <a id="buckeyestudiotoh-bash-local"></a>
 
@@ -1746,7 +1746,7 @@ export interface Config {
 export type JsonlCompression = 'zstd' | 'none'
 ```
 
-Source: [`packages/session/session-persistence-jsonl/src/index.ts:60`](../packages/session/session-persistence-jsonl/src/index.ts)
+Source: [`packages/session/session-persistence-jsonl/src/index.ts:61`](../packages/session/session-persistence-jsonl/src/index.ts)
 
 <a id="buckeyestudiotoh-session-persistence-sqlite"></a>
 
@@ -3110,10 +3110,12 @@ export interface Config {
   maxRedirects?: number
   /** `User-Agent` header sent on every request. */
   userAgent?: string
+  /** Permit loopback, private, and otherwise non-public destinations. Defaults to false. */
+  allowPrivateNetworks?: boolean
 }
 ```
 
-Source: [`packages/web/web-fetch-http/src/index.ts:34`](../packages/web/web-fetch-http/src/index.ts)
+Source: [`packages/web/web-fetch-http/src/index.ts:36`](../packages/web/web-fetch-http/src/index.ts)
 
 <a id="buckeyestudiotoh-web-search-deepseek"></a>
 

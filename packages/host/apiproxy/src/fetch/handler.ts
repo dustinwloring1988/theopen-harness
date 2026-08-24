@@ -3,7 +3,9 @@
  * WHATWG Request->Response function. Two-level parse: full form (type/rpcId/method +
  * path==method) -> payload dispatched per method. HTTP status expresses only the carrier
  * (404 unknown path / 415 non-JSON media type / 400 non-JSON body / 500 handler crash);
- * business errors are always 200 + ServerResponse.
+ * business errors are always 200 + ServerResponse. A handler-crash 500 answers the fixed
+ * body `handler failure (id <uuid>)` — a generated correlation id, never the thrown error
+ * text; the full error is logged server-side under that id.
  */
 
 import { randomUUID } from 'node:crypto'
@@ -187,7 +189,11 @@ async function handleUnary<K extends keyof RpcMethodMap>(
     return fullResponse(await route.invoke(api, { rpcId: message.rpcId, payload: payload.data }, signal))
   } catch (error: unknown) {
     // The impl never throws business errors; reaching here means the implementation itself crashed — 500, carrier layer.
-    return new Response(`handler failure: ${String(error)}`, { status: 500 })
+    // The response stays error-free: String(error) may carry absolute host paths, so the full error is logged
+    // under a correlation id echoed in its place (same posture as api-proxy.ts's export 500).
+    const failureId = randomUUID()
+    console.error(`[apiproxy] handler failure (id ${failureId}):`, error)
+    return new Response(`handler failure (id ${failureId})`, { status: 500 })
   }
 }
 

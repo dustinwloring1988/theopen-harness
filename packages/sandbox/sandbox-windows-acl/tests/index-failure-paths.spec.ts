@@ -3,9 +3,10 @@
  * to hand each test a stub binding table, so every checked Win32 call in
  * init/spawn/dispose has a failing counterpart without opening real token or
  * ACL handles. Constructor validation, the fail-closed init cleanup, and the
- * dispose aggregation use the same stubs. Pure stubs — no real Win32 calls,
- * so these run on every platform; the real-FFI round-trip lives in
- * acl.spec.ts and runner.spec.ts (win32 only).
+ * dispose aggregation use the same stubs, as does the piped-capture byte
+ * budget's spawn-side resolution (default, explicit, invalid). Pure stubs —
+ * no real Win32 calls, so these run on every platform; the real-FFI
+ * round-trip lives in acl.spec.ts and runner.spec.ts (win32 only).
  */
 
 import { mkdtempSync, rmSync } from 'node:fs'
@@ -18,6 +19,7 @@ import { PROCESS_INFORMATION } from '../src/ffi.ts'
 import type { NativePtr, Win32Bindings } from '../src/ffi.ts'
 import { Win32Error } from '../src/errors.ts'
 import { AclSandbox } from '../src/index.ts'
+import { DEFAULT_MAX_OUTPUT_BYTES } from '../src/spawn.ts'
 import * as abi from '../src/win32-abi.ts'
 
 const PVOID = koffi.pointer('void')
@@ -34,6 +36,8 @@ interface HappyStubs {
   createRestrictedToken: MockFn
   createJobObjectW: MockFn
   getNamedSecurityInfoW: MockFn
+  /** Per-drain scripts: entry 0 is consumed by the stdout drain, 1 by stderr. */
+  drainScripts: string[][]
 }
 
 const state = vi.hoisted(() => ({ stubs: undefined as HappyStubs | undefined }))
@@ -135,8 +139,30 @@ function happyStubs(): HappyStubs {
     koffi.encode(processInfo, PROCESS_INFORMATION, { hProcess: fresh(), hThread: fresh(), dwProcessId: 1234, dwThreadId: 5678 })
     return 1
   })
-  const peekNamedPipe = vi.fn(() => 0)
-  const readFile = vi.fn(() => 1)
+  // Piped-capture scripting: a test pushes one parts array per drained stream
+  // (stdout first, stderr second) BEFORE spawning; each part becomes one
+  // PeekNamedPipe availability report and one whole-chunk ReadFile fill, then
+  // the drain reports ERROR_BROKEN_PIPE (clean EOF).
+  const drainScripts: string[][] = []
+  const drainQueues = new Map<NativePtr, string[]>()
+  const peekNamedPipe = vi.fn((pipe: NativePtr, _buffer: unknown, _size: unknown, _read: unknown, totalAvail: NativePtr) => {
+    let queue = drainQueues.get(pipe)
+    if (queue === undefined) {
+      queue = drainScripts[drainQueues.size] ?? []
+      drainQueues.set(pipe, queue)
+    }
+    const part = queue[0]
+    if (part === undefined) return 0
+    koffi.encode(totalAvail, 'uint32', Buffer.byteLength(part, 'utf8'))
+    return 1
+  })
+  const readFile = vi.fn((pipe: NativePtr, chunk: Buffer, _count: unknown, read: NativePtr) => {
+    const part = drainQueues.get(pipe)?.shift()
+    if (part === undefined) return 0
+    chunk.write(part, 0, 'utf8')
+    koffi.encode(read, 'uint32', Buffer.byteLength(part, 'utf8'))
+    return 1
+  })
   const waitForSingleObject = vi.fn(() => 0)
   const getExitCodeProcess = vi.fn((_process: unknown, slot: NativePtr) => {
     koffi.encode(slot, 'uint32', 42)
@@ -164,7 +190,7 @@ function happyStubs(): HappyStubs {
   } as unknown as Win32Bindings
   return {
     api, setNamedSecurityInfoW, convertStringSidToSidW, closeHandle, localFree,
-    createRestrictedToken, createJobObjectW, getNamedSecurityInfoW,
+    createRestrictedToken, createJobObjectW, getNamedSecurityInfoW, drainScripts,
   }
 }
 
@@ -393,6 +419,51 @@ describe('AclSandbox spawn', () => {
     const child = sandbox.spawn({ command: 'probe.exe', stdio: 'inherit' })
     jobHandle = createJobObjectW.mock.results.at(-1)?.value as NativePtr
     await expect(child.wait()).rejects.toMatchObject({ api: 'CloseHandle' })
+  })
+})
+
+describe('AclSandbox piped-capture byte budget', () => {
+  it('caps both piped streams at maxOutputBytes and keeps the most recent bytes', async () => {
+    const { drainScripts } = state.stubs as HappyStubs
+    drainScripts.push(['s'.repeat(24)], ['e'.repeat(24)])
+    const workspace = scratch()
+    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-19', mode: 'workspace-write' })
+    await sandbox.init()
+    const child = sandbox.spawn({ command: 'probe.exe', maxOutputBytes: 16 })
+    const { stdout, stderr } = await child.wait()
+    expect(stdout.equals(Buffer.from('s'.repeat(16)))).toBe(true)
+    expect(stderr.equals(Buffer.from('e'.repeat(16)))).toBe(true)
+  })
+
+  it('defaults the budget to DEFAULT_MAX_OUTPUT_BYTES when maxOutputBytes is omitted', async () => {
+    const { drainScripts } = state.stubs as HappyStubs
+    drainScripts.push(['o'.repeat(DEFAULT_MAX_OUTPUT_BYTES + 5_000)], [])
+    const workspace = scratch()
+    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-20', mode: 'workspace-write' })
+    await sandbox.init()
+    const child = sandbox.spawn({ command: 'probe.exe' })
+    const { stdout, stderr } = await child.wait()
+    expect(stdout.length).toBe(DEFAULT_MAX_OUTPUT_BYTES)
+    expect(stdout.equals(Buffer.from('o'.repeat(DEFAULT_MAX_OUTPUT_BYTES)))).toBe(true)
+    expect(stderr.length).toBe(0)
+  })
+
+  it('fails loud on an invalid piped maxOutputBytes before spawning', async () => {
+    const workspace = scratch()
+    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-21', mode: 'workspace-write' })
+    await sandbox.init()
+    for (const invalid of [0, -1, 1.5, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() => sandbox.spawn({ command: 'probe.exe', maxOutputBytes: invalid }))
+        .toThrow(/maxOutputBytes must be a positive integer/u)
+    }
+  })
+
+  it('does not validate maxOutputBytes under inherit stdio, which captures nothing', async () => {
+    const workspace = scratch()
+    const sandbox = new AclSandbox({ writableDirs: [workspace], tempDir: null, writeSid: 'S-1-4-9000-22', mode: 'workspace-write' })
+    await sandbox.init()
+    const child = sandbox.spawn({ command: 'probe.exe', stdio: 'inherit', maxOutputBytes: -1 })
+    await expect(child.wait()).resolves.toEqual({ stdout: Buffer.alloc(0), stderr: Buffer.alloc(0), exitCode: 42 })
   })
 })
 

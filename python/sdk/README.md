@@ -13,6 +13,8 @@ Install the `theopen-harness-sdk` distribution from PyPI; the import module rema
 python -m pip install theopen-harness-sdk
 ```
 
+The SDK ships a PEP 561 `py.typed` marker, so mypy and pyright check `theopen_harness.*` imports against its inline annotations instead of treating them as untyped.
+
 Installing `theopen-harness-sdk` installs the exact same-version `theopen-harness-runtime-bin` platform wheel. The normal entry point therefore needs no executable argument:
 
 ```py
@@ -22,7 +24,7 @@ with DeepSeekHarness() as harness:
     result = harness.run("Say hi.")
 ```
 
-`DeepSeekHarness` keeps its lazily started runtime subprocess for reuse across calls. Use it as a context manager, as above, or call `close()` explicitly when finished.
+`DeepSeekHarness` keeps its lazily started runtime subprocess for reuse across calls. Use it as a context manager, as above, or call `close()` explicitly when finished. `close()` spends the `shutdown_timeout_seconds` budget on waiting for any in-flight lifecycle transition, the shutdown request, and process exit — every configured value is clamped to `[0, 30]` seconds, and `None` selects the 30-second ceiling rather than an unbounded wait; if that wait exhausts the budget, `close()` raises `TimeoutError` without tearing anything down, and a retry gets a fresh budget — then escalates from terminate to kill, so the call always returns even against a wedged runtime. `close()` is terminal: calling `start()` afterwards raises `RuntimeError`, so run further workloads on a new instance.
 
 By default, the SDK launches the bundled single-file `toh-jsonrpc-agent` executable from the `theopen-harness-runtime-bin` package and injects that package's default configuration (the stdio JSON-RPC server, agent core, preloaded DeepSeek adapter, JSONL session persistence with an explicitly composed semantic checkpoint policy, local bash) via `TOH_CORDIS_CONFIG`. To run a plugin composition of your own, keep the `@buckeyestudio/toh-sdk-jsonrpc-server` entry in the config and pass the Cordis config path.
 

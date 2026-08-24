@@ -28,7 +28,7 @@
 
 ## 选择
 
-选择绝不依赖注册、配置或 HMR（热模块替换）顺序。能力要么具有显式提供方 id（配置 `searchProvider`／`fetchProvider`，或由环境变量 `$TOH_WEB_SEARCH_PROVIDER`／`$TOH_WEB_FETCH_PROVIDER` 提供相同字段），要么在恰好只注册一个可用提供方时自动选择。`search()`／`fetch()` 会在执行时解析提供方：
+选择绝不依赖注册、配置或 HMR（热模块替换）顺序。能力要么具有显式提供方 id（配置 `searchProvider`／`fetchProvider`，或由环境变量 `$TOH_WEB_SEARCH_PROVIDER`／`$TOH_WEB_FETCH_PROVIDER` 经启动环境快照提供相同字段，因此项目／用户 `.env` 的值同样生效且优先级低于显式配置），要么在恰好只注册一个可用提供方时自动选择。`search()`／`fetch()` 会在执行时解析提供方：
 
 | 情况 | 执行 |
 |---|---|
