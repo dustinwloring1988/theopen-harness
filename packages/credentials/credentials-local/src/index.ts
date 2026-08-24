@@ -881,7 +881,10 @@ export class LocalCredentialProvider extends CredentialProvider {
    * into the seam. Absence publishes the empty store; an unreadable or
    * invalid document throws, so each caller picks its policy — a reload warns
    * and keeps the last good snapshot, a write fails loud rather than
-   * overwriting a document it could not understand.
+   * overwriting a document it could not understand. A difference observed
+   * after disposal still folds into the snapshot — an in-flight write that
+   * lands across dispose must render against the document as it stands on
+   * disk — but publishes nothing.
    */
   private async reconcileFromDisk(): Promise<void> {
     // Re-checked on every reload and before every write: an external editor or
@@ -894,7 +897,7 @@ export class LocalCredentialProvider extends CredentialProvider {
       if (!isENOENT(error)) throw error
       text = undefined
     }
-    if (text === this.text || this.isClosed()) return
+    if (text === this.text) return
     const next = text === undefined
       ? { refs: new Map<string, string>(), records: new Map<string, CredentialRecord>() }
       : parseCredentialsDocument(text, this.spec.filename)
@@ -903,6 +906,7 @@ export class LocalCredentialProvider extends CredentialProvider {
     this.text = text
     this.values = next.refs
     this.records = next.records
+    if (this.isClosed()) return
     for (const ref of changedRefs) this.notifyUpdated(ref)
     for (const key of changedRecords) this.notifyRecordUpdated(key)
   }

@@ -49,6 +49,7 @@
       "@buckeyestudio/toh-api-gateway/types": ["./packages/api/gateway/src/types.ts"],
       "@buckeyestudio/toh-typert-protocol": ["./packages/typert/protocol/src/index.ts"],
       "@buckeyestudio/toh-typert-protocol/types": ["./packages/typert/protocol/src/types.ts"],
+      "@buckeyestudio/toh-session-query/ranking": ["./packages/session-query/session-query/src/ranking.ts"],
       "@buckeyestudio/toh-typert-loader": ["./packages/typert/loader/src/index.ts"],
       "@buckeyestudio/toh-session/invariant": ["./packages/core/session/src/invariant.ts"],
       "@buckeyestudio/toh-typert-registry/types": ["./packages/typert/registry/src/types.ts"],

@@ -1,5 +1,9 @@
-/** Host registry and HTTP adapter for generic Connection RPC channels. */
+/**
+ * Host registry and HTTP adapter for generic Connection RPC channels; a handler-crash 500
+ * answers `handler failure (id <uuid>)` with the full error logged server-side under that id.
+ */
 
+import { randomUUID } from 'node:crypto'
 import { Context, Service } from '@buckeyestudio/cordis'
 import type { WebRoute } from '@buckeyestudio/toh-host-webserver'
 import {
@@ -12,7 +16,7 @@ import {
   type ServerResponse as RpcServerResponse,
 } from '@buckeyestudio/toh-host-apiproxy/api'
 import { bridge, type FetchHandler } from './http-bridge.ts'
-import { isTrustedApiRequest } from './api-request-trust.ts'
+import { isLocalApiRequest, isTrustedApiRequest } from './api-request-trust.ts'
 import { API_PATH } from './api-path.ts'
 import type {
   ConnectionRpcEndpointMatcher,
@@ -73,16 +77,18 @@ export class HostConnectionService extends Service implements HostConnectionHand
     fallback: FetchHandler,
   ): FetchHandler {
     return {
-      fetch: (request) => {
+      fetch: (request, remoteAddress) => {
         const endpoint = endpointFromPath(channel, new URL(request.url).pathname)
         const interceptor = this.interceptors.get(channel)
         if (endpoint === undefined || interceptor === undefined || !interceptor.matches(endpoint)) {
-          return fallback.fetch(request)
+          return fallback.fetch(request, remoteAddress)
         }
-        if (interceptor.options.authority === 'loopback' && !isTrustedApiRequest(request, [])) {
+        // The loopback pin needs the socket peer: a non-browser LAN caller can
+        // forge Host over plain HTTP (see isLocalApiRequest).
+        if (interceptor.options.authority === 'loopback' && !isLocalApiRequest(request, remoteAddress)) {
           return Promise.resolve(new Response('forbidden', { status: 403 }))
         }
-        return interceptor.fetchHandler.fetch(request)
+        return interceptor.fetchHandler.fetch(request, remoteAddress)
       },
     }
   }
@@ -94,13 +100,17 @@ export class HostConnectionService extends Service implements HostConnectionHand
     options: ConnectionRpcHandlerOptions,
   ): () => Promise<void> {
     assertChannel(channel)
-    const trustedHosts = options.authority === 'loopback' ? [] : this.trustedHosts
     const fetchHandler = rpcFetchHandler(channel, handler)
     const route: WebRoute = {
       kind: 'prefix',
       path: channel,
       handler: async (req, res) => {
-        if (!isTrustedApiRequest(req, trustedHosts)) {
+        // A loopback-authority channel pins to the local operator the same way
+        // as privileged methods: Host fence plus socket peer agreement.
+        const trusted = options.authority === 'loopback'
+          ? isLocalApiRequest(req, req.socket.remoteAddress)
+          : isTrustedApiRequest(req, this.trustedHosts)
+        if (!trusted) {
           res.writeHead(403)
           res.end('forbidden')
           return
@@ -181,7 +191,11 @@ function rpcFetchHandler(
         const result = await handler(endpoint, message.payload, request.signal)
         return fullResponse(message.rpcId, result)
       } catch (error) {
-        return new Response(`handler failure: ${String(error)}`, { status: 500 })
+        // Carrier-layer 500: String(error) may carry absolute host paths or adapter internals, so the
+        // response stays error-free and the full error is logged under a correlation id echoed in its place.
+        const failureId = randomUUID()
+        console.error(`[client-connection] handler failure (id ${failureId}):`, error)
+        return new Response(`handler failure (id ${failureId})`, { status: 500 })
       }
     },
   }

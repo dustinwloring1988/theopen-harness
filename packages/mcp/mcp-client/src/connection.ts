@@ -16,11 +16,12 @@
  */
 
 import { Client } from '@modelcontextprotocol/sdk/client/index.js'
-import { ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js'
+import { PromptListChangedNotificationSchema, ToolListChangedNotificationSchema } from '@modelcontextprotocol/sdk/types.js'
 import type { Context } from '@buckeyestudio/cordis'
 import { MAX_TIMER_DELAY_MS } from '@buckeyestudio/toh-timeout'
 import { createTransport } from './transport.ts'
 import { syncTools } from './tools.ts'
+import type { PromptsBridge } from './prompts.ts'
 import type { ToolBridgeOptions, ToolDisposers } from './tools.ts'
 import type { Config } from './index.ts'
 
@@ -118,9 +119,11 @@ export interface ConnectionHandle {
  * @param ctx - Cordis context providing the `tools` registry and logger.
  * @param config - Resolved plugin config selecting the transport and server identity.
  * @param policy - Resolved reconnect policy from {@link resolveReconnectPolicy}.
+ * @param prompts - Optional prompts bridge whose candidate sync rides the same
+ *   generations and serialized queue as tools; disposal includes it.
  * @returns Handle with a `ready` promise for startup-await and a `dispose` for teardown.
  */
-export function startConnection(ctx: Context, config: Config, policy: ResolvedReconnectPolicy): ConnectionHandle {
+export function startConnection(ctx: Context, config: Config, policy: ResolvedReconnectPolicy, prompts?: PromptsBridge): ConnectionHandle {
   const label = `mcp-client(${config.serverName})`
   const opts: ToolBridgeOptions = {
     registrationFailure: 'contain',
@@ -163,8 +166,21 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
     const run = syncChain.then(async () => {
       if (!isCurrent(generation)) return
       disposers = await syncTools(generation, ctx, syncOpts, disposers)
+      // Prompts ride the same serialized queue and generation fence; their
+      // fetch failures are contained inside the bridge.
+      if (prompts !== undefined && isCurrent(generation)) await prompts.sync(generation)
     })
     // The chain tail must survive a failed sync; the enqueuing caller owns reporting.
+    syncChain = run.catch(() => {})
+    return run
+  }
+
+  /** Prompts-only re-sync entry for the prompt list-changed notification. */
+  function enqueuePromptsSync(generation: Client): Promise<void> {
+    const run = syncChain.then(async () => {
+      if (!isCurrent(generation) || prompts === undefined) return
+      await prompts.sync(generation)
+    })
     syncChain = run.catch(() => {})
     return run
   }
@@ -209,6 +225,7 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
       syncChain = syncChain.then(() => {
         for (const dispose of disposers.values()) dispose()
         disposers = new Map()
+        prompts?.giveUp()
       })
       ctx.logger.error(`${label}: giving up after ${policy.maxAttempts} consecutive failed reconnect attempts — tools unregistered; reload the plugin or restart the Host to reconnect`)
       return
@@ -268,6 +285,16 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
         }
       },
     )
+    if (prompts !== undefined) {
+      generation.setNotificationHandler(
+        PromptListChangedNotificationSchema,
+        async () => {
+          if (!isCurrent(generation)) return
+          ctx.logger.info(`${label}: prompt list changed, re-syncing`)
+          await enqueuePromptsSync(generation)
+        },
+      )
+    }
     try {
       await generation.connect(createTransport(config))
       if (hasClosed()) {
@@ -346,6 +373,7 @@ export function startConnection(ctx: Context, config: Config, policy: ResolvedRe
       await syncChain
       for (const dispose of disposers.values()) dispose()
       disposers = new Map()
+      prompts?.dispose()
     },
   }
 }

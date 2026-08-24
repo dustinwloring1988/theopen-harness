@@ -1,7 +1,8 @@
 /** Local durable attachment backend rooted below `TOH_HOME`. @module @buckeyestudio/toh-attachment-local */
 
 import { join, resolve } from 'node:path'
-import { Context } from '@buckeyestudio/cordis'
+import { performance } from 'node:perf_hooks'
+import { Context, Service } from '@buckeyestudio/cordis'
 import z from '@buckeyestudio/schemastery'
 import { AttachmentStore } from '@buckeyestudio/toh-attachment'
 import type {
@@ -17,6 +18,7 @@ import type { NormalizationPolicy } from './normalization.ts'
 import { CompressionLimiter } from './compression-limiter.ts'
 import { commitPreparedImageFile, prepareImageFile, readImageFile, validateImageFile } from './store.ts'
 import { readRequestImageFile, requestImageVariantId } from './request-image.ts'
+import { sweepStagingResidue } from './sweep.ts'
 
 export { canPassThroughNormalization, normalizeImage } from './normalization.ts'
 export type { NormalizedImage, NormalizationPolicy } from './normalization.ts'
@@ -180,6 +182,25 @@ export class LocalAttachmentStore extends AttachmentStore {
     }
     this.imageCompressionConcurrency = compressionConcurrency
     this.compression = new CompressionLimiter(compressionConcurrency)
+  }
+
+  /**
+   * Sweep staging residue orphaned by a previous process's crash: entries of
+   * the private `tmp/` staging directory and `*.tmp` files beside request-
+   * image cache objects, each collected only when its own mtime predates this
+   * process's start, since a newer file may belong to a live peer sharing the
+   * root. The sweep is best-effort and never blocks the mount.
+   */
+  protected async [Service.init](): Promise<void> {
+    try {
+      const swept = await sweepStagingResidue(this.root, performance.timeOrigin)
+      if (swept > 0) this.ctx.logger.debug(`attachment-local: swept ${swept} crash-orphaned staging files`)
+    } catch (error) {
+      // Residue is harmless: publication never reads staging or *.tmp names.
+      // Surfacing the failure at debug keeps a locked or unreadable directory
+      // from blocking every attachment operation behind an unfixable mount error.
+      this.ctx.logger.debug(`attachment-local: orphaned-staging sweep skipped: ${String(error)}`)
+    }
   }
 
   async validateImage(input: SaveImageAttachment): Promise<void> {

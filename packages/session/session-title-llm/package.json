@@ -1,6 +1,6 @@
 {
   "name": "@buckeyestudio/toh-session-title-llm",
-  "description": "Shared LLM generation policy for TheOpen Harness session-title providers",
+  "description": "Cadence-configured LLM provider plugin for TheOpen Harness session titles",
   "version": "0.1.1-rc.2",
   "publishConfig": {
     "access": "public"
@@ -44,8 +44,11 @@
     "@buckeyestudio/schemastery": "workspace:^"
   },
   "devDependencies": {
+    "@buckeyestudio/cordis-plugin-include": "workspace:^",
+    "@buckeyestudio/cordis-plugin-loader": "workspace:^",
     "@buckeyestudio/toh-invariants": "workspace:^",
     "@buckeyestudio/toh-llm": "workspace:^",
+    "@buckeyestudio/toh-llm-deepseek": "workspace:^",
     "@buckeyestudio/toh-session": "workspace:^",
     "@buckeyestudio/toh-session-title": "workspace:^",
     "@buckeyestudio/toh-timeout": "workspace:^",

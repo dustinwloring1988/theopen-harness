@@ -2,7 +2,7 @@
 
 English | [中文](README.zh.md)
 
-MCP client bridge plugin: connects to external [Model Context Protocol](https://modelcontextprotocol.io/) servers and registers their tools on `ctx.tools`, making them available to the model as native tools under server-qualified names (`mcp__<serverName>__<rawName>`).
+MCP client bridge plugin: connects to external [Model Context Protocol](https://modelcontextprotocol.io/) servers and registers their tools on `ctx.tools`, making them available to the model as native tools under server-qualified names (`mcp__<serverName>__<rawName>`). With `prompts.enabled`, the same connection also publishes the server's MCP Prompts as skill-provider candidates on `ctx.skills`.
 
 ## Usage
 
@@ -49,6 +49,8 @@ The model sees `mcp__github__create_issue`, `mcp__web__search`, … — the same
 | `reconnect.initialDelayMs` | both | no | First reconnect delay in ms; doubles per consecutive failed attempt (default 500) |
 | `reconnect.maxDelayMs` | both | no | Backoff ceiling in ms; also the uptime after which the attempt budget resets (default 30000) |
 | `reconnect.maxAttempts` | both | no | Consecutive failed attempts per outage before giving up for good (default 10) |
+| `prompts.enabled` | both | no | Bridge this server's MCP Prompts into the skill registry (default `false`) |
+| `prompts.modelInvocable` | both | no | Advertise bridged prompts to model-facing skill catalogs (default `true`) |
 
 ## Tool naming
 
@@ -59,6 +61,14 @@ Every MCP tool has two names: the raw MCP name (sent on the wire in `tools/call`
 - A server listing the same tool name twice is rejected as an invalid tool list.
 - A foreign registration squatting on this server's namespace rolls back the whole generation (never a partial set), with a loud error.
 
+## Prompts as skills
+
+With `prompts.enabled`, each listed prompt becomes a skill candidate: the model-facing skill name is the kebab-case slug of the prompt's raw name (`code_review` → `code-review`), the server description carries over verbatim, and declared arguments are captured as metadata. The provider registers under the label `mcp:<serverName>` with origin bucket `mcp`; remote prompts rank below every local root, so project, user, and bundled skills shadow same-named slugs, and two servers exposing the same slug resolve deterministically by plugin registration order with a visible warning for the loser.
+
+Bodies load lazily through `prompts/get` using the raw name. The loaded content prepends an argument guide built from the discovery metadata and renders the server's messages under role tags; a load that fails because the connection is down or the server rejects the read reports the skill as unloadable instead of surfacing an error, while a caller cancellation raised mid-load propagates to the caller. A candidate resolves only through the listing that produced its catalog, and only while that listing is still the newest one: while a reconnect or same-generation `list_changed` re-sync is in flight, loads report unloadable instead of sending the old catalog's raw name and argument metadata to a server state the catalog may no longer describe — including an in-flight load whose replacement listing commits before its request resolves. A slug collision inside one server's list (two prompts normalizing to one slug) invalidates that fetch: the previous candidates keep serving and the failure logs at warn until the server publishes a clean list.
+
+Prompt sync rides the same supervision as tools: every reconnect generation re-runs `prompts/list` after the tool swap, `notifications/prompts/list_changed` triggers a re-sync on the live generation, and exhausting the reconnect budget empties the catalog alongside unregistering the tools. Pagination ends only when `nextCursor` is absent; a server repeating one cursor (including echoing an empty string every page) fails the fetch inside the containing sync. During a transient outage or after a failed re-sync, the last good candidates stay listed while their loads fail closed until the next clean catalog commits.
+
 ## Behavior
 
 - On connect: plugin activation awaits `listTools()` and registers each tool via `ctx.tools.register()` under its public name before the composition starts its first turn. Initial connection, discovery, or registration failure is always logged; it rejects activation when `failOnStartupError` is true and otherwise activates with no tools.
@@ -67,6 +77,7 @@ Every MCP tool has two names: the raw MCP name (sent on the wire in `tools/call`
 - Canonical success is `{ content: JsonValue[], structuredContent? }`; complete JSON MCP blocks survive for programmatic callers. A supported advertised `outputSchema` validates `structuredContent`; unsupported schema vocabulary falls back to unconstrained `JsonValue`.
 - Native/model rendering preserves MCP block order. Text-like runs join with newlines; resource links keep their name and URI as text; supported images become durable core image blocks only when `ctx.attachments` is mounted and the exact calling model route explicitly declares image input. The whole image batch is decoded and admitted before any member is saved. A malformed/refused image batch, audio, embedded resources, and unsupported blocks become explicit diagnostic text rather than disappearing.
 - On disconnect/crash: the supervisor restarts the original server config with exponential backoff (`reconnect.initialDelayMs` doubling up to `reconnect.maxDelayMs`) and re-runs discovery on success — the recovered generation replaces the previous one, so tools neither duplicate nor leak. During the outage the last good generation stays registered; calls against it fail until recovery.
+- With `prompts.enabled`, every tool generation swap is followed by a `prompts/list` sync in the same serialized queue; `notifications/prompts/list_changed` re-syncs the live generation, and a failed prompt fetch keeps the previous candidates while flagging the catalog incomplete so consumers retry. Those candidates' loads report unloadable until the next successful sync commits.
 - Reconnection is budgeted per outage: after `reconnect.maxAttempts` consecutive failures the server's tools are unregistered and reconnection stops until an HMR reload or Host restart. A connection that survives past `maxDelayMs` resets the budget, so an occasionally-crashing server recovers indefinitely while a crash-looping one — even with briefly successful connects — still exhausts the cap instead of restarting forever.
 - Reconnect states are user-visible in logs: reconnecting (warn, with attempt count and delay), recovered (info), final failure and disabled-loss (error). Disposal cancels any pending reconnect. With `reconnect.enabled: false`, a lost connection keeps tools registered but failing until a reload — the manual-recovery behavior.
 
@@ -75,6 +86,7 @@ Every MCP tool has two names: the raw MCP name (sent on the wire in `tools/call`
 | Service | Usage |
 |---|---|
 | `ctx.tools` | Register/unregister MCP tools |
+| `ctx.skills` | Register the prompts provider when `prompts.enabled`; enabling without a mounted registry fails the plugin at load |
 | `ctx.attachments` | Optionally validate and persist image result batches before model projection |
 | `ctx.llm` | Optionally prove the exact calling route explicitly supports image input |
 
@@ -108,10 +120,25 @@ Arguments, mapped text, and durable image references are retained until compacti
 
 Append-only; newly visible content follows the reusable request prefix and does not invalidate existing KV-cache entries.
 
+### Bridged MCP prompts
+
+#### What the model sees
+
+With `prompts.enabled`, each listed prompt appears in the skill catalog under its kebab-case slug with the server's description; loading one yields an argument guide followed by the server-rendered prompt messages. The catalog entry disappears when the reconnect budget is exhausted or the plugin is disposed, and a recovered generation replaces the candidate set as a whole.
+
+#### Token effect
+
+Catalog summaries ride the session-prefix skill listing while enabled; loaded bodies are retained per invocation like any other skill body. Disabling `prompts.enabled` removes both.
+
+#### KV Cache effect
+
+Prefix-stable while the candidate set and bodies are unchanged; a generation swap that changes the candidate set invalidates reuse from the changed catalog token onward.
+
 ## Known Limitations and Deferred Work
 
-- **Tools are the only bridged MCP capability** — Resources and Prompts have no harness consumer and are deferred.
-- **Startup timeout is inherited from the MCP SDK** — TOH does not yet expose a connection/discovery timeout. Each initialize or paginated `tools/list` request uses the SDK's 60-second default, so an unresponsive server or cursor chain can delay both activation and teardown while the initial synchronization settles.
+- **Resources have no harness consumer** — MCP Resources are not bridged; bounded reads through the existing tool bridge are deferred.
+- **Prompts cannot receive invocation arguments** — the skill seam carries no parameters, so a bridged prompt's declared arguments surface as a guide inside the loaded body and values depend on the server rendering without substitution.
+- **Startup timeout is inherited from the MCP SDK** — TOH does not yet expose a connection/discovery timeout. Each initialize or paginated `tools/list`/`prompts/list` request uses the SDK's 60-second default, so an unresponsive server or cursor chain can delay both activation and teardown while the initial synchronization settles.
 - **Reconnect triggers on transport close** — a crashed stdio child fires it; Streamable HTTP failures surface per request and through the SDK transport's own SSE-stream recovery, so an unreachable HTTP server is retried per call rather than respawned by the supervisor.
 - **Image is the only durable rich-result bridge** — PNG, JPEG, WebP, and GIF can enter Native context after exact capability proof. Audio and embedded-resource payloads remain execution-local with explicit diagnostics, while resource links preserve only their name and URI as text.
 - **Unsupported MCP output schemas are not enforced** — `structuredContent` falls back to `JsonValue` when the advertised schema uses vocabulary outside the harness subset.

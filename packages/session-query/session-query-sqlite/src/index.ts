@@ -22,6 +22,11 @@ import SessionQueryEngine, {
   assertSessionHeadersCompatible,
   buildSessionEventSearchDocuments,
 } from '@buckeyestudio/toh-session-query'
+import {
+  SESSION_SEARCH_EVENT_RANK_KEYS,
+  SESSION_SEARCH_RANK_KEYS,
+  sessionSearchRankOrderSql,
+} from '@buckeyestudio/toh-session-query/ranking'
 import type {
   Config as SessionQueryConfig,
   SessionEventSearchDocument,
@@ -648,8 +653,6 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
       offset,
     ]
     assertPortableBindingCount(bindings.length)
-    // The browser fixture mirrors these rank keys in
-    // `packages/client/connection/src/client/fixture.ts`; update both together.
     return this._requireDb().prepare(`
       ${selected.sql},
       filtered AS (
@@ -658,13 +661,13 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
       ranked AS (
         SELECT *, ROW_NUMBER() OVER (
           PARTITION BY session_id
-          ORDER BY match_count DESC, document_length ASC, time DESC, seq DESC
+          ORDER BY ${sessionSearchRankOrderSql(SESSION_SEARCH_EVENT_RANK_KEYS)}
         ) AS event_rank
         FROM filtered
       )
       SELECT * FROM ranked
       WHERE event_rank = 1
-      ORDER BY match_count DESC, document_length ASC, time DESC, session_id ASC, seq DESC
+      ORDER BY ${sessionSearchRankOrderSql(SESSION_SEARCH_RANK_KEYS)}
       LIMIT ? OFFSET ?
     `).all(...bindings) as unknown as SearchRow[]
   }
@@ -690,7 +693,7 @@ export class SqliteSessionQueryEngine extends SessionQueryEngine {
       ${selected.sql}
       SELECT * FROM matched
       WHERE ${where}
-      ORDER BY match_count DESC, document_length ASC, time DESC, seq DESC
+      ORDER BY ${sessionSearchRankOrderSql(SESSION_SEARCH_EVENT_RANK_KEYS)}
       LIMIT ? OFFSET ?
     `).all(...bindings) as unknown as SearchRow[]
   }

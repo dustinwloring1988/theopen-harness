@@ -31,6 +31,11 @@ import type {
 import type { CommandId } from '@buckeyestudio/toh-commands/brand'
 import type { CommandDescriptor, CommandExecution, CommandResult } from '@buckeyestudio/toh-commands/types'
 import { deriveEventMessage, foldSurface } from '@buckeyestudio/toh-session/surface'
+import {
+  compareSessionSearchCandidates,
+  SESSION_SEARCH_EVENT_RANK_KEYS,
+  SESSION_SEARCH_RANK_KEYS,
+} from '@buckeyestudio/toh-session-query/ranking'
 import type {
   ApiProxy, ClientRequest, ClientResponse, HistoryEntry, HostFrame, MuxFrame, RpcReceipt,
   ModelProviderGroup, ModelSelection, RpcRequest, RpcResponse, RpcResult, ServerRequest, ServerResponse, SessionSummary,
@@ -1356,15 +1361,6 @@ interface FixtureSearchCandidate {
   documentLength: number
 }
 
-/** Mirrors `packages/session-query/session-query-sqlite/src/index.ts`; update both together. */
-function compareSearchCandidates(a: FixtureSearchCandidate, b: FixtureSearchCandidate): number {
-  if (a.matchCount !== b.matchCount) return b.matchCount - a.matchCount
-  if (a.documentLength !== b.documentLength) return a.documentLength - b.documentLength
-  if (a.time !== b.time) return b.time - a.time
-  if (a.sessionId !== b.sessionId) return a.sessionId < b.sessionId ? -1 : 1
-  return b.seq - a.seq
-}
-
 /**
  * Current plan projection over the full log (host parallel: latest todo/write
  * with no later turn/start; a new turn retires the previous plan).
@@ -2294,9 +2290,9 @@ function createFixtureWorld(options: FixtureOptions): FixtureWorld {
               matchEnd: match.end,
               documentLength: Array.from(eventText).length,
             }]
-          }).sort(compareSearchCandidates)[0]
+          }).sort((a, b) => compareSessionSearchCandidates(a, b, SESSION_SEARCH_EVENT_RANK_KEYS))[0]
           return best === undefined ? [] : [best]
-        }).sort(compareSearchCandidates)
+        }).sort((a, b) => compareSessionSearchCandidates(a, b, SESSION_SEARCH_RANK_KEYS))
         return ok(request, {
           items: matches.slice(0, SESSION_SEARCH_RESULT_LIMIT).map(match => ({
             sessionId: match.sessionId,

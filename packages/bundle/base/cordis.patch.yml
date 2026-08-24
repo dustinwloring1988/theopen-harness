@@ -44,8 +44,9 @@
         maxTitleBytes: 80
 
     - id: session-title-llm
-      name: '@buckeyestudio/toh-session-title-first-prompt-llm'
+      name: '@buckeyestudio/toh-session-title-llm'
       config:
+        cadence: 'first-prompt'
         targetWords: 5
         targetCjkCharacters: 10
         maxInputBytes: 4096
@@ -393,14 +394,25 @@
         thresholds: [3, 5, 8]
         argumentsPreviewChars: 500
 
-    # Every mode enables the stable model-facing web_search tool. DeepSeek search
-    # resolves the same DEEPSEEK_API_KEY credential the Models page manages for
-    # chat, at each search; its Messages endpoint is separate from the
-    # chat-completions endpoint, so it takes its own base-URL override. Fetch stays
-    # disabled and no fetch provider is mounted: that provider defers SSRF
-    # protection and the model would choose the request target. Search is a full
-    # auxiliary model request with server-side retrieval, so this shipped DeepSeek
-    # route gets 60s while the provider-neutral tool default remains 30s.
+    # Runaway-turn budget policy: at a configured advisory step count it steers
+    # one wrap-up request per turn, and past a hard step or token limit it
+    # cancels the turn with a hook cause. Opt-in: every limit is a deployment
+    # choice with no supported default, and an enabled row without any limit
+    # fails loud at load. Enable it in a later patch layer with explicit limits.
+    - id: turn-budget-policy
+      name: '@buckeyestudio/toh-turn-budget-policy'
+      disabled: true
+
+    # Every mode enables the stable model-facing web_search and web_fetch tools.
+    # DeepSeek search resolves the same DEEPSEEK_API_KEY credential the Models
+    # page manages for chat, at each search; its Messages endpoint is separate
+    # from the chat-completions endpoint, so it takes its own base-URL override.
+    # Fetch runs through the local HTTP provider, whose private-network guard
+    # resolves each destination and blocks loopback, private, link-local, and
+    # otherwise non-public addresses unless a deployment opts in with
+    # allowPrivateNetworks. Search is a full auxiliary model request with
+    # server-side retrieval, so this shipped DeepSeek route gets 60s while the
+    # provider-neutral tool default remains 30s.
     - id: web
       name: '@buckeyestudio/toh-web'
       config:
@@ -411,10 +423,13 @@
       config:
         apiKeyEnv: DEEPSEEK_API_KEY
 
+    - id: web-fetch-http
+      name: '@buckeyestudio/toh-web-fetch-http'
+
     - id: tool-web
       name: '@buckeyestudio/toh-tool-web'
       config:
-        fetch: false
+        fetch: true
         searchTimeoutMs: 60000
 
     # ── rows every mode mounts, whose values each overlay may state ──────────────

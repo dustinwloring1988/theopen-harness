@@ -268,7 +268,7 @@ const SERVICE_ROLES: ServiceRole[] = [
     pkg: 'session-title',
     title: 'Log-backed session titles',
     mode: 'seam',
-    implementations: ['session-title-first-prompt-llm', 'session-title-all-prompts-llm'],
+    implementations: ['session-title-llm'],
     note: 'Owns the deterministic fallback, latest-title fold, and sole optional asynchronous provider registration.',
   },
   {
@@ -338,8 +338,8 @@ const SERVICE_ROLES: ServiceRole[] = [
     title: 'Skill provider registry',
     mode: 'seam',
     implementations: ['skill-badge', 'skill-filesystem'],
-    consumers: ['tool-skill'],
-    note: 'Merges provider skill catalogs; tool-skill renders the session-prefix catalog and loads complete skill bodies.',
+    consumers: ['mcp-client', 'tool-skill'],
+    note: 'Merges provider skill catalogs; tool-skill renders the session-prefix catalog and loads complete skill bodies, and mcp-client publishes connected MCP servers\' prompts as opt-in provider candidates.',
   },
   {
     key: 'agents',
