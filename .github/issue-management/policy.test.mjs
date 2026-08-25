@@ -128,6 +128,16 @@ test('rejects metadata prefixes in an Issue title', () => {
   assert.ok(errors.includes('Issue 标题不得带 Type、Priority、Status、area 或 Owner 前缀'))
 })
 
+test('accepts an Issue title without Han characters', () => {
+  assert.deepEqual(
+    validateIssue({
+      ...legalIssue,
+      title: 'Fix the failing e2e and Issue policy lanes reported by CI',
+    }),
+    [],
+  )
+})
+
 test('reserves PR kind and legacy labels for pull requests', () => {
   for (const label of [
     ...canonicalKinds,
@@ -159,6 +169,28 @@ test('keeps terminal Status aligned with the native close reason', () => {
     [],
   )
   assert.ok(validateIssue({ ...legalIssue, status: 'Done' }).includes('Done 必须对应 Completed 关闭原因'))
+})
+
+test('suspends Project-dependent validation when the board is unreachable', () => {
+  assert.deepEqual(
+    validateIssue({ ...legalIssue, status: null, priority: null, projectAvailable: false }),
+    [],
+  )
+  assert.deepEqual(validateIssue({ ...legalIssue, status: 'Inbox', projectAvailable: false }), [])
+})
+
+test('keeps title and label rules without a reachable Project', () => {
+  const errors = validateIssue({
+    ...legalIssue,
+    status: null,
+    priority: null,
+    projectAvailable: false,
+    labels: ['kind/bug'],
+    title: '[Bug] 修复恢复错误',
+  })
+  assert.ok(errors.includes('Issue 标题不得带 Type、Priority、Status、area 或 Owner 前缀'))
+  assert.ok(errors.some((error) => error.startsWith('Issue 不得使用 PR kind 或旧版标签：')))
+  assert.equal(errors.includes('Issue 必须在 Project 中且具有合法 Status'), false)
 })
 
 test('separates resolving and informational references', () => {
