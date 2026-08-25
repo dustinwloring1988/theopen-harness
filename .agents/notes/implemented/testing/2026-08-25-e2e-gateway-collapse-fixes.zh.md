@@ -10,7 +10,7 @@ Status: implemented
 
 ## Decision
 
-槽位坍缩在读槽位处归一，而非适配器内：两个示例组合通过 `!!js` 表达式构建目录行，按 id 去重并对图片能力取并集，坍缩部署得到一行，而无环境启动解析出的列表与之前逐字节一致。pi-ai e2e harness 在网关模式下把槽位声明为手写模型（裸 id 即可获得可用默认值；公开端点继续由安装目录提供服务，effort 场景断言的正是其推理元数据）。其推理控制场景——包括显式 `off`，在非推理槽位上无可关闭且在提供方 I/O 之前被拒——移入仅公开端点的 describe。Codex 桥转发到 `DEEPSEEK_BASE_URL` 所指端点并使用解析后的 flash 槽位，Responses 通道由此跑在任何 completions 网关上；Claude Code 通道在非官方端点仍自跳过：Claude CLI 以 Anthropic Messages 讲到 DeepSeek 的 `/anthropic` 面，没有网关承载它。
+槽位坍缩在读槽位处归一，而非适配器内：两个示例组合通过 `!!js` 表达式构建目录行，按 id 去重并对图片能力取并集，坍缩部署得到一行，而无环境启动解析出的列表与之前逐字节一致。pi-ai e2e harness 在网关模式下把槽位声明为手写模型，并按 id 去重——坍缩会把两个槽位解析到同一网关模型，而适配器拒绝重复 id 的目录行（裸 id 即可获得可用默认值；公开端点继续由安装目录提供服务，effort 场景断言的正是其推理元数据）。其推理控制场景——包括显式 `off`，在非推理槽位上无可关闭且在提供方 I/O 之前被拒——移入仅公开端点的 describe。Codex 桥转发到 `DEEPSEEK_BASE_URL` 所指端点并使用解析后的 flash 槽位，且授予宽松的补全上限：推理型网关会在可见回显之前消耗补全 token，过小的上限把 nonce 截断在中途；Responses 通道由此跑在任何 completions 网关上。Claude Code 通道在非官方端点仍自跳过：Claude CLI 以 Anthropic Messages 讲到 DeepSeek 的 `/anthropic` 面，没有网关承载它。
 
 五个 portal 组件（`Modal`、`Toast`、`OnboardingSurface`、`DropOverlay`、`ImageLightbox`）携带显式返回注解，其声明不再依赖跨 React 类型身份的推断。built-bin 消费方改为解析每个包入口再向上走到所属 `package.json` 来链接依赖。compaction harness 的小测试目录改为按解析后的 flash 槽位而非字面 id 取键；重生成的组合图谱与 preset e2e 的工具表现在包含 `web_fetch`。
 

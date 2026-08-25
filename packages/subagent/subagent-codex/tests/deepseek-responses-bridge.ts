@@ -78,7 +78,9 @@ async function completeWithDeepSeek(
         { role: 'user', content: task },
       ],
       temperature: 0,
-      max_tokens: 64,
+      // A reasoning gateway model spends completion tokens before the visible
+      // echo, so a small cap truncates the nonce mid-string.
+      max_tokens: 2048,
       stream: false,
     }),
   })
