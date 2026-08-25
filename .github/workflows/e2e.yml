@@ -10,8 +10,10 @@ name: E2E (real LLM API)
 #   https://api.deepseek.com.
 # - openrouter: secret OPENROUTER_API_KEY_EXTERNAL takes precedence, the base
 #   URL becomes https://openrouter.ai/api/v1, and every model slot runs
-#   stealth/ox-alpha (override per slot with DEEPSEEK_E2E_MODEL_* secrets).
-#   The Files-API image round-trip stays off: POST /files is DeepSeek-only.
+#   stealth/ox-alpha (override per slot with DEEPSEEK_E2E_MODEL_* secrets),
+#   including the shipped example compositions the with-key smokes boot. The
+#   attached-image round trip rides the adapter's inline-base64 fallback; the
+#   Files-API upload smoke stays off: POST /files is DeepSeek-only.
 #
 # pull_request IS a trigger, but GitHub withholds repo secrets from BOTH forked
 # PRs and Dependabot PRs (the latter are same-repo, fork==false, but still

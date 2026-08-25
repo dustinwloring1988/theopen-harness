@@ -19,16 +19,18 @@
 # twin (a `providers` dict keyed by route; `reasoning: high` replaces
 # thinking/reasoningEffort). Shipped default: full thinking at max effort on
 # every request. Exact-model resolution materializes request defaults before
-# the request header is logged.
+# the request header is logged. Model ids resolve from the e2e slot variables
+# when set, so a completions gateway (DEEPSEEK_BASE_URL) serves the same
+# composition unchanged.
 - id: llm-deepseek
   name: '@buckeyestudio/toh-llm-deepseek'
   config:
     thinking: enabled
     reasoningEffort: max
     models:
-      - id: deepseek-v4-pro
+      - id: !!js process.env.DEEPSEEK_E2E_MODEL_PRO ?? 'deepseek-v4-pro'
         contextWindow: 128000
-      - id: deepseek-v4-flash
+      - id: !!js process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
         contextWindow: 128000
 
 # Managed child-process groups for the bash executor (spawn/kill/output plumbing).
@@ -47,10 +49,11 @@
     agents:
       - id: main
         provider: deepseek-official
-        # Stays on flash: the goal/ralph replay corpora were recorded on it, and
-        # their nested-include overlays cannot re-pin the app config (a config
-        # patch cannot target an entry behind a nested include).
-        model: deepseek-v4-flash
+        # Stays on the flash slot: the goal/ralph replay corpora were recorded
+        # on the flash id, and their nested-include overlays cannot re-pin the
+        # app config (a config patch cannot target an entry behind a nested
+        # include).
+        model: !!js process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
         cwd: !!js process.cwd()
     workspaceContext:
       maxBytes: 65536

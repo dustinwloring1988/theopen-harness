@@ -24,8 +24,12 @@ import { assemble, type AssembledResult } from './assemble.ts'
 /**
  * Real-API e2e for the direct-fetch adapter: V4 Flash + V4 Pro across
  * thinking modes and all official effort levels. The suite skips entirely
- * without $DEEPSEEK_API_KEY; the pre-release vision smoke additionally
- * requires $DEEPSEEK_VISION_E2E=1 (see vitest.e2e.config.ts).
+ * without $DEEPSEEK_API_KEY; every model slot resolves from its
+ * DEEPSEEK_E2E_MODEL_* variable so any completions gateway serves the lane.
+ * The image round trip runs on every endpoint — gateways serve it through the
+ * adapter's inline-base64 fallback — while the Files-API upload mechanics stay
+ * a pre-release smoke on the public endpoint ($DEEPSEEK_VISION_E2E=1, see
+ * vitest.e2e.config.ts).
  */
 
 const FLASH = process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
@@ -107,7 +111,12 @@ async function harness(_model: string, config: Partial<Config> = {}) {
   contexts.push(ctx)
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(E2eAttachmentStore)
-  await ctx.plugin(LlmDeepSeek, config)
+  await ctx.plugin(LlmDeepSeek, {
+    ...config,
+    // The vision slot may name a model outside the shipped catalog; declaring
+    // it image-capable is what lets request-image policy resolution find it.
+    models: [{ id: VISION, inputModalities: ['text', 'image'] }],
+  })
   return ctx
 }
 
@@ -186,6 +195,31 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('llm-deepseek e2e (real API)', ()
     } finally {
       if (uploadedFile !== undefined) await files.delete(uploadedFile)
     }
+  })
+
+  it('describes an attached image on any completions endpoint', async () => {
+    // The public endpoint references the image through POST /files; a gateway
+    // without that endpoint fails the upload and the adapter falls back to the
+    // inline-base64 representation, which an image-capable gateway model
+    // answers directly. Either way one multimodal round trip must complete.
+    const ctx = await harness(VISION)
+    const attachments = ctx.attachments as E2eAttachmentStore
+    const result = await assemble(ctx, {
+      model: VISION,
+      messages: [createUserMessage({
+        content: [
+          { type: 'text', text: 'What symbol is shown? Reply with exactly: QR code' },
+          { type: 'image', attachment: attachments.ref },
+        ],
+        source: { kind: 'plugin', plugin: 'test' },
+      })],
+      maxTokens: 100,
+    })
+    expect(
+      result.finish.kind,
+      `vision result: ${JSON.stringify(result.finish)}`,
+    ).toBe('stop')
+    expect(textOf(result).toLowerCase()).toContain('qr code')
   })
 
   it('serves a real request with the key held only by a credentials-local document', async () => {
