@@ -10,7 +10,7 @@ name: E2E (real LLM API)
 #   https://api.deepseek.com.
 # - openrouter: secret OPENROUTER_API_KEY_EXTERNAL takes precedence, the base
 #   URL becomes https://openrouter.ai/api/v1, and every model slot runs
-#   stealth/ox-alpha (override per slot with DEEPSEEK_E2E_MODEL_* secrets),
+#   stealth/ox-alpha (override per slot with DEEPSEEK_E2E_MODEL_* variables),
 #   including the shipped example compositions the with-key smokes boot. The
 #   attached-image round trip rides the adapter's inline-base64 fallback; the
 #   Files-API upload smoke stays off: POST /files is DeepSeek-only.

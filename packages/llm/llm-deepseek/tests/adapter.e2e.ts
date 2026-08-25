@@ -18,7 +18,7 @@ import type {
 } from '@buckeyestudio/toh-attachment'
 import { LocalCredentialProvider } from '@buckeyestudio/toh-credentials-local'
 import * as LlmDeepSeek from '@buckeyestudio/toh-llm-deepseek'
-import type { Config } from '@buckeyestudio/toh-llm-deepseek'
+import type { Config, DeepSeekCatalogModel } from '@buckeyestudio/toh-llm-deepseek'
 import { assemble, type AssembledResult } from './assemble.ts'
 
 /**
@@ -111,12 +111,20 @@ async function harness(_model: string, config: Partial<Config> = {}) {
   contexts.push(ctx)
   await ctx.plugin(LlmRuntime)
   await ctx.plugin(E2eAttachmentStore)
-  await ctx.plugin(LlmDeepSeek, {
-    ...config,
-    // The vision slot may name a model outside the shipped catalog; declaring
-    // it image-capable is what lets request-image policy resolution find it.
-    models: [{ id: VISION, inputModalities: ['text', 'image'] }],
+  // The shipped catalog keeps its FLASH/PRO rows; the vision slot may name a
+  // model outside it, so its row is redeclared image-capable by id —
+  // request-image policy resolution only finds catalog models marked
+  // image-capable. Slot ids can collide on one gateway model, so the
+  // id-keyed merge lets the override win instead of failing validation.
+  const models = new Map<string, DeepSeekCatalogModel>(
+    LlmDeepSeek.DEFAULT_MODELS.map(model => [model.id, model]),
+  )
+  models.set(VISION, {
+    ...models.get(VISION),
+    id: VISION,
+    inputModalities: ['text', 'image'],
   })
+  await ctx.plugin(LlmDeepSeek, { ...config, models: [...models.values()] })
   return ctx
 }
 

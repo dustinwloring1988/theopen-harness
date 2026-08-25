@@ -17,11 +17,13 @@ import { assemble, type AssembledResult } from './assemble.ts'
 
 const FLASH = process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
 const PRO = process.env.DEEPSEEK_E2E_MODEL_PRO ?? 'deepseek-v4-pro'
-// A base-URL override fronts a completions gateway whose models the installed
-// pi-ai catalog does not describe: such slots resolve as non-reasoning and the
-// request path refuses every named effort, so named-effort scenarios and the
-// wire-shape parity check stay on the pinned public endpoint.
-const GATEWAY_MODE = process.env.DEEPSEEK_BASE_URL !== undefined
+// A base-URL override away from the public endpoint fronts a completions
+// gateway whose models the installed pi-ai catalog does not describe: such
+// slots resolve as non-reasoning and the request path refuses every named
+// effort, so named-effort scenarios and the wire-shape parity check stay on
+// the pinned public endpoint. CI exports the public URL verbatim for the
+// DeepSeek lane, so gateway mode keys on the value, not the variable.
+const GATEWAY_MODE = (process.env.DEEPSEEK_BASE_URL ?? LlmDeepSeek.PUBLIC_BASE_URL) !== LlmDeepSeek.PUBLIC_BASE_URL
 const contexts: Context[] = []
 
 async function harness(_model: string, config: Partial<PiAiProviderProfile> = {}) {
