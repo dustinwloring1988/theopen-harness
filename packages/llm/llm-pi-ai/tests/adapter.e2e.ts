@@ -8,11 +8,12 @@ import * as LlmDeepSeek from '@buckeyestudio/toh-llm-deepseek'
 import { assemble, type AssembledResult } from './assemble.ts'
 
 /**
- * Real-API e2e for the pi-ai-backed adapter: V4 Flash + V4 Pro with provider
- * defaults and representative off/high/max reasoning. Mirrors the native
- * adapter's StreamChunk contract and exercises a replayed tool follow-up.
- * Key-gated; like every real-API suite, the model slots resolve from
- * DEEPSEEK_E2E_MODEL_FLASH / _PRO so any completions gateway serves them.
+ * Real-API e2e for the pi-ai-backed adapter: the resolved Flash + Pro slots
+ * with provider defaults, plus representative off/high/max reasoning and a
+ * replayed tool follow-up on the public endpoint. Mirrors the native adapter's
+ * StreamChunk contract. Key-gated; like every real-API suite, the model slots
+ * resolve from DEEPSEEK_E2E_MODEL_FLASH / _PRO so any completions gateway
+ * serves the plain-text lane.
  */
 
 const FLASH = process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
@@ -35,6 +36,12 @@ async function harness(_model: string, config: Partial<PiAiProviderProfile> = {}
       deepseek: {
         ...process.env.DEEPSEEK_API_KEY === undefined ? {} : { apiKey: process.env.DEEPSEEK_API_KEY },
         ...process.env.DEEPSEEK_BASE_URL === undefined ? {} : { baseURL: process.env.DEEPSEEK_BASE_URL },
+        // Gateway slots are ids the installed catalog does not describe, so
+        // they must be declared to be routable; a bare id yields serviceable
+        // defaults. Public-endpoint runs keep the installed catalog, whose
+        // entries carry the reasoning metadata the provider-native scenarios
+        // assert.
+        ...(GATEWAY_MODE ? { models: [{ id: FLASH }, { id: PRO }] } : {}),
         ...config,
       },
     },
@@ -85,7 +92,17 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('llm-pi-ai e2e (real API)', () =>
     expect(result.finish.kind).toBe('stop')
     expect(textOf(result).toLowerCase()).toContain('pong')
   })
+})
 
+/**
+ * Reasoning-control scenarios assume the endpoint IS the installed DeepSeek
+ * API, where thinking-mode and effort fields are honored provider extensions:
+ * a gateway slot the catalog does not describe resolves as non-reasoning, and
+ * naming any effort there — including `off`, which has nothing to disable —
+ * fails with `UNSUPPORTED_REASONING_EFFORT` before provider I/O. So these run
+ * only against the pinned public endpoint.
+ */
+describe.skipIf(!process.env.DEEPSEEK_API_KEY || GATEWAY_MODE)('llm-pi-ai e2e (real API, provider-native reasoning)', () => {
   it('flash + reasoning off: plain text without reasoning blocks', async () => {
     const ctx = await harness(FLASH)
     const result = await assemble(ctx,{
@@ -95,20 +112,10 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('llm-pi-ai e2e (real API)', () =>
       maxTokens: 50,
     })
     expect(result.finish.kind).toBe('stop')
-    // A gateway slot the installed catalog does not describe resolves as
-    // non-reasoning, so `off` sends nothing and no reasoning block can appear.
     expect(result.message.content.some(block => block.type === 'reasoning')).toBe(false)
     expect(textOf(result).toLowerCase()).toContain('pong')
   })
-})
 
-/**
- * Named-effort scenarios assume the endpoint IS the installed DeepSeek API: a
- * slot the catalog does not describe resolves as non-reasoning and the request
- * path refuses every named effort (`UNSUPPORTED_REASONING_EFFORT`), so these
- * run only against the pinned public endpoint.
- */
-describe.skipIf(!process.env.DEEPSEEK_API_KEY || GATEWAY_MODE)('llm-pi-ai e2e (real API, provider-native reasoning)', () => {
   it.each([FLASH, PRO])('%s + reasoning high: reasoning blocks present', async (model) => {
     const ctx = await harness(model)
     const result = await assemble(ctx,{

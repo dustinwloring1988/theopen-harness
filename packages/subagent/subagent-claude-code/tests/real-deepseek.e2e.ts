@@ -20,6 +20,11 @@ import * as claudeCode from '../src/index.ts'
 
 const execFileAsync = promisify(execFile)
 const OFFICIAL_DEEPSEEK_BASE_URL = 'https://api.deepseek.com'
+// The Claude CLI speaks Anthropic Messages against DeepSeek's `/anthropic`
+// surface, which only the official endpoint serves; a completions gateway
+// (DEEPSEEK_BASE_URL) cannot host this lane, so it self-skips there.
+const GATEWAY_MODE = (process.env.DEEPSEEK_BASE_URL ?? OFFICIAL_DEEPSEEK_BASE_URL)
+  .replace(/\/+$/, '') !== OFFICIAL_DEEPSEEK_BASE_URL
 const sdkRoot = dirname(fileURLToPath(
   import.meta.resolve('@anthropic-ai/claude-agent-sdk'),
 ))
@@ -63,7 +68,7 @@ async function expectQuiescent(handles: readonly SubprocessHandle[]): Promise<vo
   }
 }
 
-describe.skipIf(!process.env.DEEPSEEK_API_KEY)(
+describe.skipIf(!process.env.DEEPSEEK_API_KEY || GATEWAY_MODE)(
   'Claude Code provider with real DeepSeek API',
   () => {
     it('returns one unique nonce through the production provider and real SDK/CLI', async () => {

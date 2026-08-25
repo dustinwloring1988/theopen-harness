@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useState } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import type { ReactPortal } from 'react'
 import css from './Toast.module.css'
 
 /** Full-opacity hold before the fade starts. Must agree with the stylesheet's
@@ -30,7 +31,7 @@ export function Toast({ text, icon, anchor, onDone }: {
   icon?: ReactNode
   anchor?: HTMLElement | null
   onDone: () => void
-}) {
+}): ReactPortal {
   useEffect(() => {
     const timer = setTimeout(onDone, HOLD_MS + FADE_MS)
     return () => { clearTimeout(timer) }

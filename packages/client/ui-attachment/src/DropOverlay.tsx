@@ -1,4 +1,5 @@
 import { createPortal } from 'react-dom'
+import type { ReactPortal } from 'react'
 import css from './DropOverlay.module.css'
 
 /** Drop-overlay strings the owner resolves from its own locale namespace. */
@@ -24,7 +25,7 @@ export interface DropOverlayLabels {
 export function DropOverlay({ disabled, labels }: {
   disabled: boolean
   labels: DropOverlayLabels
-}) {
+}): ReactPortal {
   return createPortal(
     <div className={css.mask} role="status">
       <div className={css.wrap}>

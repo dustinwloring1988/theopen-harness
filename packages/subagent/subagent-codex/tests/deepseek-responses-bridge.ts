@@ -53,27 +53,23 @@ function taskText(body: Record<string, unknown>): string {
   return typeof body.instructions === 'string' ? body.instructions : ''
 }
 
-function deepSeekBaseUrl(): string {
-  const configured = (process.env.DEEPSEEK_BASE_URL ?? OFFICIAL_DEEPSEEK_BASE_URL)
-    .replace(/\/+$/, '')
-  if (configured !== OFFICIAL_DEEPSEEK_BASE_URL) {
-    throw new Error('Codex DeepSeek e2e requires the official DeepSeek base URL')
-  }
-  return configured
+/** The completions upstream: any gateway DEEPSEEK_BASE_URL names, else official DeepSeek. */
+function upstreamBaseURL(): string {
+  return (process.env.DEEPSEEK_BASE_URL ?? OFFICIAL_DEEPSEEK_BASE_URL).replace(/\/+$/, '')
 }
 
 async function completeWithDeepSeek(
   authorization: string,
   task: string,
 ): Promise<string> {
-  const response = await fetch(`${deepSeekBaseUrl()}/chat/completions`, {
+  const response = await fetch(`${upstreamBaseURL()}/chat/completions`, {
     method: 'POST',
     headers: {
       authorization,
       'content-type': 'application/json',
     },
     body: JSON.stringify({
-      model: 'deepseek-v4-flash',
+      model: process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash',
       messages: [
         {
           role: 'system',

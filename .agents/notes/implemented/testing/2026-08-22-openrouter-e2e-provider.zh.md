@@ -16,7 +16,7 @@ CI 的 e2e 工作流按 secret 选择 provider：`OPENROUTER_API_KEY_EXTERNAL` �
 
 ## 影响
 
-带密钥通道不再需要 DeepSeek 账号，且模型槽位可按次运行修改而无需改代码（CI 还支持 `DEEPSEEK_E2E_MODEL_OPENROUTER` 仓库变量）。图像输入在所有端点都有覆盖，因此带密钥通道能通过其点名的网关模型证明多模态往返。网关特有行为不在测试范围内：thinking-mode 与 effort 字段是 DeepSeek 扩展，网关可能忽略或拒绝；chat-completions 套件之外的 provider 专属冒烟（`web-search-deepseek`、Claude Code 与 Codex subagent 桥）仍需各自的 provider。
+带密钥通道不再需要 DeepSeek 账号，且模型槽位可按次运行修改而无需改代码（CI 还支持 `DEEPSEEK_E2E_MODEL_OPENROUTER` 仓库变量）。图像输入在所有端点都有覆盖，因此带密钥通道能通过其点名的网关模型证明多模态往返。网关特有行为不在测试范围内：thinking-mode 与 effort 字段是 DeepSeek 扩展，网关可能忽略或拒绝；chat-completions 套件之外的 provider 专属冒烟（`web-search-deepseek`、Claude Code subagent 桥）仍需各自的 provider——Codex 桥已跟随这些槽位（[坍缩修复](2026-08-25-e2e-gateway-collapse-fixes.zh.md)）。
 
 ## 已考虑的替代方案
 

@@ -16,7 +16,7 @@ CI's e2e workflow selects the provider from secrets: `OPENROUTER_API_KEY_EXTERNA
 
 ## Consequences
 
-A DeepSeek account is no longer needed to exercise the with-key lane, and model slots change per run without code edits (CI also honors a `DEEPSEEK_E2E_MODEL_OPENROUTER` repository variable). Image input is covered on every endpoint, so the with-key lane proves multimodal round trips through the gateway model it names. Gateway-specific behavior stays untested by construction: thinking-mode and effort fields are DeepSeek extensions that gateways may ignore or reject, and provider-specific smokes outside the chat-completions suites (`web-search-deepseek`, the Claude Code and Codex subagent bridges) still require their own providers.
+A DeepSeek account is no longer needed to exercise the with-key lane, and model slots change per run without code edits (CI also honors a `DEEPSEEK_E2E_MODEL_OPENROUTER` repository variable). Image input is covered on every endpoint, so the with-key lane proves multimodal round trips through the gateway model it names. Gateway-specific behavior stays untested by construction: thinking-mode and effort fields are DeepSeek extensions that gateways may ignore or reject, and provider-specific smokes outside the chat-completions suites (`web-search-deepseek`, the Claude Code subagent bridge) still require their own providers — the Codex bridge now follows these slots ([collapse repairs](2026-08-25-e2e-gateway-collapse-fixes.md)).
 
 ## Alternatives considered
 
