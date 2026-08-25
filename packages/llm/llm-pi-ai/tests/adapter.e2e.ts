@@ -11,11 +11,19 @@ import { assemble, type AssembledResult } from './assemble.ts'
  * Real-API e2e for the pi-ai-backed adapter: V4 Flash + V4 Pro with provider
  * defaults and representative off/high/max reasoning. Mirrors the native
  * adapter's StreamChunk contract and exercises a replayed tool follow-up.
- * Key-gated.
+ * Key-gated; like every real-API suite, the model slots resolve from
+ * DEEPSEEK_E2E_MODEL_FLASH / _PRO so any completions gateway serves them.
  */
 
-const FLASH = 'deepseek-v4-flash'
-const PRO = 'deepseek-v4-pro'
+const FLASH = process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
+const PRO = process.env.DEEPSEEK_E2E_MODEL_PRO ?? 'deepseek-v4-pro'
+// A base-URL override away from the public endpoint fronts a completions
+// gateway whose models the installed pi-ai catalog does not describe: such
+// slots resolve as non-reasoning and the request path refuses every named
+// effort, so named-effort scenarios and the wire-shape parity check stay on
+// the pinned public endpoint. CI exports the public URL verbatim for the
+// DeepSeek lane, so gateway mode keys on the value, not the variable.
+const GATEWAY_MODE = (process.env.DEEPSEEK_BASE_URL ?? LlmDeepSeek.PUBLIC_BASE_URL) !== LlmDeepSeek.PUBLIC_BASE_URL
 const contexts: Context[] = []
 
 async function harness(_model: string, config: Partial<PiAiProviderProfile> = {}) {
@@ -87,10 +95,20 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('llm-pi-ai e2e (real API)', () =>
       maxTokens: 50,
     })
     expect(result.finish.kind).toBe('stop')
+    // A gateway slot the installed catalog does not describe resolves as
+    // non-reasoning, so `off` sends nothing and no reasoning block can appear.
     expect(result.message.content.some(block => block.type === 'reasoning')).toBe(false)
     expect(textOf(result).toLowerCase()).toContain('pong')
   })
+})
 
+/**
+ * Named-effort scenarios assume the endpoint IS the installed DeepSeek API: a
+ * slot the catalog does not describe resolves as non-reasoning and the request
+ * path refuses every named effort (`UNSUPPORTED_REASONING_EFFORT`), so these
+ * run only against the pinned public endpoint.
+ */
+describe.skipIf(!process.env.DEEPSEEK_API_KEY || GATEWAY_MODE)('llm-pi-ai e2e (real API, provider-native reasoning)', () => {
   it.each([FLASH, PRO])('%s + reasoning high: reasoning blocks present', async (model) => {
     const ctx = await harness(model)
     const result = await assemble(ctx,{
@@ -145,7 +163,9 @@ describe.skipIf(!process.env.DEEPSEEK_API_KEY)('llm-pi-ai e2e (real API)', () =>
   it('produces the same block structure as llm-deepseek for the same prompt', async () => {
     // Loose structural equivalence between the two independent adapters:
     // same block KINDS in the same order for a deterministic prompt — the
-    // cross-implementation check that the StreamChunk design holds.
+    // cross-implementation check that the StreamChunk design holds. Gateway
+    // reasoning fields reach one adapter and not the other, so parity is a
+    // same-endpoint property.
     const deepseekCtx = new Context()
     contexts.push(deepseekCtx)
     await deepseekCtx.plugin(LlmRuntime)

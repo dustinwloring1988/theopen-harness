@@ -10,13 +10,13 @@ Status: implemented
 
 ## 决策
 
-每个真实 API 套件的模型槽位都改为从环境变量解析，并以出厂 id 作为回退——`DEEPSEEK_E2E_MODEL_FLASH`、`DEEPSEEK_E2E_MODEL_PRO`、`DEEPSEEK_E2E_MODEL_VISION`——一组变量即可重定向整条通道。任何 OpenAI-chat-completions 网关都能通过既有的 `DEEPSEEK_BASE_URL` 接入；规范的替代方案是 `https://openrouter.ai/api/v1` 上的 OpenRouter，模型为 `stealth/ox-alpha`。
+每个真实 API 套件的模型槽位都改为从环境变量解析，并以出厂 id 作为回退——`DEEPSEEK_E2E_MODEL_FLASH`、`DEEPSEEK_E2E_MODEL_PRO`、`DEEPSEEK_E2E_MODEL_VISION`——一组变量即可重定向整条通道。任何 OpenAI-chat-completions 网关都能通过既有的 `DEEPSEEK_BASE_URL` 接入；规范的替代方案是 `https://openrouter.ai/api/v1` 上的 OpenRouter，模型为 `stealth/ox-alpha`。带密钥冒烟所启动的出厂示例组合（`examples/acp-agent/cordis.yml`、`examples/headless-agent/cordis.yml`）也从同一组槽位解析其目录与 agent 行。
 
-CI 的 e2e 工作流按 secret 选择 provider：`OPENROUTER_API_KEY_EXTERNAL` 优先于 `DEEPSEEK_API_KEY_EXTERNAL`，选中的密钥以 `DEEPSEEK_API_KEY`（所有套件读取的名字）连同其 base URL 与模型槽位一起导出。Files-API 图片往返额外要求公共 DeepSeek 端点，因为 `POST /files` 没有网关等价物；inline-base64 回退路径仍由单元测试覆盖。
+CI 的 e2e 工作流按 secret 选择 provider：`OPENROUTER_API_KEY_EXTERNAL` 优先于 `DEEPSEEK_API_KEY_EXTERNAL`，选中的密钥以 `DEEPSEEK_API_KEY`（所有套件读取的名字）连同其 base URL 与模型槽位一起导出。两套套件把端点原生场景固定在公共 DeepSeek API 上：pi-ai 孪生套件会为其已安装目录未描述的模型拒绝具名 reasoning effort（`UNSUPPORTED_REASONING_EFFORT`），因此它的 effort 相关测试与线路形状一致性检查只在无 base-URL 覆盖时运行；Files-API 图片上传还额外要求 `DEEPSEEK_VISION_E2E=1` 加公共端点，因为 `POST /files` 没有网关等价物。附件图片往返本身在所有端点运行——网关经适配器的 inline-base64 回退承接——因此像 `stealth/ox-alpha` 这样的图像能力网关模型可以直接演练它。
 
 ## 影响
 
-带密钥通道不再需要 DeepSeek 账号，且模型槽位可按次运行修改而无需改代码（CI 还支持 `DEEPSEEK_E2E_MODEL_OPENROUTER` 仓库变量）。网关特有行为不在测试范围内：thinking-mode 与 effort 字段是 DeepSeek 扩展，网关可能忽略或拒绝；chat-completions 套件之外的 provider 专属冒烟（`web-search-deepseek`、Claude Code 与 Codex subagent 桥）仍需各自的 provider。
+带密钥通道不再需要 DeepSeek 账号，且模型槽位可按次运行修改而无需改代码（CI 还支持 `DEEPSEEK_E2E_MODEL_OPENROUTER` 仓库变量）。图像输入在所有端点都有覆盖，因此带密钥通道能通过其点名的网关模型证明多模态往返。网关特有行为不在测试范围内：thinking-mode 与 effort 字段是 DeepSeek 扩展，网关可能忽略或拒绝；chat-completions 套件之外的 provider 专属冒烟（`web-search-deepseek`、Claude Code 与 Codex subagent 桥）仍需各自的 provider。
 
 ## 已考虑的替代方案
 
