@@ -23,8 +23,10 @@ const PRO = process.env.DEEPSEEK_E2E_MODEL_PRO ?? 'deepseek-v4-pro'
 // slots resolve as non-reasoning and the request path refuses every named
 // effort, so named-effort scenarios and the wire-shape parity check stay on
 // the pinned public endpoint. CI exports the public URL verbatim for the
-// DeepSeek lane, so gateway mode keys on the value, not the variable.
-const GATEWAY_MODE = (process.env.DEEPSEEK_BASE_URL ?? LlmDeepSeek.PUBLIC_BASE_URL) !== LlmDeepSeek.PUBLIC_BASE_URL
+// DeepSeek lane, so gateway mode keys on the value, not the variable;
+// trailing slashes are stripped so a decorated public URL stays official.
+const GATEWAY_MODE = (process.env.DEEPSEEK_BASE_URL ?? LlmDeepSeek.PUBLIC_BASE_URL)
+  .replace(/\/+$/, '') !== LlmDeepSeek.PUBLIC_BASE_URL
 const contexts: Context[] = []
 
 async function harness(_model: string, config: Partial<PiAiProviderProfile> = {}) {

@@ -56,6 +56,14 @@ export interface CodingHarnessOptions {
 /** The flash slot id every harness consumer routes; CI retargets it per gateway. */
 const FLASH = process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
 
+/**
+ * Boots the shared headless-agent e2e stack on a fresh context: agent loop,
+ * real DeepSeek adapter, and bash + todo_write tools; compaction, durable
+ * persistence, and the context-window override stay off unless requested.
+ * @param workdir Working directory the local bash executor runs commands from.
+ * @param options Optional scenario overrides ({@link CodingHarnessOptions}).
+ * @returns The mounted context; the caller owns disposal.
+ */
 export async function codingHarness(workdir: string, options: CodingHarnessOptions = {}): Promise<Context> {
   const ctx = new Context()
   await mountAgentLoopTestDependencies(ctx, {
