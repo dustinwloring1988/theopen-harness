@@ -128,6 +128,16 @@ test('rejects metadata prefixes in an Issue title', () => {
   assert.ok(errors.includes('Issue 标题不得带 Type、Priority、Status、area 或 Owner 前缀'))
 })
 
+test('accepts an Issue title without Han characters', () => {
+  assert.deepEqual(
+    validateIssue({
+      ...legalIssue,
+      title: 'Fix the failing e2e and Issue policy lanes reported by CI',
+    }),
+    [],
+  )
+})
+
 test('reserves PR kind and legacy labels for pull requests', () => {
   for (const label of [
     ...canonicalKinds,
