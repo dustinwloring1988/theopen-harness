@@ -7,17 +7,34 @@
 # The DeepSeek adapter. Shipped default: full thinking at max effort on every
 # request; exact-model resolution materializes request defaults before logging.
 # Model ids resolve from the e2e slot variables when set, so a completions
-# gateway (DEEPSEEK_BASE_URL) serves the same composition unchanged.
+# gateway (DEEPSEEK_BASE_URL) serves the same composition unchanged. Slots that
+# collapse onto one gateway id emit one catalog row — image capability unions
+# in — instead of failing the adapter's duplicate-id check.
 - id: llm-deepseek
   name: '@buckeyestudio/toh-llm-deepseek'
   config:
     thinking: enabled
     reasoningEffort: max
-    models:
-      - id: !!js process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
-      - id: !!js process.env.DEEPSEEK_E2E_MODEL_PRO ?? 'deepseek-v4-pro'
-      - id: !!js process.env.DEEPSEEK_E2E_MODEL_VISION ?? 'deepseek-v4-flash-vision-exp'
-        inputModalities: [text, image]
+    models: !!js |
+      (() => {
+        const rows = new Map()
+        const add = (id, extra = {}) => {
+          const existing = rows.get(id)
+          if (existing === undefined) { rows.set(id, { id, ...extra }); return }
+          if (extra.inputModalities !== undefined) {
+            existing.inputModalities = [...new Set([
+              ...(existing.inputModalities ?? ['text']),
+              ...extra.inputModalities,
+            ])]
+          }
+        }
+        add(process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash')
+        add(process.env.DEEPSEEK_E2E_MODEL_PRO ?? 'deepseek-v4-pro')
+        add(process.env.DEEPSEEK_E2E_MODEL_VISION ?? 'deepseek-v4-flash-vision-exp', {
+          inputModalities: ['text', 'image'],
+        })
+        return [...rows.values()]
+      })()
 
 # The default composition confines bash AND the filesystem tools to the
 # workspace and asks before a wider retry. Snapshot runs select

@@ -21,17 +21,21 @@
 # every request. Exact-model resolution materializes request defaults before
 # the request header is logged. Model ids resolve from the e2e slot variables
 # when set, so a completions gateway (DEEPSEEK_BASE_URL) serves the same
-# composition unchanged.
+# composition unchanged; slots that collapse onto one gateway id emit one
+# catalog row instead of failing the adapter's duplicate-id check.
 - id: llm-deepseek
   name: '@buckeyestudio/toh-llm-deepseek'
   config:
     thinking: enabled
     reasoningEffort: max
-    models:
-      - id: !!js process.env.DEEPSEEK_E2E_MODEL_PRO ?? 'deepseek-v4-pro'
-        contextWindow: 128000
-      - id: !!js process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash'
-        contextWindow: 128000
+    models: !!js |
+      (() => {
+        const ids = [
+          process.env.DEEPSEEK_E2E_MODEL_PRO ?? 'deepseek-v4-pro',
+          process.env.DEEPSEEK_E2E_MODEL_FLASH ?? 'deepseek-v4-flash',
+        ]
+        return [...new Set(ids)].map(id => ({ id, contextWindow: 128000 }))
+      })()
 
 # Managed child-process groups for the bash executor (spawn/kill/output plumbing).
 - id: subprocess
