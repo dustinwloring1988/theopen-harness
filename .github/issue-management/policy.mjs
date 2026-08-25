@@ -294,7 +294,6 @@ export function validateIssue(issue) {
     (label) => label.startsWith('kind/') || LEGACY_LABELS.has(label),
   )
 
-  if (!/\p{Script=Han}/u.test(issue.title)) errors.push('Issue 标题必须包含中文')
   if (invalidLabels.length > 0) {
     errors.push(`Issue 不得使用 PR kind 或旧版标签：${invalidLabels.join(', ')}`)
   }
