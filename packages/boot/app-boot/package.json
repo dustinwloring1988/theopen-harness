@@ -33,7 +33,7 @@
   "license": "MIT",
   "author": "buckeyestudio",
   "dependencies": {
-    "js-yaml": "^4.2.0"
+    "js-yaml": "^5.2.2"
   },
   "peerDependencies": {
     "@buckeyestudio/cordis-plugin-group": "workspace:^",

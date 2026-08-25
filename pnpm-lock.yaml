@@ -65,8 +65,8 @@ importers:
         specifier: ^3.0.1
         version: 3.0.1
       js-yaml:
-        specifier: ^4.2.0
-        version: 4.2.0
+        specifier: ^5.2.2
+        version: 5.2.2
       jscpd:
         specifier: ^5.0.12
         version: 5.0.12
@@ -311,8 +311,8 @@ importers:
         specifier: ^15.0.0
         version: 15.0.0
       js-yaml:
-        specifier: ^4.2.0
-        version: 4.2.0
+        specifier: ^5.2.2
+        version: 5.2.2
       node-addon-require-builtin:
         specifier: ^0.1.4
         version: 0.1.4
@@ -960,8 +960,8 @@ importers:
   packages/boot/app-boot:
     dependencies:
       js-yaml:
-        specifier: ^4.2.0
-        version: 4.2.0
+        specifier: ^5.2.2
+        version: 5.2.2
     devDependencies:
       '@buckeyestudio/cordis':
         specifier: workspace:^
@@ -2380,7 +2380,7 @@ importers:
         version: link:../../settings/settings
       '@types/react':
         specifier: ~19.2.3
-        version: 19.2.18
+        version: 19.2.17
       react:
         specifier: ^19.2.8
         version: 19.2.8
@@ -5957,8 +5957,8 @@ importers:
         specifier: link:../../../vendor/schemastery
         version: link:../../../vendor/schemastery
       js-yaml:
-        specifier: ^4.1.0
-        version: 4.2.0
+        specifier: ^5.2.2
+        version: 5.2.2
     devDependencies:
       '@buckeyestudio/cordis':
         specifier: workspace:^
@@ -9174,7 +9174,7 @@ importers:
         version: link:../cosmokit
       js-yaml:
         specifier: ^4.1.0
-        version: 4.2.0
+        version: 4.3.0
 
   vendor/loader:
     dependencies:
@@ -13001,8 +13001,12 @@ packages:
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
 
-  js-yaml@4.2.0:
-    resolution: {integrity: sha512-ePWsvanv0DWuDRsW8dnt+R4jQ31SCRCQ7hhNcPXZPsoBZiemuZNYGf7adZdqX2D86j6rvKp3RpCxVTSb8WQlOw==}
+  js-yaml@4.3.0:
+    resolution: {integrity: sha512-1td788aAnnZ5qs7V2QIRl1owjtYpbKt749Y3xauqQgwIIGF/xXWz1wMTEBx5O3LK3lXLVuqXPdPxj2BoFHaW9Q==}
+    hasBin: true
+
+  js-yaml@5.2.2:
+    resolution: {integrity: sha512-dayzUzKkJ1MkuUtZglSebU43utNXH0OWQByK9rKOOuYIO8M5TV1y+n8ALMdG0rdzBnfNkOmZEqrURepb0ejqBw==}
     hasBin: true
 
   jscpd-darwin-arm64@5.0.12:
@@ -16710,6 +16714,7 @@ snapshots:
   '@types/react@19.2.18':
     dependencies:
       csstype: 3.2.3
+    optional: true
 
   '@types/retry@0.12.0': {}
 
@@ -18154,7 +18159,11 @@ snapshots:
 
   js-tokens@4.0.0: {}
 
-  js-yaml@4.2.0:
+  js-yaml@4.3.0:
+    dependencies:
+      argparse: 2.0.1
+
+  js-yaml@5.2.2:
     dependencies:
       argparse: 2.0.1
 
