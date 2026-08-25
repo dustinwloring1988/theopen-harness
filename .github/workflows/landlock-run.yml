@@ -44,6 +44,7 @@ jobs:
   matrix:
     name: Matrix
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     outputs:
       ci: ${{ steps.matrix.outputs.ci }}
     steps:
@@ -56,6 +57,7 @@ jobs:
     name: ${{ matrix.platform }}
     needs: matrix
     runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.matrix.outputs.ci) }}
@@ -110,6 +112,7 @@ jobs:
   darwin:
     name: darwin (no platform package — degradation proof)
     runs-on: macos-latest
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
 

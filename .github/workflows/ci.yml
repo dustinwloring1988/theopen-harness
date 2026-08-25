@@ -48,6 +48,7 @@ jobs:
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
           || 'toh-ubuntu-24-04-16core' }}
     name: node 24 / static
+    timeout-minutes: 30
     env:
       TOH_GATE_CONCURRENCY: '8'
     steps:
@@ -101,6 +102,7 @@ jobs:
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
           || 'toh-ubuntu-24-04-16core' }}
     name: node 24 / coverage
+    timeout-minutes: 45
     env:
       # Partitioning replaces the instrumented share; this budget gives the
       # exempt-heavy gate two workers on both hosted and failover runners.
@@ -164,6 +166,7 @@ jobs:
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
           || 'toh-ubuntu-24-04-16core' }}
     name: node 24 / snapshots and artifacts
+    timeout-minutes: 45
     env:
       TOH_GATE_CONCURRENCY: '8'
       TOH_NODE_COMPAT_SKIP_TYPECHECK: '1'
@@ -247,6 +250,7 @@ jobs:
     # Each compatibility contract receives an independent standard hosted job.
     runs-on: ${{ matrix.runner }}
     name: ${{ matrix.name }}
+    timeout-minutes: 30
     env:
       TOH_GATE_CONCURRENCY: ${{ matrix.gate_concurrency }}
       TOH_NODE_COMPAT_SKIP_TYPECHECK: '1'
@@ -286,6 +290,7 @@ jobs:
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
     name: python 3.10 / keyless SDK
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
 
@@ -487,6 +492,7 @@ jobs:
           && fromJSON('["self-hosted", "linux", "x64", "vm-backup"]')
           || 'ubuntu-latest' }}
     needs: [node-24, node-24-coverage, node-24-consumers, node-compat, python-sdk, python-runtime, windows]
+    timeout-minutes: 10
     if: always() && github.event_name == 'pull_request'
     steps:
       - name: Fail if any needed job did not succeed
