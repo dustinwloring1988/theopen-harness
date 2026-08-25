@@ -154,6 +154,8 @@ flowchart LR
   cfg --> plugin_toh_base_web
   plugin_toh_base_web_search_deepseek["web-search-deepseek<br/>@buckeyestudio/toh-web-search-deepseek"]
   cfg --> plugin_toh_base_web_search_deepseek
+  plugin_toh_base_web_fetch_http["web-fetch-http<br/>@buckeyestudio/toh-web-fetch-http"]
+  cfg --> plugin_toh_base_web_fetch_http
   plugin_toh_base_tool_web["tool-web<br/>@buckeyestudio/toh-tool-web"]
   cfg --> plugin_toh_base_tool_web
   plugin_toh_base_tools["tools<br/>@buckeyestudio/toh-tools"]
@@ -243,6 +245,7 @@ flowchart LR
 | `turn-budget-policy` | `@buckeyestudio/toh-turn-budget-policy` |
 | `web` | `@buckeyestudio/toh-web` |
 | `web-search-deepseek` | `@buckeyestudio/toh-web-search-deepseek` |
+| `web-fetch-http` | `@buckeyestudio/toh-web-fetch-http` |
 | `tool-web` | `@buckeyestudio/toh-tool-web` |
 | `tools` | `@buckeyestudio/toh-tools` |
 | `system-prompt` | `@buckeyestudio/toh-system-prompt` |

@@ -48,6 +48,22 @@ async function pkgName(absDir: string): Promise<string> {
   return json.name
 }
 
+/**
+ * Nearest ancestor directory owning a package.json — the package root a
+ * resolved module entry lives in. The walk replaces resolving `${dep}/package.json`
+ * directly, which a dependency's `exports` map need not expose
+ * (@agentclientprotocol/sdk does not).
+ */
+function packageRootOf(entry: string): string {
+  let dir = dirname(entry)
+  while (!existsSync(join(dir, 'package.json'))) {
+    const parent = dirname(dir)
+    if (parent === dir) throw new Error(`no package.json above the resolved entry ${entry}`)
+    dir = parent
+  }
+  return dir
+}
+
 async function link(target: string, name: string, nm: string): Promise<void> {
   const dest = join(nm, name)
   await mkdir(dirname(dest), { recursive: true })
@@ -70,8 +86,8 @@ async function makeConsumer(): Promise<string> {
     // Resolve from ACP's package.json URL (the package that declares the
     // dep), not this test file's location — `acp-agent` does not depend on these.
     const fromAcp = pathToFileURL(join(acpPkgDir, 'package.json')).href
-    const resolved = fileURLToPath(import.meta.resolve(`${dep}/package.json`, fromAcp))
-    await link(dirname(resolved), dep, nm)
+    const resolved = packageRootOf(fileURLToPath(import.meta.resolve(dep, fromAcp)))
+    await link(resolved, dep, nm)
   }
   await writeFile(join(dir, 'mock-llm.mjs'), [
     "import { LlmAdapter } from '@buckeyestudio/toh-llm'",

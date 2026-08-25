@@ -289,6 +289,21 @@ describe('hand-declared providers', () => {
     })).toThrow(/defaultInput must name at least one modality/)
   })
 
+  it('serves one route when every slot collapses onto one gateway id', async () => {
+    const server = await mockServer([])
+    // Deployments point several slots at one gateway model, so a composition
+    // that declares each slot must dedupe them into a single entry — the
+    // route refuses a list naming an id twice (`more than once`), and the
+    // failure would surface at plugin initialization, not at request time.
+    const FLASH = 'stealth/ox-alpha'
+    const PRO = 'stealth/ox-alpha'
+    const ctx = await harness(gateway(`${server.url}/v1`, {
+      models: [...new Set([FLASH, PRO])].map(id => ({ id })),
+    }))
+    expect((await ctx.llm.listModels('acme-gateway')).map(model => model.id))
+      .toEqual(['stealth/ox-alpha'])
+  })
+
   it('rejects a model the route cannot identify', () => {
     const declare = (model: LlmPiAi.PiAiModelProfile): (() => unknown) =>
       () => resolveProfiles({ 'acme-gateway': { api: 'openai-completions', baseURL: 'https://acme.test', models: [model] } })

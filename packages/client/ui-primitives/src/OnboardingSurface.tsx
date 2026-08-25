@@ -9,6 +9,7 @@
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import type { ReactPortal } from 'react'
 import css from './OnboardingSurface.module.css'
 
 /**
@@ -17,7 +18,7 @@ import css from './OnboardingSurface.module.css'
  * @param props.children - the step's page content, centered on the stage.
  * @returns the body-portaled overlay tree.
  */
-export function OnboardingSurface({ children }: { children: ReactNode }) {
+export function OnboardingSurface({ children }: { children: ReactNode }): ReactPortal {
   useEffect(() => {
     const appRoot = document.getElementById('root')
     if (appRoot === null) return

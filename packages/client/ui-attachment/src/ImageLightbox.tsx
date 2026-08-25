@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import type { ReactPortal } from 'react'
 import { IconCloseOutline16 } from '@buckeyestudio/toh-client-ui-primitives'
 import css from './ImageLightbox.module.css'
 
@@ -29,7 +30,7 @@ export function ImageLightbox({ src, alt, labels, onClose }: {
   alt: string
   labels: ImageLightboxLabels
   onClose: () => void
-}) {
+}): ReactPortal {
   const closeRef = useRef<HTMLButtonElement | null>(null)
   const restoreRef = useRef<HTMLElement | null>(null)
 

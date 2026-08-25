@@ -6,6 +6,7 @@
 import { useEffect } from 'react'
 import type { ReactNode } from 'react'
 import { createPortal } from 'react-dom'
+import type { ReactPortal } from 'react'
 import clsx from 'clsx'
 import { IconCloseOutline16 } from './icons/index.tsx'
 import css from './Modal.module.css'
@@ -40,7 +41,7 @@ export function Modal({
   className?: string
   contentClassName?: string
   headless?: boolean
-}) {
+}): ReactPortal | null {
   useEffect(() => {
     if (!open) return
     const onKeyDown = (e: KeyboardEvent) => {
