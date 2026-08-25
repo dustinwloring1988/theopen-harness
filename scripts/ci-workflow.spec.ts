@@ -433,7 +433,10 @@ describe('Issue lifecycle workflow', () => {
     // The job has no job-level `if`, so it is listed on every pull_request /
     // pull_request_review event and reports success instead of a gray skip. The
     // write-capable steps are gated at step level so approved/commented reviews
-    // never mint a Project/Issue App token nor touch the board.
+    // never mint a Project/Issue App token nor touch the board. Token minting
+    // also stays off for Dependabot actors (they cannot read repository
+    // secrets) and degrades to a skip when the App is uninstalled or
+    // misconfigured; the handler runs only with a minted token.
     expect(lifecycle.on).toHaveProperty('pull_request')
     expect(lifecycle.on).toHaveProperty('pull_request_review')
     expect(lifecycleJob.if).toBeUndefined()
@@ -445,16 +448,25 @@ describe('Issue lifecycle workflow', () => {
     expect(lifecyclePullRequest.types).not.toContain('ready_for_review')
     expect(lifecyclePullRequest.types).toContain('review_requested')
     expect(lifecycleReview.types).toEqual(['submitted'])
-    const gated = "${{ github.event_name != 'pull_request_review' || github.event.review.state == 'changes_requested' }}"
+    const reviewGate =
+      "(github.event_name != 'pull_request_review' || github.event.review.state == 'changes_requested')"
     const steps = lifecycleJob.steps.filter(isRecord)
     const tokenStep = steps.find(s => s.name === 'Create project token')
     const handleStep = steps.find(s => s.name === 'Handle repository event')
-    expect(tokenStep).toMatchObject({ if: gated })
-    expect(handleStep).toMatchObject({ if: gated })
+    expect(tokenStep).toMatchObject({
+      if: `\${{ ${reviewGate} && vars.TOH_ISSUE_APP_CLIENT_ID != '' && github.actor != 'dependabot[bot]' }}`,
+      'continue-on-error': true,
+    })
+    expect(handleStep).toMatchObject({
+      if: `\${{ ${reviewGate} && steps.app-token.outputs.token != '' }}`,
+    })
 
-    // issue-policy owns PR validation; it is read-only and a real gate.
+    // issue-policy owns PR validation; it is read-only and a real gate. It reads
+    // each referenced Issue's Project status, so its explicit permission list
+    // must include Projects v2.
     const policyPullRequest = workflowEvent(policy, 'pull_request')
     expect(policyPullRequest.types).toContain('ready_for_review')
+    expect(policy.permissions).toMatchObject({ 'repository-projects': 'read' })
   })
 })
 

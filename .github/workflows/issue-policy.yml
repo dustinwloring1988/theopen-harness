@@ -10,6 +10,10 @@ permissions:
   contents: read
   issues: read
   pull-requests: read
+  # The policy reads each referenced Issue's Project status and Priority; an
+  # explicit permission list omits everything unnamed, so Projects v2 GraphQL
+  # fails without this grant.
+  repository-projects: read
 
 jobs:
   policy:

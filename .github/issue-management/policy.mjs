@@ -284,12 +284,11 @@ export function retainIssueReferences(references, issues) {
 
 /**
  * Validate one Issue with its Project status.
- * @param {{title: string, body: string, assignees: string[], labels: string[], type: string|null, priority: string|null, status: string|null, state: string, stateReason: string|null}} issue Issue snapshot.
+ * @param {{title: string, body: string, assignees: string[], labels: string[], type: string|null, priority: string|null, status: string|null, state: string, stateReason: string|null, projectAvailable?: boolean}} issue Issue snapshot; `projectAvailable` defaults to true and suspends Status/Priority rules when the Project is unreachable.
  * @returns {string[]} Validation errors.
  */
 export function validateIssue(issue) {
   const errors = validateBody(issue)
-  const status = issue.status
   const invalidLabels = issue.labels.filter(
     (label) => label.startsWith('kind/') || LEGACY_LABELS.has(label),
   )
@@ -306,6 +305,9 @@ export function validateIssue(issue) {
     errors.push('Issue 标题不得带 Type、Priority、Status、area 或 Owner 前缀')
   }
   if (!TYPES.has(issue.type ?? '')) errors.push('Type 必须是五种原生英文 Type 之一')
+  // Board 缺失时挂起全部依赖 Status/Priority 的规则，避免每个 Issue 都被误判。
+  if (issue.projectAvailable === false) return errors
+  const status = issue.status
   if (!status || !config.statuses.includes(status)) errors.push('Issue 必须在 Project 中且具有合法 Status')
   if (issue.priority !== null && !PRIORITIES.includes(issue.priority.toLowerCase())) {
     errors.push('Priority 必须为空或为 P0–P3')
@@ -507,12 +509,31 @@ async function projectContext(number, includeStatusActor = false) {
   return { project, issue, statusField, item, statusActor }
 }
 
+// Project 读取在三种部署形态下不可用：Board 未创建或编号/标题不匹配、调用方
+// 缺少 Projects v2 scope、以及 GraphQL 对不存在 Project 的 could-not-resolve
+// 错误。三者都按「无 Board」降级，而不是让整个检查崩溃。
+const PROJECT_UNAVAILABLE_PATTERN =
+  /Could not resolve to a ProjectV2|目标 Project 不存在或标题不匹配|required scopes/i
+
+function isProjectUnavailableError(error) {
+  return error instanceof Error && PROJECT_UNAVAILABLE_PATTERN.test(error.message)
+}
+
+async function tryProjectContext(number, includeStatusActor = false) {
+  try {
+    return { available: true, ...(await projectContext(number, includeStatusActor)) }
+  } catch (error) {
+    if (!isProjectUnavailableError(error)) throw error
+  }
+  return { available: false }
+}
+
 async function issueSnapshot(number) {
   const issue = await api(`/repos/${config.organization}/${config.repository}/issues/${number}`, {
     allow404: true,
   })
   if (!issue || issue.pull_request) return null
-  const context = await projectContext(number)
+  const context = await tryProjectContext(number)
   return {
     number,
     nodeId: issue.node_id,
@@ -521,16 +542,17 @@ async function issueSnapshot(number) {
     assignees: issue.assignees.map((assignee) => assignee.login),
     labels: issue.labels.map((label) => label.name),
     type: issue.type?.name ?? null,
-    priority: context.item?.priority?.name ?? null,
-    status: context.item?.fieldValueByName?.name ?? null,
+    priority: context.available ? (context.item?.priority?.name ?? null) : null,
+    status: context.available ? (context.item?.fieldValueByName?.name ?? null) : null,
     state: issue.state,
     stateReason: issue.state_reason ?? null,
+    projectAvailable: context.available,
   }
 }
 
 async function ensureProjectItem(number) {
-  const context = await projectContext(number)
-  if (context.item) return context
+  const context = await tryProjectContext(number)
+  if (!context.available || context.item) return context
   const data = await graphql(
     `mutation($projectId: ID!, $contentId: ID!) {
       addProjectV2ItemById(input: {projectId: $projectId, contentId: $contentId}) {
@@ -568,7 +590,9 @@ async function updateStatus(context, status) {
 }
 
 async function setStatus(number, status) {
-  await updateStatus(await ensureProjectItem(number), status)
+  const context = await ensureProjectItem(number)
+  if (!context.available) return
+  await updateStatus(context, status)
 }
 
 async function upsertAudit(number, errors) {
@@ -662,7 +686,8 @@ async function lifecyclePullRequestSnapshot(number) {
 
 async function transitionResolvingIssues(pull, command) {
   for (const number of pull.references.resolving) {
-    const context = await projectContext(number, command === 'changes-requested')
+    const context = await tryProjectContext(number, command === 'changes-requested')
+    if (!context.available) continue
     const target = nextResolvingIssueStatus(
       context.item?.fieldValueByName?.name ?? null,
       command,

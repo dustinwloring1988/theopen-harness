@@ -40,7 +40,11 @@ jobs:
     # than a gray "skipped" segment. The token-creating and board-mutating steps
     # are gated at step level (a skipped step does not gray the job): only a
     # changes_requested review drives the Project board; approved/commented
-    # reviews never mint a write-capable App token. Deployments without the App
+    # reviews never mint a write-capable App token. Board automation degrades to
+    # a skip, never a failed check, whenever it cannot run: Dependabot contexts
+    # cannot read repository secrets, an uninstalled or misconfigured App fails
+    # token minting (continue-on-error keeps that a skipped board update), and a
+    # missing token output skips the handler. Deployments without the App
     # configured (no TOH_ISSUE_APP_CLIENT_ID variable) also skip both steps, so
     # the check stays green while the board automation stays off.
     runs-on: ubuntu-latest
@@ -53,7 +57,8 @@ jobs:
           persist-credentials: false
       - name: Create project token
         id: app-token
-        if: ${{ (github.event_name != 'pull_request_review' || github.event.review.state == 'changes_requested') && vars.TOH_ISSUE_APP_CLIENT_ID != '' }}
+        continue-on-error: true
+        if: ${{ (github.event_name != 'pull_request_review' || github.event.review.state == 'changes_requested') && vars.TOH_ISSUE_APP_CLIENT_ID != '' && github.actor != 'dependabot[bot]' }}
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
         with:
           client-id: ${{ vars.TOH_ISSUE_APP_CLIENT_ID }}
@@ -61,7 +66,7 @@ jobs:
           owner: dustinwloring1988
           repositories: theopen-harness
       - name: Handle repository event
-        if: ${{ (github.event_name != 'pull_request_review' || github.event.review.state == 'changes_requested') && vars.TOH_ISSUE_APP_CLIENT_ID != '' }}
+        if: ${{ (github.event_name != 'pull_request_review' || github.event.review.state == 'changes_requested') && steps.app-token.outputs.token != '' }}
         env:
           GH_TOKEN: ${{ steps.app-token.outputs.token }}
         run: node .github/issue-management/policy.mjs lifecycle
