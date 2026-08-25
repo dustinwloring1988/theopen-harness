@@ -40,10 +40,11 @@ async function harness(_model: string, config: Partial<PiAiProviderProfile> = {}
         ...process.env.DEEPSEEK_BASE_URL === undefined ? {} : { baseURL: process.env.DEEPSEEK_BASE_URL },
         // Gateway slots are ids the installed catalog does not describe, so
         // they must be declared to be routable; a bare id yields serviceable
-        // defaults. Public-endpoint runs keep the installed catalog, whose
-        // entries carry the reasoning metadata the provider-native scenarios
-        // assert.
-        ...(GATEWAY_MODE ? { models: [{ id: FLASH }, { id: PRO }] } : {}),
+        // defaults. The declaration dedupes because the route refuses a list
+        // naming one id twice, and CI collapses both slots onto one gateway
+        // id. Public-endpoint runs keep the installed catalog, whose entries
+        // carry the reasoning metadata the provider-native scenarios assert.
+        ...(GATEWAY_MODE ? { models: [...new Set([FLASH, PRO])].map(id => ({ id })) } : {}),
         ...config,
       },
     },
