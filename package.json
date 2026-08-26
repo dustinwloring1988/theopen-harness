@@ -167,7 +167,7 @@
     "istanbul-lib-report": "^3.0.1",
     "js-yaml": "^4.2.0",
     "jscpd": "^5.0.12",
-    "jsdom": "29.1.1",
+    "jsdom": "30.0.0",
     "knip": "^6.29.0",
     "lefthook": "^2.1.10",
     "lightningcss": "^1.33.0",
