@@ -37,7 +37,7 @@
     "@buckeyestudio/cordis": "workspace:^"
   },
   "dependencies": {
-    "e2b": "2.36.0",
+    "e2b": "2.36.1",
     "@buckeyestudio/schemastery": "workspace:^"
   },
   "devDependencies": {
